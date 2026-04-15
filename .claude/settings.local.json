@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(where node *)",
+      "Bash(where nodejs *)",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"c:\\\\Users\\\\Nathan\\\\Documents\\\\ASHIR AI\\\\PROYECTOS\\\\PJ04 CONTROL DE PAGOS\\\\gen-icons.ps1\")"
+    ]
+  }
+}
