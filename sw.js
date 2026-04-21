@@ -1,4 +1,4 @@
-const CACHE = 'control-pagos-v3';
+const CACHE = 'control-pagos-v5';
 const ASSETS = [
   '/PJ04-CONTROL-PAGOS/',
   '/PJ04-CONTROL-PAGOS/index.html',
@@ -10,8 +10,9 @@ const ASSETS = [
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())
+    caches.open(CACHE).then(c => c.addAll(ASSETS))
   );
+  // No skipWaiting — esperamos a que el usuario confirme la actualización
 });
 
 self.addEventListener('activate', e => {
@@ -27,4 +28,9 @@ self.addEventListener('fetch', e => {
   e.respondWith(
     caches.match(e.request).then(cached => cached || fetch(e.request))
   );
+});
+
+// Escucha mensaje del usuario para activar la nueva versión
+self.addEventListener('message', e => {
+  if (e.data === 'SKIP_WAITING') self.skipWaiting();
 });

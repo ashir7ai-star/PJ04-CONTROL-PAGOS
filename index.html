@@ -1075,7 +1075,7 @@
         <polyline points="14 2 14 8 20 8"/>
         <line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
       </svg>
-      Nueva Factura
+      Nuevo Pago
     </button>
     <button class="nav-tab" data-view="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1088,14 +1088,14 @@
   <!-- Main -->
   <main>
     <div class="page-header">
-      <p class="page-title">Nueva Factura</p>
-      <p class="page-subtitle">Completa los datos y envía la factura al sistema.</p>
+      <p class="page-title">Nuevo Pago</p>
+      <p class="page-subtitle">Completa los datos y envía el pago al sistema.</p>
     </div>
 
     <form id="paymentForm" novalidate>
 
       <!-- Tipo de factura -->
-      <div class="section-label">Tipo de factura <span class="req">*</span></div>
+      <div class="section-label">Tipo de pago <span class="req">*</span></div>
       <div class="tipo-selector">
 
         <button type="button" class="tipo-btn" data-value="pago_proveedor">
@@ -1134,7 +1134,7 @@
 
       <!-- Información de la factura -->
       <div class="card">
-        <p class="card-title">Información de la factura</p>
+        <p class="card-title">Información del pago</p>
         <div class="field-group">
 
           <div class="field-row">
@@ -1167,7 +1167,7 @@
 
           <div class="field-row">
             <div class="field">
-              <label for="numeroFactura">Número de factura <span class="req">*</span></label>
+              <label for="numeroFactura">Número de pago <span class="req">*</span></label>
               <input type="text" id="numeroFactura" name="numero_factura" placeholder="Ej: FAC-2024-001" required />
             </div>
             <div class="field">
@@ -1234,7 +1234,7 @@
 
       <button type="submit" class="btn-submit" id="btnSubmit">
         <div class="spinner" id="spinner"></div>
-        <span id="btnText">Enviar Factura</span>
+        <span id="btnText">Enviar Pago</span>
         <svg id="btnArrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="5" y1="12" x2="19" y2="12"/>
           <polyline points="12 5 19 12 12 19"/>
@@ -1264,7 +1264,7 @@
           </select>
         </div>
         <div class="field">
-          <label for="fTipo">Tipo de factura</label>
+          <label for="fTipo">Tipo de pago</label>
           <select id="fTipo">
             <option value="">Todos</option>
             <option value="pago_proveedor">Pago a Proveedor</option>
@@ -1277,7 +1277,7 @@
           <input type="text" id="fProveedor" placeholder="Nombre del proveedor" />
         </div>
         <div class="field">
-          <label for="fNumeroFactura">Número de factura</label>
+          <label for="fNumeroFactura">Número de pago</label>
           <input type="text" id="fNumeroFactura" placeholder="Ej: FAC-2024-001" />
         </div>
         <div class="field">
@@ -1315,7 +1315,7 @@
               <th>Empresa</th>
               <th>Tipo</th>
               <th>Proveedor</th>
-              <th>N° Factura</th>
+              <th>N° Pago</th>
               <th>Valor</th>
               <th>Archivo</th>
             </tr>
@@ -1358,7 +1358,7 @@
     </div>
     <div class="toast-body">
       <div class="toast-title" id="toastTitle">Enviado correctamente</div>
-      <div class="toast-msg"   id="toastMsg">La factura fue registrada en el sistema.</div>
+      <div class="toast-msg"   id="toastMsg">El pago fue registrado en el sistema.</div>
     </div>
   </div>
 
@@ -1415,7 +1415,6 @@
         if (!Array.isArray(rows)) rows = Object.values(rows);
         // Filtrar filas vacías
         rows = rows.filter(r => r['PROVEEDOR'] || r['NUMERO DE FACTURA'] || r['NOMBRE DE PAGO']);
-        console.log('URL ARCHIVO sample:', rows.map(r => r['URL ARCHIVO']));
         const filtered = filtrarRows(rows);
         renderResultados(filtered);
       } catch(err) {
@@ -1673,7 +1672,7 @@
       e.preventDefault();
 
       if (!tipoHidden.value) {
-        showToast('error', 'Tipo requerido', 'Selecciona el tipo de factura antes de enviar.');
+        showToast('error', 'Tipo requerido', 'Selecciona el tipo de pago antes de enviar.');
         return;
       }
 
@@ -1688,7 +1687,7 @@
       }
 
       if (!fileInput.files[0]) {
-        showToast('error', 'Archivo requerido', 'Debes adjuntar el documento de la factura.');
+        showToast('error', 'Archivo requerido', 'Debes adjuntar el documento del pago.');
         return;
       }
 
@@ -1714,7 +1713,7 @@
         const result   = await response.json().catch(() => ({}));
 
         if (response.ok && result.status === 'success') {
-          showToast('success', '¡Factura registrada!', 'El archivo fue guardado y los datos registrados correctamente.');
+          showToast('success', '¡Pago registrado!', 'El archivo fue guardado y los datos registrados correctamente.');
           resetForm();
         } else {
           throw new Error(result.message || 'HTTP ' + response.status);
@@ -1730,7 +1729,7 @@
     function setLoading(on) {
       btnSubmit.disabled     = on;
       spinner.style.display  = on ? 'block' : 'none';
-      btnText.textContent    = on ? 'Enviando...' : 'Enviar Factura';
+      btnText.textContent    = on ? 'Enviando...' : 'Enviar Pago';
       btnArrow.style.display = on ? 'none' : '';
     }
 

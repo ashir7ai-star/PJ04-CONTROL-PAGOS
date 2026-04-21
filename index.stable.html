@@ -620,6 +620,273 @@
       margin: 2px 0;
     }
 
+    /* ─── Banner de actualización ───────────────────────────────── */
+    .update-banner {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%) translateY(160px);
+      background: var(--text);
+      color: var(--surface);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-width: 300px;
+      max-width: 92vw;
+      box-shadow: var(--shadow-lg);
+      transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
+      z-index: 998;
+    }
+
+    .update-banner.show { transform: translateX(-50%) translateY(0); }
+
+    .update-content {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    .update-content svg {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      color: var(--primary);
+    }
+
+    .update-btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 7px 14px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      font-family: 'Inter', inherit;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background var(--transition);
+    }
+
+    .update-btn:hover { background: var(--primary-hover); }
+
+    /* ─── Nav tabs ───────────────────────────────────────────────── */
+    .app-nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      padding: 0 16px;
+      gap: 4px;
+    }
+
+    .nav-tab {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 14px 16px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-family: 'Inter', inherit;
+      transition: all var(--transition);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      white-space: nowrap;
+    }
+
+    .nav-tab svg { width: 15px; height: 15px; }
+
+    .nav-tab:hover { color: var(--text); }
+
+    .nav-tab.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+      font-weight: 600;
+    }
+
+    /* ─── Search panel ───────────────────────────────────────────── */
+    .search-filters {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+    }
+
+    .filters-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    @media (max-width: 520px) {
+      .filters-grid { grid-template-columns: 1fr; }
+    }
+
+    .filter-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .btn-search {
+      flex: 1;
+      padding: 10px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 0.9rem;
+      font-weight: 600;
+      font-family: 'Inter', inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      transition: background var(--transition);
+    }
+
+    .btn-search:hover { background: var(--primary-hover); }
+    .btn-search:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-search svg { width: 15px; height: 15px; }
+
+    .btn-clear {
+      padding: 10px 16px;
+      background: var(--surface-2);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      font-weight: 500;
+      font-family: 'Inter', inherit;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+
+    .btn-clear:hover { border-color: var(--error); color: var(--error); }
+
+    /* ─── Results ────────────────────────────────────────────────── */
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .results-count {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .results-total {
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .results-table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      overflow-x: auto;
+    }
+
+    .results-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+
+    .results-table th {
+      background: var(--surface-2);
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .results-table td {
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      vertical-align: middle;
+    }
+
+    .results-table tr:last-child td { border-bottom: none; }
+
+    .results-table tr:hover td { background: var(--surface-2); }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .badge-pago    { background: var(--success-light); color: var(--success); }
+    .badge-compra  { background: var(--primary-light); color: var(--primary); }
+    .badge-venta   { background: var(--warning-light); color: var(--warning); }
+
+    .link-factura {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+    }
+
+    .link-factura:hover { text-decoration: underline; }
+    .link-factura svg { width: 12px; height: 12px; }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 20px;
+      color: var(--text-muted);
+    }
+
+    .empty-state svg {
+      width: 40px;
+      height: 40px;
+      margin-bottom: 12px;
+      opacity: 0.4;
+    }
+
+    .empty-state p { font-size: 0.875rem; }
+
+    .search-spinner {
+      width: 15px;
+      height: 15px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.65s linear infinite;
+      display: none;
+    }
+
+    /* ─── Mobile table scroll ────────────────────────────────────── */
+    @media (max-width: 600px) {
+      .results-table-wrap { overflow-x: auto; }
+      .results-table { min-width: 600px; }
+    }
+
     /* ─── Footer ─────────────────────────────────────────────────── */
     footer {
       text-align: center;
@@ -800,17 +1067,35 @@
     </button>
   </header>
 
+  <!-- Navegación -->
+  <nav class="app-nav">
+    <button class="nav-tab active" data-view="form">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
+      </svg>
+      Nuevo Pago
+    </button>
+    <button class="nav-tab" data-view="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      Consultar Pagos
+    </button>
+  </nav>
+
   <!-- Main -->
   <main>
     <div class="page-header">
-      <p class="page-title">Nueva Factura</p>
-      <p class="page-subtitle">Completa los datos y envía la factura al sistema.</p>
+      <p class="page-title">Nuevo Pago</p>
+      <p class="page-subtitle">Completa los datos y envía el pago al sistema.</p>
     </div>
 
     <form id="paymentForm" novalidate>
 
       <!-- Tipo de factura -->
-      <div class="section-label">Tipo de factura <span class="req">*</span></div>
+      <div class="section-label">Tipo de pago <span class="req">*</span></div>
       <div class="tipo-selector">
 
         <button type="button" class="tipo-btn" data-value="pago_proveedor">
@@ -849,7 +1134,7 @@
 
       <!-- Información de la factura -->
       <div class="card">
-        <p class="card-title">Información de la factura</p>
+        <p class="card-title">Información del pago</p>
         <div class="field-group">
 
           <div class="field-row">
@@ -882,7 +1167,7 @@
 
           <div class="field-row">
             <div class="field">
-              <label for="numeroFactura">Número de factura <span class="req">*</span></label>
+              <label for="numeroFactura">Número de pago <span class="req">*</span></label>
               <input type="text" id="numeroFactura" name="numero_factura" placeholder="Ej: FAC-2024-001" required />
             </div>
             <div class="field">
@@ -949,7 +1234,7 @@
 
       <button type="submit" class="btn-submit" id="btnSubmit">
         <div class="spinner" id="spinner"></div>
-        <span id="btnText">Enviar Factura</span>
+        <span id="btnText">Enviar Pago</span>
         <svg id="btnArrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="5" y1="12" x2="19" y2="12"/>
           <polyline points="12 5 19 12 12 19"/>
@@ -959,9 +1244,110 @@
     </form>
   </main>
 
+  <!-- Vista: Consultar Pagos -->
+  <main id="viewSearch" style="display:none;">
+    <div class="page-header">
+      <p class="page-title">Consultar Pagos</p>
+      <p class="page-subtitle">Filtra y busca pagos registrados en el sistema.</p>
+    </div>
+
+    <!-- Filtros -->
+    <div class="search-filters">
+      <p class="card-title">Filtros de búsqueda</p>
+      <div class="filters-grid">
+        <div class="field">
+          <label for="fEmpresa">Empresa</label>
+          <select id="fEmpresa">
+            <option value="">Todas</option>
+            <option value="Millennium Co">Millennium Co</option>
+            <option value="AMPAC SAS">AMPAC SAS</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="fTipo">Tipo de pago</label>
+          <select id="fTipo">
+            <option value="">Todos</option>
+            <option value="pago_proveedor">Pago a Proveedor</option>
+            <option value="compra">Compra</option>
+            <option value="venta">Venta</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="fProveedor">Proveedor</label>
+          <input type="text" id="fProveedor" placeholder="Nombre del proveedor" />
+        </div>
+        <div class="field">
+          <label for="fNumeroFactura">Número de pago</label>
+          <input type="text" id="fNumeroFactura" placeholder="Ej: FAC-2024-001" />
+        </div>
+        <div class="field">
+          <label for="fFechaInicio">Fecha desde</label>
+          <input type="text" id="fFechaInicio" placeholder="dd/mm/aaaa" readonly />
+        </div>
+        <div class="field">
+          <label for="fFechaFin">Fecha hasta</label>
+          <input type="text" id="fFechaFin" placeholder="dd/mm/aaaa" readonly />
+        </div>
+      </div>
+      <div class="filter-actions">
+        <button class="btn-search" id="btnSearch">
+          <div class="search-spinner" id="searchSpinner"></div>
+          <svg id="searchIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          Buscar
+        </button>
+        <button class="btn-clear" id="btnClear">Limpiar</button>
+      </div>
+    </div>
+
+    <!-- Resultados -->
+    <div id="searchResults" style="display:none;">
+      <div class="results-header">
+        <span class="results-count" id="resultsCount">0 resultados</span>
+        <span class="results-total" id="resultsTotal"></span>
+      </div>
+      <div class="results-table-wrap">
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Empresa</th>
+              <th>Tipo</th>
+              <th>Proveedor</th>
+              <th>N° Pago</th>
+              <th>Valor</th>
+              <th>Archivo</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="emptyState" style="display:none;" class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <p>No se encontraron pagos con los filtros seleccionados.</p>
+    </div>
+  </main>
+
   <footer>
     <p class="footer-text">Desarrollado por: <strong>JND AI SYSTEMS</strong> · J. Nathan De Lima, Full Stack AI Developer</p>
   </footer>
+
+  <!-- Banner de actualización -->
+  <div class="update-banner" id="updateBanner">
+    <div class="update-content">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 4 23 10 17 10"/>
+        <path d="M20.49 15a9 9 0 1 1-.18-4.61"/>
+      </svg>
+      <span>Nueva versión disponible</span>
+    </div>
+    <button class="update-btn" id="updateBtn">Actualizar</button>
+  </div>
 
   <!-- Toast -->
   <div class="toast" id="toast" role="alert" aria-live="assertive">
@@ -972,16 +1358,189 @@
     </div>
     <div class="toast-body">
       <div class="toast-title" id="toastTitle">Enviado correctamente</div>
-      <div class="toast-msg"   id="toastMsg">La factura fue registrada en el sistema.</div>
+      <div class="toast-msg"   id="toastMsg">El pago fue registrado en el sistema.</div>
     </div>
   </div>
 
   <script>
     const N8N_WEBHOOK_URL = 'https://ashir-n8n.nr6aco.easypanel.host/webhook/81926c9e-22aa-4aef-bb4d-fe4ee520748c';
 
-    // ─── Service Worker ────────────────────────────────────────────
+    // ─── URL del webhook de consulta (configura en n8n) ───────────
+    const N8N_QUERY_URL = 'https://ashir-n8n.nr6aco.easypanel.host/webhook/c6d11abd-61bc-439c-9dd9-550ed5008ee3';
+
+    // ─── Navegación entre vistas ───────────────────────────────────
+    const navTabs   = document.querySelectorAll('.nav-tab');
+    const viewForm  = document.getElementById('paymentForm').closest('main');
+    const viewSearch = document.getElementById('viewSearch');
+
+    navTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        navTabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        if (tab.dataset.view === 'form') {
+          viewForm.style.display   = '';
+          viewSearch.style.display = 'none';
+        } else {
+          viewForm.style.display   = 'none';
+          viewSearch.style.display = '';
+        }
+      });
+    });
+
+    // ─── Flatpickr para filtros de fecha ──────────────────────────
+    flatpickr('#fFechaInicio', { locale: 'es', dateFormat: 'd/m/Y', disableMobile: true });
+    flatpickr('#fFechaFin',    { locale: 'es', dateFormat: 'd/m/Y', disableMobile: true });
+
+    // ─── Búsqueda ─────────────────────────────────────────────────
+    document.getElementById('btnSearch').addEventListener('click', buscarPagos);
+    document.getElementById('btnClear').addEventListener('click', () => {
+      document.getElementById('fEmpresa').value        = '';
+      document.getElementById('fTipo').value           = '';
+      document.getElementById('fProveedor').value      = '';
+      document.getElementById('fNumeroFactura').value  = '';
+      document.getElementById('fFechaInicio')._flatpickr.clear();
+      document.getElementById('fFechaFin')._flatpickr.clear();
+      document.getElementById('searchResults').style.display = 'none';
+      document.getElementById('emptyState').style.display    = 'none';
+    });
+
+    async function buscarPagos() {
+      setSearchLoading(true);
+      try {
+        const res  = await fetch(N8N_QUERY_URL);
+        const raw  = await res.json();
+        // Manejar tanto array directo como string JSON
+        let rows = raw;
+        if (typeof raw === 'string') rows = JSON.parse(raw);
+        if (!Array.isArray(rows)) rows = Object.values(rows);
+        // Filtrar filas vacías
+        rows = rows.filter(r => r['PROVEEDOR'] || r['NUMERO DE FACTURA'] || r['NOMBRE DE PAGO']);
+        const filtered = filtrarRows(rows);
+        renderResultados(filtered);
+      } catch(err) {
+        console.error(err);
+        showToast('error', 'Error de conexión', 'No se pudo obtener los datos del sistema.');
+      } finally {
+        setSearchLoading(false);
+      }
+    }
+
+    function extractUrl(val) {
+      if (!val) return '';
+      const s = String(val).trim();
+      if (s.startsWith('http')) return s;
+      // Extrae URL de fórmula =HYPERLINK("url","texto")
+      const m = s.match(/HYPERLINK\("([^"]+)"/i);
+      return m ? m[1] : '';
+    }
+
+    function parseFecha(str) {
+      if (!str) return null;
+      // Soporta YYYY-MM-DD y DD/MM/YYYY
+      if (str.includes('-')) {
+        const [y, m, d] = str.split('-');
+        return new Date(+y, +m - 1, +d);
+      }
+      if (str.includes('/')) {
+        const [d, m, y] = str.split('/');
+        return new Date(+y, +m - 1, +d);
+      }
+      return new Date(str);
+    }
+
+    function filtrarRows(rows) {
+      const empresa  = document.getElementById('fEmpresa').value.toLowerCase();
+      const tipo     = document.getElementById('fTipo').value.toLowerCase();
+      const prov     = document.getElementById('fProveedor').value.toLowerCase().trim();
+      const numFac   = document.getElementById('fNumeroFactura').value.toLowerCase().trim();
+      const fi       = document.getElementById('fFechaInicio')._flatpickr.selectedDates[0];
+      const ff       = document.getElementById('fFechaFin')._flatpickr.selectedDates[0];
+
+      return rows.filter(r => {
+        const rEmpresa = (r['EMPRESA']           || '').toLowerCase();
+        const rTipo    = (r['TIPO FACTURA']       || '').toLowerCase();
+        const rProv    = (r['PROVEEDOR']          || '').toLowerCase();
+        const rNum     = (r['NUMERO DE FACTURA']  || '').toLowerCase();
+        const rFecha   = parseFecha(r['FECHA DE PAGO']);
+
+        if (empresa && !rEmpresa.includes(empresa))  return false;
+        if (tipo    && !rTipo.includes(tipo))         return false;
+        if (prov    && !rProv.includes(prov))         return false;
+        if (numFac  && !rNum.includes(numFac))        return false;
+        if (fi && rFecha) { const f = new Date(fi.getFullYear(), fi.getMonth(), fi.getDate()); if (rFecha < f) return false; }
+        if (ff && rFecha) { const f = new Date(ff.getFullYear(), ff.getMonth(), ff.getDate()); if (rFecha > f) return false; }
+        return true;
+      });
+    }
+
+    function renderResultados(rows) {
+      const tbody   = document.getElementById('resultsBody');
+      const results = document.getElementById('searchResults');
+      const empty   = document.getElementById('emptyState');
+
+      if (rows.length === 0) {
+        results.style.display = 'none';
+        empty.style.display   = '';
+        return;
+      }
+
+      empty.style.display   = 'none';
+      results.style.display = '';
+
+      const total = rows.reduce((s, r) => s + (parseFloat(String(r['VALOR FACTURA']).replace(/\./g,'')) || 0), 0);
+
+      document.getElementById('resultsCount').textContent = rows.length + ' resultado' + (rows.length !== 1 ? 's' : '');
+      document.getElementById('resultsTotal').textContent = 'Total: $' + total.toLocaleString('es-CO');
+
+      tbody.innerHTML = rows.map(r => {
+        const tipo = (r['TIPO FACTURA'] || '').toLowerCase();
+        const badgeClass = tipo.includes('pago') ? 'badge-pago' : tipo === 'compra' ? 'badge-compra' : 'badge-venta';
+        const tipoLabel  = tipo.includes('pago') ? 'Pago Proveedor' : tipo === 'compra' ? 'Compra' : 'Venta';
+        const url  = extractUrl(r['URL ARCHIVO'] || '');
+        const link = url
+          ? `<a class="link-factura" href="${url}" target="_blank">Ver <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></a>`
+          : '—';
+        const valor = parseFloat(String(r['VALOR FACTURA']).replace(/\./g,'')) || 0;
+        return `<tr>
+          <td>${r['FECHA DE PAGO'] || '—'}</td>
+          <td>${r['EMPRESA'] || '—'}</td>
+          <td><span class="badge ${badgeClass}">${tipoLabel}</span></td>
+          <td>${r['PROVEEDOR'] || '—'}</td>
+          <td>${r['NUMERO DE FACTURA'] || '—'}</td>
+          <td>$${valor.toLocaleString('es-CO')}</td>
+          <td>${link}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function setSearchLoading(on) {
+      const btn = document.getElementById('btnSearch');
+      document.getElementById('searchSpinner').style.display = on ? 'block' : 'none';
+      document.getElementById('searchIcon').style.display    = on ? 'none' : '';
+      btn.disabled = on;
+    }
+
+    // ─── Service Worker + banner de actualización ─────────────────
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/PJ04-CONTROL-PAGOS/sw.js').catch(() => {});
+      navigator.serviceWorker.register('/PJ04-CONTROL-PAGOS/sw.js').then(reg => {
+        reg.addEventListener('updatefound', () => {
+          const newSW = reg.installing;
+          newSW.addEventListener('statechange', () => {
+            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+              document.getElementById('updateBanner').classList.add('show');
+            }
+          });
+        });
+      }).catch(() => {});
+
+      document.getElementById('updateBtn').addEventListener('click', () => {
+        navigator.serviceWorker.getRegistration().then(reg => {
+          if (reg && reg.waiting) {
+            reg.waiting.postMessage('SKIP_WAITING');
+          }
+        });
+        navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
+      });
     }
 
     // ─── Tema ──────────────────────────────────────────────────────
@@ -1113,7 +1672,7 @@
       e.preventDefault();
 
       if (!tipoHidden.value) {
-        showToast('error', 'Tipo requerido', 'Selecciona el tipo de factura antes de enviar.');
+        showToast('error', 'Tipo requerido', 'Selecciona el tipo de pago antes de enviar.');
         return;
       }
 
@@ -1128,7 +1687,7 @@
       }
 
       if (!fileInput.files[0]) {
-        showToast('error', 'Archivo requerido', 'Debes adjuntar el documento de la factura.');
+        showToast('error', 'Archivo requerido', 'Debes adjuntar el documento del pago.');
         return;
       }
 
@@ -1154,7 +1713,7 @@
         const result   = await response.json().catch(() => ({}));
 
         if (response.ok && result.status === 'success') {
-          showToast('success', '¡Factura registrada!', 'El archivo fue guardado y los datos registrados correctamente.');
+          showToast('success', '¡Pago registrado!', 'El archivo fue guardado y los datos registrados correctamente.');
           resetForm();
         } else {
           throw new Error(result.message || 'HTTP ' + response.status);
@@ -1170,7 +1729,7 @@
     function setLoading(on) {
       btnSubmit.disabled     = on;
       spinner.style.display  = on ? 'block' : 'none';
-      btnText.textContent    = on ? 'Enviando...' : 'Enviar Factura';
+      btnText.textContent    = on ? 'Enviando...' : 'Enviar Pago';
       btnArrow.style.display = on ? 'none' : '';
     }
 
