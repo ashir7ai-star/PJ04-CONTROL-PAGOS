@@ -1,4 +1,4 @@
-const CACHE = 'control-pagos-v6';
+const CACHE = 'control-pagos-v7';
 const ASSETS = [
   '/PJ04-CONTROL-PAGOS/',
   '/PJ04-CONTROL-PAGOS/index.html',
@@ -12,7 +12,7 @@ self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE).then(c => c.addAll(ASSETS))
   );
-  // No skipWaiting — esperamos a que el usuario confirme la actualización
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {

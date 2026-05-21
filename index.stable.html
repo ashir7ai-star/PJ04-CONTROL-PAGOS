@@ -1552,24 +1552,20 @@
     // ─── Service Worker + banner de actualización ─────────────────
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/PJ04-CONTROL-PAGOS/sw.js').then(reg => {
+        // Forzar chequeo de actualización cada vez que se abre la app
+        reg.update();
         reg.addEventListener('updatefound', () => {
           const newSW = reg.installing;
           newSW.addEventListener('statechange', () => {
-            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-              document.getElementById('updateBanner').classList.add('show');
+            if (newSW.state === 'activated') {
+              location.reload();
             }
           });
         });
       }).catch(() => {});
 
-      document.getElementById('updateBtn').addEventListener('click', () => {
-        navigator.serviceWorker.getRegistration().then(reg => {
-          if (reg && reg.waiting) {
-            reg.waiting.postMessage('SKIP_WAITING');
-          }
-        });
-        navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
-      });
+      // Recargar automáticamente cuando el nuevo SW tome control
+      navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
     }
 
     // ─── Tema ──────────────────────────────────────────────────────
