@@ -4,7 +4,31 @@
       "Bash(node -e ' *)",
       "Bash(where node *)",
       "Bash(where nodejs *)",
-      "Bash(powershell -ExecutionPolicy Bypass -File \"c:\\\\Users\\\\Nathan\\\\Documents\\\\ASHIR AI\\\\PROYECTOS\\\\PJ04 CONTROL DE PAGOS\\\\gen-icons.ps1\")"
+      "Bash(powershell -ExecutionPolicy Bypass -File \"c:\\\\Users\\\\Nathan\\\\Documents\\\\ASHIR AI\\\\PROYECTOS\\\\PJ04 CONTROL DE PAGOS\\\\gen-icons.ps1\")",
+      "Bash(git ls-remote *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git status *)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(powershell -Command \"Get-Content '.claude\\\\settings.local.json' | ConvertFrom-Json | ConvertTo-Json -Depth 10\")",
+      "Bash(powershell -Command \"Set-Location 'c:\\\\Users\\\\Nathan\\\\Documents\\\\ASHIR AI\\\\PROYECTOS\\\\PJ04 CONTROL DE PAGOS'; git add -A; if \\(git status --porcelain\\) { git commit -m \\('Auto: ' + \\(Get-Date -Format 'yyyy-MM-dd HH:mm'\\)\\); git push origin main } else { Write-Host 'Sin cambios' }\")"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "Set-Location \"c:\\Users\\Nathan\\Documents\\ASHIR AI\\PROYECTOS\\PJ04 CONTROL DE PAGOS\"; git add -A; $s = git status --porcelain; if ($s) { $ts = Get-Date -Format 'yyyy-MM-dd HH:mm'; git commit -m \"Auto: cambios $ts\"; git push origin main }",
+            "shell": "powershell",
+            "timeout": 30,
+            "statusMessage": "Guardando cambios en GitHub..."
+          }
+        ]
+      }
     ]
   }
 }
