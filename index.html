@@ -209,7 +209,7 @@
     /* ─── Tipo selector ──────────────────────────────────────────── */
     .tipo-selector {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       gap: 8px;
       margin-bottom: 24px;
     }
@@ -278,6 +278,17 @@
     .tipo-btn.active[data-value="pago_proveedor"] .tipo-label { color: var(--success); }
     .tipo-btn.active[data-value="compra"]         .tipo-label { color: var(--primary); }
     .tipo-btn.active[data-value="venta"]          .tipo-label { color: var(--warning); }
+
+    .tipo-btn.active[data-value="impuestos"] {
+      border-color: #7c3aed;
+      background: rgba(124,58,237,0.08);
+      box-shadow: 0 0 0 3px rgba(124,58,237,0.12);
+    }
+    .tipo-btn.active[data-value="impuestos"] .tipo-icon { background: rgba(124,58,237,0.12); }
+    .tipo-btn.active[data-value="impuestos"] .tipo-icon svg { color: #7c3aed; }
+    .tipo-btn.active[data-value="impuestos"] .tipo-label { color: #7c3aed; }
+
+    .badge-impuestos { background: rgba(124,58,237,0.1); color: #7c3aed; }
 
     /* ─── Card ───────────────────────────────────────────────────── */
     .card {
@@ -1129,6 +1140,21 @@
           <span class="tipo-label">Venta</span>
         </button>
 
+        <button type="button" class="tipo-btn" data-value="impuestos">
+          <div class="tipo-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="3" y1="22" x2="21" y2="22"/>
+              <line x1="6" y1="18" x2="6" y2="11"/>
+              <line x1="10" y1="18" x2="10" y2="11"/>
+              <line x1="14" y1="18" x2="14" y2="11"/>
+              <line x1="18" y1="18" x2="18" y2="11"/>
+              <polyline points="2 7 12 2 22 7"/>
+              <line x1="2" y1="7" x2="22" y2="7"/>
+            </svg>
+          </div>
+          <span class="tipo-label">Pago Impuestos</span>
+        </button>
+
       </div>
       <input type="hidden" id="tipoFactura" name="tipo_factura" />
 
@@ -1270,6 +1296,7 @@
             <option value="pago_proveedor">Pago a Proveedor</option>
             <option value="compra">Compra</option>
             <option value="venta">Venta</option>
+            <option value="impuestos">Pago Impuestos</option>
           </select>
         </div>
         <div class="field">
@@ -1494,8 +1521,8 @@
 
       tbody.innerHTML = rows.map(r => {
         const tipo = (r['TIPO FACTURA'] || '').toLowerCase();
-        const badgeClass = tipo.includes('pago') ? 'badge-pago' : tipo === 'compra' ? 'badge-compra' : 'badge-venta';
-        const tipoLabel  = tipo.includes('pago') ? 'Pago Proveedor' : tipo === 'compra' ? 'Compra' : 'Venta';
+        const badgeClass = tipo.includes('impuesto') ? 'badge-impuestos' : tipo.includes('pago') ? 'badge-pago' : tipo === 'compra' ? 'badge-compra' : 'badge-venta';
+        const tipoLabel  = tipo.includes('impuesto') ? 'Pago Impuestos' : tipo.includes('pago') ? 'Pago Proveedor' : tipo === 'compra' ? 'Compra' : 'Venta';
         const url  = extractUrl(r['URL ARCHIVO'] || '');
         const link = url
           ? `<a class="link-factura" href="${url}" target="_blank">Ver <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></a>`
