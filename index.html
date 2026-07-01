@@ -1422,10 +1422,10 @@
       const ff       = document.getElementById('fFechaFin')._flatpickr.selectedDates[0];
 
       return rows.filter(r => {
-        const rEmpresa = (r['EMPRESA']           || '').toLowerCase();
-        const rTipo    = (r['TIPO FACTURA']       || '').toLowerCase();
-        const rProv    = (r['PROVEEDOR']          || '').toLowerCase();
-        const rNum     = (r['NUMERO DE FACTURA']  || '').toLowerCase();
+        const rEmpresa = String(r['EMPRESA']           || '').toLowerCase();
+        const rTipo    = String(r['TIPO FACTURA']       || '').toLowerCase();
+        const rProv    = String(r['PROVEEDOR']          || '').toLowerCase();
+        const rNum     = String(r['NUMERO DE FACTURA']  || '').toLowerCase();
         const rFecha   = parseFecha(r['FECHA DE PAGO']);
 
         if (empresa && !rEmpresa.includes(empresa))  return false;
@@ -1458,7 +1458,7 @@
       document.getElementById('resultsTotal').textContent = 'Total: $' + total.toLocaleString('es-CO');
 
       tbody.innerHTML = rows.map(r => {
-        const tipo = (r['TIPO FACTURA'] || '').toLowerCase();
+        const tipo = String(r['TIPO FACTURA'] || '').toLowerCase();
         const badgeClass = tipo.includes('impuesto') ? 'badge-impuestos' : tipo.includes('pago') ? 'badge-pago' : tipo === 'compra' ? 'badge-compra' : 'badge-venta';
         const tipoLabel  = tipo.includes('impuesto') ? 'Pago Impuestos' : tipo.includes('pago') ? 'Pago Proveedor' : tipo === 'compra' ? 'Compra' : 'Venta';
         const url  = extractUrl(r['URL ARCHIVO'] || '');
