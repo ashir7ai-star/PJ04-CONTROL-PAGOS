@@ -1,0 +1,43 @@
+# Contexto del Proyecto — Control de Pagos (PJ04)
+
+> Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
+
+## Última actualización
+**2026-07-01** — Se crea este documento de contexto y se formaliza el flujo de commits automáticos a GitHub.
+
+## Qué es este proyecto
+PWA (app web instalable, sin build ni framework) para **Millennium Energy Co** que permite:
+1. Registrar pagos (a proveedores o de impuestos) con adjunto de archivo.
+2. Consultar pagos registrados con filtros (empresa, tipo, proveedor, N° factura, rango de fechas).
+
+Todo vive en un único [index.html](index.html) (HTML + CSS + JS inline).
+
+## Arquitectura
+| Pieza | Detalle |
+|---|---|
+| Frontend | `index.html` — una sola página, sin dependencias de build |
+| Backup estable | `index.stable.html` — copia de respaldo de la última versión considerada estable |
+| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v8`) |
+| Backend | **n8n** (self-hosted en `ashir-n8n.nr6aco.easypanel.host`), vía dos webhooks: |
+| — Registrar pago | `POST /webhook/81926c9e-22aa-4aef-bb4d-fe4ee520748c` (`N8N_WEBHOOK_URL`) |
+| — Consultar pagos | `GET /webhook/c6d11abd-61bc-439c-9dd9-550ed5008ee3` (`N8N_QUERY_URL`) |
+| Hosting | GitHub Pages (por el `scope`/`start_url` del manifest) |
+| Repo | https://github.com/ashir7ai-star/PJ04-CONTROL-PAGOS |
+
+## Flujo de guardado / protección de versiones
+- Existe un **hook de `Stop`** configurado en `.claude/settings.local.json` que, al terminar cada turno de Claude, hace automáticamente `git add -A`, `git commit` (mensaje `Auto: YYYY-MM-DD HH:mm`) y `git push origin main` si hay cambios. Esto mantiene el repositorio de GitHub siempre al día como respaldo.
+- Cuando se considera que `index.html` está en un punto **estable**, se copia a `index.stable.html` (comando permitido: `copy index.html index.stable.html`). Ese cambio también queda protegido por el mismo hook de auto-commit/push.
+- Es decir: **cada cierre de sesión de trabajo = commit + push automático**. No se requiere acción manual de git para mantener el repo actualizado.
+
+## Historial de cambios recientes
+- **2026-07-01**: Creación de `CONTEXT.md` y `CLAUDE.md` para mantener contexto entre sesiones.
+- **2026-05-20**: Varios ajustes iterativos (auto-commits), incluyendo "Trigger redeploy: Pago Impuestos".
+- **2026-04-21**: Fix de overflow de tabla en resultados; extracción de URL desde fórmulas `HYPERLINK` de Google Sheets; agregado de log de depuración.
+- **2026-04-15**: Commit inicial de la PWA "Control de Pagos".
+
+## Pendientes / próximos pasos
+- (Actualizar esta sección a medida que surjan tareas pendientes concretas.)
+
+---
+### Cómo mantener este documento
+Cada vez que se implemente un cambio relevante (nueva funcionalidad, fix importante, cambio de arquitectura, nueva versión estable), agregar una entrada en **Historial de cambios recientes** con fecha y descripción breve, y actualizar **Última actualización** arriba.
