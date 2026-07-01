@@ -1140,15 +1140,9 @@
             </div>
           </div>
 
-          <div class="field-row">
-            <div class="field">
-              <label for="numeroFactura">Número de pago <span class="req">*</span></label>
-              <input type="text" id="numeroFactura" name="numero_factura" placeholder="Ej: FAC-2024-001" autocomplete="off" required />
-            </div>
-            <div class="field">
-              <label for="fechaPago">Fecha de pago <span class="req">*</span></label>
-              <input type="date" id="fechaPago" name="fecha_pago" required />
-            </div>
+          <div class="field">
+            <label for="fechaPago">Fecha de pago <span class="req">*</span></label>
+            <input type="date" id="fechaPago" name="fecha_pago" required />
           </div>
 
           <div class="field">
@@ -1637,7 +1631,7 @@
         return;
       }
 
-      const required = ['empresa', 'registradoPor', 'nombrePago', 'proveedor', 'numeroFactura', 'fechaPago', 'monto'];
+      const required = ['empresa', 'registradoPor', 'nombrePago', 'proveedor', 'fechaPago', 'monto'];
       for (const id of required) {
         const el = document.getElementById(id);
         if (!el.value.trim()) {
@@ -1661,7 +1655,6 @@
         formData.append('registrado_por', document.getElementById('registradoPor').value.trim());
         formData.append('nombre_pago',    document.getElementById('nombrePago').value.trim());
         formData.append('proveedor',      document.getElementById('proveedor').value.trim());
-        formData.append('numero_factura', document.getElementById('numeroFactura').value.trim());
         formData.append('fecha_pago',     fechaPicker.selectedDates[0]
           ? fechaPicker.formatDate(fechaPicker.selectedDates[0], 'Y-m-d')
           : document.getElementById('fechaPago').value);
