@@ -51,6 +51,7 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - Es decir: **cada cierre de sesión de trabajo = commit + push automático**. No se requiere acción manual de git para mantener el repo actualizado.
 
 ## Historial de cambios recientes
+- **2026-08-12**: ✅ Marcada como **versión estable** por el usuario — `index.stable.html` = `index.html` (incluye: fix del calendario de flatpickr y panel ampliado a 880px).
 - **2026-08-12**: Fix de bug en el calendario de flatpickr — `.flatpickr-days`/`.flatpickr-innerContainer`/`.flatpickr-rContainer` no tenían `width: 100% !important`, así que flatpickr calculaba internamente un ancho basado en el tamaño de celda por defecto (más grande que nuestro tema de 34px) y eso recortaba visualmente la última columna (domingo). Además, panel principal (`main`) ampliado de `max-width: 736px` a `880px` (+20%, decisión del usuario tras comparar opciones). `sw.js` → `control-pagos-v11`.
 - **2026-08-04**: ✅ Incidente de cuenta de Google del backend resuelto por completo (Drive + Sheets recreados, nodos de n8n re-apuntados, encabezados del Sheet corregidos). Marcada como **versión estable** por el usuario. Ver sección de incidente arriba.
 - **2026-07-30**: Incidente — cuenta de Google del backend (Drive + Sheets) eliminada por error. Se creó cuenta nueva, credenciales configuradas en Google Console y en n8n. Ver sección de incidente arriba.
