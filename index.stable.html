@@ -170,7 +170,7 @@
 
     /* ─── Main layout ────────────────────────────────────────────── */
     main {
-      max-width: 736px;
+      max-width: 880px;
       margin: 0 auto;
       padding: 36px 16px 72px;
     }
@@ -943,7 +943,12 @@
       letter-spacing: 0.04em !important;
     }
 
-    .flatpickr-days { border: none !important; }
+    .flatpickr-innerContainer,
+    .flatpickr-rContainer,
+    .flatpickr-days {
+      border: none !important;
+      width: 100% !important;
+    }
 
     .dayContainer {
       min-width: unset !important;
