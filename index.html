@@ -1290,7 +1290,6 @@
               <th>Empresa</th>
               <th>Tipo</th>
               <th>Proveedor</th>
-              <th>N° Pago</th>
               <th>Valor</th>
               <th>Archivo</th>
             </tr>
@@ -1474,7 +1473,6 @@
           <td>${r['EMPRESA'] || '—'}</td>
           <td><span class="badge ${badgeClass}">${tipoLabel}</span></td>
           <td>${r['PROVEEDOR'] || '—'}</td>
-          <td>${r['NUMERO DE FACTURA'] || '—'}</td>
           <td>$${valor.toLocaleString('es-CO')}</td>
           <td>${link}</td>
         </tr>`;

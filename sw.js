@@ -1,4 +1,4 @@
-const CACHE = 'control-pagos-v12';
+const CACHE = 'control-pagos-v13';
 const ASSETS = [
   '/PJ04-CONTROL-PAGOS/',
   '/PJ04-CONTROL-PAGOS/index.html',
