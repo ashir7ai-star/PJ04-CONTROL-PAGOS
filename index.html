@@ -1420,7 +1420,7 @@
       const fi       = document.getElementById('fFechaInicio')._flatpickr.selectedDates[0];
       const ff       = document.getElementById('fFechaFin')._flatpickr.selectedDates[0];
 
-      return rows.filter(r => {
+      const filtered = rows.filter(r => {
         const rEmpresa = String(r['EMPRESA']           || '').toLowerCase();
         const rTipo    = String(r['TIPO FACTURA']       || '').toLowerCase();
         const rProv    = String(r['PROVEEDOR']          || '').toLowerCase();
@@ -1435,6 +1435,10 @@
         if (ff && rFecha) { const f = new Date(ff.getFullYear(), ff.getMonth(), ff.getDate()); if (rFecha > f) return false; }
         return true;
       });
+
+      // Más reciente primero
+      filtered.sort((a, b) => (parseFecha(b['FECHA DE PAGO']) || 0) - (parseFecha(a['FECHA DE PAGO']) || 0));
+      return filtered;
     }
 
     function renderResultados(rows) {
