@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-08-18** — Se configuró un **reporte diario automático** (PDF + Excel) por Google Apps Script, independiente de n8n. Ver sección "📧 Reporte diario automático" abajo. Además, frontend listo para: (1) subir varios archivos en "Nuevo Pago", y (2) agregar factura a un registro existente desde "Consultar Pagos" — **pendiente trabajo en n8n para que funcionen del todo**, ver sección "🔧 Pendiente en n8n". `sw.js` → `control-pagos-v14`.
+**2026-08-18** — ✅ Marcada como **versión estable** por el usuario. Reportes automáticos por Google Apps Script (diario + mensual, filtrados por `FECHA REGISTRO`) terminados y funcionando — ver sección "📧 Reportes automáticos" abajo. `index.stable.html` = `index.html` (sw.js `control-pagos-v14`, sin cambios de código esta sesión). Además, frontend listo para: (1) subir varios archivos en "Nuevo Pago", y (2) agregar factura a un registro existente desde "Consultar Pagos" — **pendiente trabajo en n8n para que funcionen del todo**, ver sección "🔧 Pendiente en n8n".
 
 ## Qué es este proyecto
 PWA (app web instalable, sin build ni framework) para **Millennium Energy Co** que permite:
@@ -26,14 +26,15 @@ Todo vive en un único [index.html](index.html) (HTML + CSS + JS inline).
 | Hosting | GitHub Pages (por el `scope`/`start_url` del manifest) |
 | Repo | https://github.com/ashir7ai-star/PJ04-CONTROL-PAGOS |
 
-## 📧 Reporte diario automático (Google Apps Script, sin n8n)
-Para evitar depender de n8n y como salvaguarda tras el incidente de la cuenta eliminada, se configuró un reporte diario **directamente en Google Apps Script**, vinculado al Google Sheet "CONTROL DE PAGOS":
+## 📧 Reportes automáticos (Google Apps Script, sin n8n)
+Para evitar depender de n8n y como salvaguarda tras el incidente de la cuenta eliminada, se configuraron dos reportes automáticos **directamente en Google Apps Script**, vinculados al Google Sheet "CONTROL DE PAGOS":
 
 - **Dónde vive:** Extensiones → Apps Script, dentro del propio Sheet (proyecto "Untitled project", archivo `Code.gs`). No es parte de este repositorio ni de n8n — vive en la cuenta de Google dueña del Sheet.
-- **Qué hace la función `enviarReporteDiario()`:** toma la primera pestaña del Sheet (`ss.getSheets()[0]`, para no depender de un nombre de pestaña específico), exporta un PDF y un XLSX usando las URLs nativas de exportación de Google Sheets (`/export?format=pdf` y `/export?format=xlsx` vía `UrlFetchApp` con el token OAuth del propio script), y envía ambos adjuntos por `MailApp.sendEmail()`.
-- **Destinatarios:** `nathan@ylevigroup.com`, `joseph@ylevigroup.com`, `contabilidad@energy-millennium.com` (array `DESTINATARIOS` al inicio del script — para agregar/quitar correos, editar esa lista directamente en Apps Script).
-- **Disparador:** Trigger de tipo "Time-based" (Basado en tiempo) → "Day timer", configurado en el editor de Apps Script (ícono de reloj → Triggers). Corre una vez al día en la ventana horaria elegida.
-- **Alcance intencional:** el reporte cubre solo los **datos del Sheet** (registro de pagos), no hace copia de las facturas en Drive — el usuario prefirió descargarlas manualmente si las necesita, para no complicar el script con zips/tamaños de adjuntos.
+- **`enviarReporteDiario()`**: filtra solo las filas cuya `FECHA REGISTRO` es el día de hoy, arma un Sheet temporal solo con esas filas, lo exporta a PDF+XLSX y lo borra. Trigger: Time-driven → Day timer (ya activo).
+- **`enviarReporteMensual()`**: filtra las filas del **mes anterior completo** (calculado como `hoy - 1 mes`, pensado para correr el día 1 de cada mes y reportar el mes que acaba de cerrar). Mismo mecanismo de Sheet temporal → PDF+XLSX. Trigger: Time-driven → Month timer, día 1.
+- Ambas comparten helpers: `leerDatos_()` (lee toda la hoja a objetos por encabezado), `parseFechaRegistro_()` (soporta que la celda sea texto `dd/MM/yyyy HH:mm` o ya un objeto Date), `mismoDia_()`/`mismoMes_()`, `generarArchivos_()` (crea el Sheet temporal, exporta PDF+XLSX vía las URLs nativas `/export?format=pdf|xlsx` con `UrlFetchApp` + token OAuth del script, y lo manda a la Papelera), y `totalValor_()` (suma la columna `VALOR FACTURA`).
+- **Destinatarios (ambos reportes):** `nathan@ylevigroup.com`, `joseph@ylevigroup.com`, `contabilidad@energy-millennium.com` (array `DESTINATARIOS` al inicio del script — para agregar/quitar correos, editar ahí).
+- **Alcance intencional:** cubren solo los **datos del Sheet** (registro de pagos), no hacen copia de las facturas en Drive — el usuario prefirió descargarlas manualmente si las necesita, para no complicar el script con zips/tamaños de adjuntos.
 - **Para modificarlo:** entrar al Sheet → Extensiones → Apps Script → `Code.gs`.
 
 ## 🔧 Pendiente en n8n: soporte para varios archivos + "Agregar factura" (iniciado 2026-08-18)
@@ -94,7 +95,8 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - Es decir: **cada cierre de sesión de trabajo = commit + push automático**. No se requiere acción manual de git para mantener el repo actualizado.
 
 ## Historial de cambios recientes
-- **2026-08-18**: ✅ Configurado reporte diario automático (PDF+Excel) vía Google Apps Script, con trigger "Time-based" ya activo. Enviado a nathan@ylevigroup.com, joseph@ylevigroup.com y contabilidad@energy-millennium.com. No usa n8n. Ver sección "📧 Reporte diario automático" arriba.
+- **2026-08-18**: ✅ Marcada como **versión estable**. Se agrega `enviarReporteMensual()` al Apps Script (reporta el mes anterior completo, trigger Month timer día 1) y se ajusta `enviarReporteDiario()` para filtrar solo los registros de ese día (antes mandaba todo el histórico). Ambos usan Sheet temporal + export PDF/XLSX. Ver sección "📧 Reportes automáticos" arriba.
+- **2026-08-18**: Configurado reporte diario automático (PDF+Excel, histórico completo) vía Google Apps Script, con trigger "Time-based" ya activo. Enviado a nathan@ylevigroup.com, joseph@ylevigroup.com y contabilidad@energy-millennium.com. No usa n8n.
 - **2026-08-18**: Frontend para múltiples archivos en "Nuevo Pago" (`selectedFiles[]`, input `multiple`, lista de previsualización removible) y botón "+ Agregar" en "Consultar Pagos" para subir factura a registros sin archivo (modal nuevo, `N8N_ADDFILE_URL` placeholder). Requiere trabajo pendiente en n8n — ver sección "🔧 Pendiente en n8n" arriba. `sw.js` → `control-pagos-v14`.
 - **2026-08-18**: Se elimina la columna "N° Pago" de la tabla de resultados en "Consultar Pagos" (`renderResultados()` en index.html — encabezado `<th>` y celda `r['NUMERO DE FACTURA']` quitados). El filtro "Número de pago" en el formulario de búsqueda se mantiene sin cambios. `sw.js` → `control-pagos-v13`.
 - **2026-08-18**: Resultados de "Consultar Pagos" se ordenan de más reciente a más vieja por `FECHA DE PAGO` (`filtrarRows()` en index.html, antes no tenían ningún orden garantizado). `sw.js` → `control-pagos-v12`.
