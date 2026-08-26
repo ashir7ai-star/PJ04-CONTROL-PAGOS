@@ -467,18 +467,23 @@
     }
 
     /* ─── File preview ───────────────────────────────────────────── */
+    .file-preview-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .file-preview-list:not(:empty) { margin-top: 10px; }
+
     .file-preview {
-      display: none;
+      display: flex;
       align-items: center;
       gap: 10px;
       padding: 10px 14px;
       background: var(--surface-2);
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
-      margin-top: 10px;
     }
-
-    .file-preview.visible { display: flex; }
 
     .file-icon-wrap {
       width: 36px;
@@ -811,6 +816,94 @@
       align-items: center;
       gap: 4px;
       white-space: nowrap;
+    }
+
+    .link-add-factura {
+      color: var(--text-muted);
+      background: none;
+      border: 1px dashed var(--border-strong);
+      border-radius: 20px;
+      padding: 3px 10px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      font-family: 'Inter', inherit;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all var(--transition);
+    }
+
+    .link-add-factura:hover {
+      color: var(--primary);
+      border-color: var(--primary);
+      background: var(--primary-light);
+    }
+
+    /* ─── Modal: Agregar factura ─────────────────────────────────── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 1000;
+    }
+
+    .modal-overlay.show { display: flex; }
+
+    .modal-box {
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      padding: 22px;
+      width: 420px;
+      max-width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .modal-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .modal-close {
+      width: 28px;
+      height: 28px;
+      background: none;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      transition: all var(--transition);
+      flex-shrink: 0;
+    }
+
+    .modal-close:hover { background: var(--surface-3); color: var(--text); }
+    .modal-close svg { width: 15px; height: 15px; }
+
+    .modal-sub {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
     }
 
     .link-factura:hover { text-decoration: underline; }
@@ -1171,7 +1264,7 @@
         <p class="card-title">Documento de soporte</p>
 
         <div class="upload-zone" id="uploadZone">
-          <input type="file" id="archivoFactura" name="archivo" accept=".pdf,.jpg,.jpeg,.png,.webp" required />
+          <input type="file" id="archivoFactura" name="archivo" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple />
           <div class="upload-icon-wrap">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -1179,28 +1272,11 @@
               <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
           </div>
-          <p class="upload-title"><span>Haz clic o arrastra</span> el archivo aquí</p>
-          <p class="upload-sub">PDF, JPG, PNG — máx. 15 MB</p>
+          <p class="upload-title"><span>Haz clic o arrastra</span> uno o varios archivos aquí</p>
+          <p class="upload-sub">PDF, JPG, PNG — máx. 15 MB c/u</p>
         </div>
 
-        <div class="file-preview" id="filePreview">
-          <div class="file-icon-wrap">
-            <svg id="fileIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </svg>
-          </div>
-          <div class="file-info">
-            <div class="file-name" id="fileName">archivo.pdf</div>
-            <div class="file-size" id="fileSize">0 KB</div>
-          </div>
-          <button type="button" class="file-remove" id="removeFile" title="Quitar archivo">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
+        <div class="file-preview-list" id="filePreviewList"></div>
 
       </div>
 
@@ -1325,11 +1401,50 @@
     </div>
   </div>
 
+  <!-- Modal: Agregar factura a un registro existente -->
+  <div class="modal-overlay" id="addFileOverlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <p class="modal-title">Agregar factura</p>
+        <button type="button" class="modal-close" id="addFileClose" title="Cerrar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <p class="modal-sub">Sube el documento de soporte para este pago registrado.</p>
+
+      <div class="upload-zone" id="addFileZone">
+        <input type="file" id="addFileInput" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple />
+        <div class="upload-icon-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </div>
+        <p class="upload-title"><span>Haz clic o arrastra</span> uno o varios archivos aquí</p>
+        <p class="upload-sub">PDF, JPG, PNG — máx. 15 MB c/u</p>
+      </div>
+
+      <div class="file-preview-list" id="addFilePreviewList"></div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-clear" id="addFileCancel">Cancelar</button>
+        <button type="button" class="btn-search" id="addFileSubmit" style="flex:1;">
+          <div class="spinner" id="addFileSpinner" style="display:none;"></div>
+          <span id="addFileBtnText">Subir factura</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const N8N_WEBHOOK_URL = 'https://ashir-n8n.nr6aco.easypanel.host/webhook/81926c9e-22aa-4aef-bb4d-fe4ee520748c';
 
     // ─── URL del webhook de consulta (configura en n8n) ───────────
     const N8N_QUERY_URL = 'https://ashir-n8n.nr6aco.easypanel.host/webhook/c6d11abd-61bc-439c-9dd9-550ed5008ee3';
+
+    // ─── URL del webhook "Agregar factura" (PENDIENTE: crear en n8n y pegar aquí) ───
+    const N8N_ADDFILE_URL = 'PENDIENTE_CONFIGURAR_EN_N8N';
 
     // ─── Navegación entre vistas ───────────────────────────────────
     const navTabs   = document.querySelectorAll('.nav-tab');
@@ -1463,10 +1578,13 @@
         const tipo = String(r['TIPO FACTURA'] || '').toLowerCase();
         const badgeClass = tipo.includes('impuesto') ? 'badge-impuestos' : tipo.includes('pago') ? 'badge-pago' : tipo === 'compra' ? 'badge-compra' : 'badge-venta';
         const tipoLabel  = tipo.includes('impuesto') ? 'Pago Impuestos' : tipo.includes('pago') ? 'Pago Proveedor' : tipo === 'compra' ? 'Compra' : 'Venta';
-        const url  = extractUrl(r['URL ARCHIVO'] || '');
-        const link = url
+        const url   = extractUrl(r['URL ARCHIVO'] || '');
+        const idReg = r['ID REGISTRO'];
+        const link  = url
           ? `<a class="link-factura" href="${url}" target="_blank">Ver <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></a>`
-          : '—';
+          : idReg
+            ? `<button type="button" class="link-add-factura" data-id="${escapeHtml(String(idReg))}">+ Agregar</button>`
+            : '—';
         const valor = parseFloat(String(r['VALOR FACTURA']).replace(/\./g,'')) || 0;
         return `<tr>
           <td>${r['FECHA DE PAGO'] || '—'}</td>
@@ -1485,6 +1603,128 @@
       document.getElementById('searchIcon').style.display    = on ? 'none' : '';
       btn.disabled = on;
     }
+
+    // ─── Modal: Agregar factura a un registro existente ────────────
+    const addFileOverlay     = document.getElementById('addFileOverlay');
+    const addFileZone        = document.getElementById('addFileZone');
+    const addFileInput       = document.getElementById('addFileInput');
+    const addFilePreviewList = document.getElementById('addFilePreviewList');
+    const addFileCancel      = document.getElementById('addFileCancel');
+    const addFileClose       = document.getElementById('addFileClose');
+    const addFileSubmit      = document.getElementById('addFileSubmit');
+    const addFileSpinner     = document.getElementById('addFileSpinner');
+    const addFileBtnText     = document.getElementById('addFileBtnText');
+
+    let addFileTargetId = null;
+    let addFileSelected  = [];
+
+    document.getElementById('resultsBody').addEventListener('click', e => {
+      const btn = e.target.closest('.link-add-factura');
+      if (!btn) return;
+      addFileTargetId = btn.dataset.id;
+      addFileSelected = [];
+      renderAddFilePreviewList();
+      addFileOverlay.classList.add('show');
+    });
+
+    function closeAddFileModal() {
+      addFileOverlay.classList.remove('show');
+      addFileTargetId = null;
+      addFileSelected = [];
+      addFileInput.value = '';
+      renderAddFilePreviewList();
+    }
+
+    addFileCancel.addEventListener('click', closeAddFileModal);
+    addFileClose.addEventListener('click', closeAddFileModal);
+    addFileOverlay.addEventListener('click', e => { if (e.target === addFileOverlay) closeAddFileModal(); });
+
+    addFileZone.addEventListener('click', () => addFileInput.click());
+    addFileInput.addEventListener('change', () => { addToAddFileSelection(addFileInput.files); addFileInput.value = ''; });
+
+    addFileZone.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); addFileZone.classList.add('dragover'); });
+    addFileZone.addEventListener('dragleave', e => { e.preventDefault(); e.stopPropagation(); addFileZone.classList.remove('dragover'); });
+    addFileZone.addEventListener('drop', e => {
+      e.preventDefault(); e.stopPropagation();
+      addFileZone.classList.remove('dragover');
+      addToAddFileSelection(e.dataTransfer.files);
+    });
+
+    function addToAddFileSelection(fileList) {
+      for (const file of fileList) {
+        if (file.size > 15 * 1024 * 1024) {
+          showToast('error', 'Archivo muy grande', `"${file.name}" supera el límite de 15 MB.`);
+          continue;
+        }
+        if (addFileSelected.some(f => f.name === file.name && f.size === file.size)) continue;
+        addFileSelected.push(file);
+      }
+      renderAddFilePreviewList();
+    }
+
+    function renderAddFilePreviewList() {
+      addFilePreviewList.innerHTML = addFileSelected.map((file, i) => {
+        const ext  = file.name.split('.').pop().toLowerCase();
+        const icon = ['jpg','jpeg','png','webp'].includes(ext) ? svgImage : svgFile;
+        return `<div class="file-preview">
+          <div class="file-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${icon}</svg></div>
+          <div class="file-info">
+            <div class="file-name">${escapeHtml(file.name)}</div>
+            <div class="file-size">${formatBytes(file.size)}</div>
+          </div>
+          <button type="button" class="file-remove" data-index="${i}" title="Quitar archivo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">${svgTrash}</svg>
+          </button>
+        </div>`;
+      }).join('');
+    }
+
+    addFilePreviewList.addEventListener('click', e => {
+      const btn = e.target.closest('.file-remove');
+      if (!btn) return;
+      addFileSelected.splice(parseInt(btn.dataset.index, 10), 1);
+      renderAddFilePreviewList();
+    });
+
+    addFileSubmit.addEventListener('click', async () => {
+      if (!addFileTargetId) return;
+      if (addFileSelected.length === 0) {
+        showToast('error', 'Archivo requerido', 'Selecciona al menos un archivo para subir.');
+        return;
+      }
+      if (N8N_ADDFILE_URL === 'PENDIENTE_CONFIGURAR_EN_N8N') {
+        showToast('error', 'Función no configurada', 'Falta conectar el webhook "Agregar factura" en n8n.');
+        return;
+      }
+
+      addFileSubmit.disabled = true;
+      addFileSpinner.style.display = 'block';
+      addFileBtnText.textContent = 'Subiendo...';
+
+      try {
+        const formData = new FormData();
+        formData.append('id', addFileTargetId);
+        addFileSelected.forEach(file => formData.append('archivo', file));
+
+        const response = await fetch(N8N_ADDFILE_URL, { method: 'POST', body: formData });
+        const result   = await response.json().catch(() => ({}));
+
+        if (response.ok && result.status === 'success') {
+          showToast('success', '¡Factura agregada!', 'El documento fue guardado en el registro correctamente.');
+          closeAddFileModal();
+          buscarPagos();
+        } else {
+          throw new Error(result.message || 'HTTP ' + response.status);
+        }
+      } catch (err) {
+        console.error(err);
+        showToast('error', 'Error al subir', 'No se pudo conectar con el sistema. Intenta de nuevo.');
+      } finally {
+        addFileSubmit.disabled = false;
+        addFileSpinner.style.display = 'none';
+        addFileBtnText.textContent = 'Subir factura';
+      }
+    });
 
     // ─── Service Worker + banner de actualización ─────────────────
     if ('serviceWorker' in navigator) {
@@ -1561,19 +1801,18 @@
       allowInput: false,
     });
 
-    // ─── Upload ────────────────────────────────────────────────────
-    const uploadZone  = document.getElementById('uploadZone');
-    const fileInput   = document.getElementById('archivoFactura');
-    const filePreview = document.getElementById('filePreview');
-    const fileIconEl  = document.getElementById('fileIcon');
-    const fileName    = document.getElementById('fileName');
-    const fileSize    = document.getElementById('fileSize');
-    const removeFile  = document.getElementById('removeFile');
+    // ─── Upload (múltiples archivos) ───────────────────────────────
+    const uploadZone      = document.getElementById('uploadZone');
+    const fileInput       = document.getElementById('archivoFactura');
+    const filePreviewList = document.getElementById('filePreviewList');
 
     const svgFile  = '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>';
     const svgImage = '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>';
+    const svgTrash = '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>';
 
-    fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
+    let selectedFiles = [];
+
+    fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
     uploadZone.addEventListener('click', () => fileInput.click());
 
     uploadZone.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); uploadZone.classList.add('dragover'); });
@@ -1581,33 +1820,53 @@
     uploadZone.addEventListener('drop', e => {
       e.preventDefault(); e.stopPropagation();
       uploadZone.classList.remove('dragover');
-      const file = e.dataTransfer.files[0];
-      if (file) { const dt = new DataTransfer(); dt.items.add(file); fileInput.files = dt.files; handleFile(file); }
+      addFiles(e.dataTransfer.files);
     });
 
-    removeFile.addEventListener('click', () => {
-      fileInput.value = '';
-      filePreview.classList.remove('visible');
+    filePreviewList.addEventListener('click', e => {
+      const btn = e.target.closest('.file-remove');
+      if (!btn) return;
+      selectedFiles.splice(parseInt(btn.dataset.index, 10), 1);
+      renderFilePreviewList();
     });
 
-    function handleFile(file) {
-      if (!file) return;
-      if (file.size > 15 * 1024 * 1024) {
-        showToast('error', 'Archivo muy grande', 'El archivo supera el límite de 15 MB.');
-        fileInput.value = '';
-        return;
+    function addFiles(fileList) {
+      for (const file of fileList) {
+        if (file.size > 15 * 1024 * 1024) {
+          showToast('error', 'Archivo muy grande', `"${file.name}" supera el límite de 15 MB.`);
+          continue;
+        }
+        if (selectedFiles.some(f => f.name === file.name && f.size === file.size)) continue;
+        selectedFiles.push(file);
       }
-      const ext = file.name.split('.').pop().toLowerCase();
-      fileIconEl.innerHTML = ['jpg','jpeg','png','webp'].includes(ext) ? svgImage : svgFile;
-      fileName.textContent = file.name;
-      fileSize.textContent = formatBytes(file.size);
-      filePreview.classList.add('visible');
+      renderFilePreviewList();
+    }
+
+    function renderFilePreviewList() {
+      filePreviewList.innerHTML = selectedFiles.map((file, i) => {
+        const ext  = file.name.split('.').pop().toLowerCase();
+        const icon = ['jpg','jpeg','png','webp'].includes(ext) ? svgImage : svgFile;
+        return `<div class="file-preview">
+          <div class="file-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${icon}</svg></div>
+          <div class="file-info">
+            <div class="file-name">${escapeHtml(file.name)}</div>
+            <div class="file-size">${formatBytes(file.size)}</div>
+          </div>
+          <button type="button" class="file-remove" data-index="${i}" title="Quitar archivo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">${svgTrash}</svg>
+          </button>
+        </div>`;
+      }).join('');
     }
 
     function formatBytes(b) {
       if (b < 1024) return b + ' B';
       if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
       return (b / 1048576).toFixed(1) + ' MB';
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
     }
 
     // ─── Toast ─────────────────────────────────────────────────────
@@ -1648,8 +1907,8 @@
         }
       }
 
-      if (!fileInput.files[0]) {
-        showToast('error', 'Archivo requerido', 'Debes adjuntar el documento del pago.');
+      if (selectedFiles.length === 0) {
+        showToast('error', 'Archivo requerido', 'Debes adjuntar al menos un documento del pago.');
         return;
       }
 
@@ -1668,13 +1927,13 @@
         formData.append('monto',          document.getElementById('monto').value.replace(/\./g, ''));
         formData.append('notas',          document.getElementById('notas').value.trim());
         formData.append('fecha_envio',    new Date().toISOString());
-        formData.append('archivo',        fileInput.files[0]);
+        selectedFiles.forEach(file => formData.append('archivo', file));
 
         const response = await fetch(N8N_WEBHOOK_URL, { method: 'POST', body: formData });
         const result   = await response.json().catch(() => ({}));
 
         if (response.ok && result.status === 'success') {
-          showToast('success', '¡Pago registrado!', 'El archivo fue guardado y los datos registrados correctamente.');
+          showToast('success', '¡Pago registrado!', 'Los archivos fueron guardados y los datos registrados correctamente.');
           resetForm();
         } else {
           throw new Error(result.message || 'HTTP ' + response.status);
@@ -1698,7 +1957,8 @@
       form.reset();
       tipoHidden.value = '';
       tipoBtns.forEach(b => b.classList.remove('active'));
-      filePreview.classList.remove('visible');
+      selectedFiles = [];
+      renderFilePreviewList();
       fechaPicker.setDate('today');
     }
   </script>

@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-08-18** — Se elimina la columna "N° Pago" de la tabla de resultados en "Consultar Pagos". `sw.js` → `control-pagos-v13`.
+**2026-08-18** — Frontend listo para: (1) subir varios archivos en "Nuevo Pago", y (2) agregar factura a un registro existente desde "Consultar Pagos". **Falta trabajo en n8n para que ambas funcionen del todo** — ver sección "🔧 Pendiente en n8n" abajo. `sw.js` → `control-pagos-v14`.
 
 ## Qué es este proyecto
 PWA (app web instalable, sin build ni framework) para **Millennium Energy Co** que permite:
@@ -17,13 +17,45 @@ Todo vive en un único [index.html](index.html) (HTML + CSS + JS inline).
 |---|---|
 | Frontend | `index.html` — una sola página, sin dependencias de build |
 | Backup estable | `index.stable.html` — copia de respaldo de la última versión considerada estable |
-| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v10`) |
+| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v14`) |
 | Backend | **n8n** (self-hosted en `ashir-n8n.nr6aco.easypanel.host`), vía dos webhooks: |
 | — Registrar pago | `POST /webhook/81926c9e-22aa-4aef-bb4d-fe4ee520748c` (`N8N_WEBHOOK_URL`) — workflow: Webhook → **Upload file** (Google Drive) → **Append row in sheet** (Google Sheets) → Respond to Webhook |
 | — Consultar pagos | `GET /webhook/c6d11abd-61bc-439c-9dd9-550ed5008ee3` (`N8N_QUERY_URL`) — probablemente lee del mismo Google Sheet |
 | Almacenamiento real | Google Drive (carpeta "PJ04 FACTURAS", credencial n8n "PJ04 DRIVE") + Google Sheet "Control de pagos" (pestaña "Millennium", credencial n8n "PJ04 SHEET") |
 | Hosting | GitHub Pages (por el `scope`/`start_url` del manifest) |
 | Repo | https://github.com/ashir7ai-star/PJ04-CONTROL-PAGOS |
+
+## 🔧 Pendiente en n8n: soporte para varios archivos + "Agregar factura" (iniciado 2026-08-18)
+
+### Contexto
+Se implementó en `index.html` (frontend, ya en producción):
+1. **"Nuevo Pago"**: el input de archivo ahora acepta múltiples (`multiple`), con lista de previsualización y opción de quitar cada uno. Al enviar, cada archivo se agrega al `FormData` bajo el mismo campo `archivo` (varias veces, una por archivo) — esto es intencional: cuando el Webhook de n8n recibe multipart/form-data con varios archivos bajo el mismo nombre de campo, **los indexa automáticamente como `archivo0`, `archivo1`, `archivo2`, ...** en las propiedades binarias del item.
+2. **"Consultar Pagos"**: cuando un registro no tiene archivo (columna "Archivo" = "—"), ahora se muestra un botón **"+ Agregar"** que abre un modal para subir el/los archivo(s) faltantes. Al confirmar, hace `POST` a una nueva constante `N8N_ADDFILE_URL` (todavía sin configurar — ver abajo) con `FormData`: `id` (identificador del registro) + uno o más `archivo`.
+
+**Diseño de identificador de registro:** el botón "+ Agregar" solo aparece si la fila trae un campo `r['ID REGISTRO']` desde el webhook de consulta. Ese campo **no existe todavía** en el Google Sheet — hay que agregarlo (ver pasos abajo). Hasta que se agregue, el botón simplemente no aparece para ningún registro (no rompe nada, pero la función 2 sigue inactiva).
+
+### Pasos pendientes en n8n (dos piezas)
+
+**A) Que "Nuevo Pago" procese varios archivos (no solo el primero)**
+Hoy el nodo "Upload file" solo lee la propiedad binaria fija `archivo0`. Para soportar varios:
+1. Insertar un nodo **Code** entre el Webhook y "Upload file" que, por cada item de entrada, recorra `$input.item.binary` (claves `archivo0`, `archivo1`, ...) y genere **un item de salida por archivo**, cada uno con el binario renombrado a una clave fija (ej. `file`) y copiando el `json.body` original.
+2. Cambiar "Input Data Field Name" del nodo **Upload file** a `file` (coincidiendo con el Code node). n8n ejecuta automáticamente el nodo una vez por cada item de entrada, así que subirá todos los archivos.
+3. Agregar un nodo **Aggregate** (o **Code**) después de "Upload file" que junte todos los `webViewLink` resultantes en un solo string (ej. separados por salto de línea), conservando el resto de campos del body original.
+4. El nodo **Append row in sheet** usa ese string combinado como valor de `URL ARCHIVO`.
+5. De paso, agregar una nueva columna **"ID REGISTRO"** en el Sheet "Control de pagos" (pestaña "Millennium"), mapeada en "Append row in sheet" a `{{ $('Webhook').item.json.body.fecha_envio }}` (ya se envía desde el frontend, con precisión de milisegundos — sirve como identificador único de cada registro).
+
+**B) Nuevo workflow: "Agregar Factura" (feature nueva)**
+1. Nuevo **Webhook** (POST, multipart/form-data): recibe `id` + uno o más `archivo`.
+2. Mismo patrón Code → Upload file (Drive, misma carpeta "PJ04 FACTURAS") → Aggregate, para soportar varios archivos igual que en (A).
+3. Nodo **Google Sheets** con operación **"Update Row"** (o "Append or Update Row"): "Column to Match On" = `ID REGISTRO`, valor a buscar = `{{ $('Webhook').item.json.body.id }}`; columna a actualizar: `URL ARCHIVO` = el/los link(s) combinados.
+4. **Respond to Webhook** devolviendo `{ "status": "success" }`.
+5. Copiar la URL del Webhook resultante y pegarla en `index.html`, reemplazando el placeholder:
+   ```js
+   const N8N_ADDFILE_URL = 'PENDIENTE_CONFIGURAR_EN_N8N';
+   ```
+6. Avisar para actualizar ese valor en el código, bumpear `sw.js`, y sincronizar `index.stable.html`.
+
+**Nota:** el diseño de "Agregar factura" hace *replace* de `URL ARCHIVO` (no combina con un archivo previo) — pensado específicamente para el caso "se registró el pago pero faltó subir el soporte". Si más adelante se quiere permitir agregar archivos adicionales a un registro que ya tiene uno, hay que ajustar el paso 3 para leer el valor actual antes de sobreescribir.
 
 ## ⚠️ Incidente (RESUELTO): cuenta de Google del backend eliminada (2026-07-30 → 2026-08-04)
 La cuenta de Google donde vivían el Drive ("PJ04 FACTURAS") y el Sheet ("Control de pagos") que usa n8n para el backend **fue eliminada por error**. Esto rompió el workflow de registrar pagos con errores 404 en cadena:
@@ -51,6 +83,7 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - Es decir: **cada cierre de sesión de trabajo = commit + push automático**. No se requiere acción manual de git para mantener el repo actualizado.
 
 ## Historial de cambios recientes
+- **2026-08-18**: Frontend para múltiples archivos en "Nuevo Pago" (`selectedFiles[]`, input `multiple`, lista de previsualización removible) y botón "+ Agregar" en "Consultar Pagos" para subir factura a registros sin archivo (modal nuevo, `N8N_ADDFILE_URL` placeholder). Requiere trabajo pendiente en n8n — ver sección "🔧 Pendiente en n8n" arriba. `sw.js` → `control-pagos-v14`.
 - **2026-08-18**: Se elimina la columna "N° Pago" de la tabla de resultados en "Consultar Pagos" (`renderResultados()` en index.html — encabezado `<th>` y celda `r['NUMERO DE FACTURA']` quitados). El filtro "Número de pago" en el formulario de búsqueda se mantiene sin cambios. `sw.js` → `control-pagos-v13`.
 - **2026-08-18**: Resultados de "Consultar Pagos" se ordenan de más reciente a más vieja por `FECHA DE PAGO` (`filtrarRows()` en index.html, antes no tenían ningún orden garantizado). `sw.js` → `control-pagos-v12`.
 - **2026-08-12**: ✅ Marcada como **versión estable** por el usuario — `index.stable.html` = `index.html` (incluye: fix del calendario de flatpickr y panel ampliado a 880px).
@@ -67,7 +100,8 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - **2026-04-15**: Commit inicial de la PWA "Control de Pagos".
 
 ## Pendientes / próximos pasos
-- (Ninguno pendiente por ahora — incidente de la cuenta de Google resuelto y verificado.)
+- Construir en n8n el soporte para múltiples archivos (Code + Aggregate en el workflow de "Nuevo Pago") y el nuevo workflow "Agregar Factura", más la columna "ID REGISTRO" en el Sheet. Ver sección "🔧 Pendiente en n8n" arriba para la guía paso a paso.
+- Una vez creado el webhook "Agregar Factura", reemplazar el placeholder `N8N_ADDFILE_URL` en `index.html` con la URL real.
 
 ---
 ### Cómo mantener este documento
