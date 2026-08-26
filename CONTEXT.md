@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-08-18** — Frontend listo para: (1) subir varios archivos en "Nuevo Pago", y (2) agregar factura a un registro existente desde "Consultar Pagos". **Falta trabajo en n8n para que ambas funcionen del todo** — ver sección "🔧 Pendiente en n8n" abajo. `sw.js` → `control-pagos-v14`.
+**2026-08-18** — Se configuró un **reporte diario automático** (PDF + Excel) por Google Apps Script, independiente de n8n. Ver sección "📧 Reporte diario automático" abajo. Además, frontend listo para: (1) subir varios archivos en "Nuevo Pago", y (2) agregar factura a un registro existente desde "Consultar Pagos" — **pendiente trabajo en n8n para que funcionen del todo**, ver sección "🔧 Pendiente en n8n". `sw.js` → `control-pagos-v14`.
 
 ## Qué es este proyecto
 PWA (app web instalable, sin build ni framework) para **Millennium Energy Co** que permite:
@@ -21,9 +21,20 @@ Todo vive en un único [index.html](index.html) (HTML + CSS + JS inline).
 | Backend | **n8n** (self-hosted en `ashir-n8n.nr6aco.easypanel.host`), vía dos webhooks: |
 | — Registrar pago | `POST /webhook/81926c9e-22aa-4aef-bb4d-fe4ee520748c` (`N8N_WEBHOOK_URL`) — workflow: Webhook → **Upload file** (Google Drive) → **Append row in sheet** (Google Sheets) → Respond to Webhook |
 | — Consultar pagos | `GET /webhook/c6d11abd-61bc-439c-9dd9-550ed5008ee3` (`N8N_QUERY_URL`) — probablemente lee del mismo Google Sheet |
-| Almacenamiento real | Google Drive (carpeta "PJ04 FACTURAS", credencial n8n "PJ04 DRIVE") + Google Sheet "Control de pagos" (pestaña "Millennium", credencial n8n "PJ04 SHEET") |
+| Almacenamiento real | Google Drive (carpeta "PJ04 FACTURAS", credencial n8n "PJ04 DRIVE") + Google Sheet "CONTROL DE PAGOS" (credencial n8n "PJ04 SHEET") — ⚠️ el nombre exacto de la pestaña/tab **no está confirmado** tras la migración de cuenta (se asumía "Millennium", pero un script de Apps Script confirmó que `getSheetByName('Millennium')` devuelve `null` en el Sheet actual — probablemente ahora se llama "Sheet1" u otro nombre por defecto). Si algo necesita el nombre exacto de la pestaña, verificarlo primero en el Sheet en vez de asumir "Millennium". |
+| Reporte diario | Google Apps Script (bound al Sheet, independiente de n8n) — ver sección "📧 Reporte diario automático" |
 | Hosting | GitHub Pages (por el `scope`/`start_url` del manifest) |
 | Repo | https://github.com/ashir7ai-star/PJ04-CONTROL-PAGOS |
+
+## 📧 Reporte diario automático (Google Apps Script, sin n8n)
+Para evitar depender de n8n y como salvaguarda tras el incidente de la cuenta eliminada, se configuró un reporte diario **directamente en Google Apps Script**, vinculado al Google Sheet "CONTROL DE PAGOS":
+
+- **Dónde vive:** Extensiones → Apps Script, dentro del propio Sheet (proyecto "Untitled project", archivo `Code.gs`). No es parte de este repositorio ni de n8n — vive en la cuenta de Google dueña del Sheet.
+- **Qué hace la función `enviarReporteDiario()`:** toma la primera pestaña del Sheet (`ss.getSheets()[0]`, para no depender de un nombre de pestaña específico), exporta un PDF y un XLSX usando las URLs nativas de exportación de Google Sheets (`/export?format=pdf` y `/export?format=xlsx` vía `UrlFetchApp` con el token OAuth del propio script), y envía ambos adjuntos por `MailApp.sendEmail()`.
+- **Destinatarios:** `nathan@ylevigroup.com`, `joseph@ylevigroup.com`, `contabilidad@energy-millennium.com` (array `DESTINATARIOS` al inicio del script — para agregar/quitar correos, editar esa lista directamente en Apps Script).
+- **Disparador:** Trigger de tipo "Time-based" (Basado en tiempo) → "Day timer", configurado en el editor de Apps Script (ícono de reloj → Triggers). Corre una vez al día en la ventana horaria elegida.
+- **Alcance intencional:** el reporte cubre solo los **datos del Sheet** (registro de pagos), no hace copia de las facturas en Drive — el usuario prefirió descargarlas manualmente si las necesita, para no complicar el script con zips/tamaños de adjuntos.
+- **Para modificarlo:** entrar al Sheet → Extensiones → Apps Script → `Code.gs`.
 
 ## 🔧 Pendiente en n8n: soporte para varios archivos + "Agregar factura" (iniciado 2026-08-18)
 
@@ -83,6 +94,7 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - Es decir: **cada cierre de sesión de trabajo = commit + push automático**. No se requiere acción manual de git para mantener el repo actualizado.
 
 ## Historial de cambios recientes
+- **2026-08-18**: ✅ Configurado reporte diario automático (PDF+Excel) vía Google Apps Script, con trigger "Time-based" ya activo. Enviado a nathan@ylevigroup.com, joseph@ylevigroup.com y contabilidad@energy-millennium.com. No usa n8n. Ver sección "📧 Reporte diario automático" arriba.
 - **2026-08-18**: Frontend para múltiples archivos en "Nuevo Pago" (`selectedFiles[]`, input `multiple`, lista de previsualización removible) y botón "+ Agregar" en "Consultar Pagos" para subir factura a registros sin archivo (modal nuevo, `N8N_ADDFILE_URL` placeholder). Requiere trabajo pendiente en n8n — ver sección "🔧 Pendiente en n8n" arriba. `sw.js` → `control-pagos-v14`.
 - **2026-08-18**: Se elimina la columna "N° Pago" de la tabla de resultados en "Consultar Pagos" (`renderResultados()` en index.html — encabezado `<th>` y celda `r['NUMERO DE FACTURA']` quitados). El filtro "Número de pago" en el formulario de búsqueda se mantiene sin cambios. `sw.js` → `control-pagos-v13`.
 - **2026-08-18**: Resultados de "Consultar Pagos" se ordenan de más reciente a más vieja por `FECHA DE PAGO` (`filtrarRows()` en index.html, antes no tenían ningún orden garantizado). `sw.js` → `control-pagos-v12`.
