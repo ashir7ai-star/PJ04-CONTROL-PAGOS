@@ -3,7 +3,10 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-08-30** — ✅ Confirmado por el usuario que el fix del tema claro (Android auto-dark) ya funciona. Además: (1) el menú "Nuevo Pago / Consultar Pagos" (`.app-nav`) ahora queda fijo (`position: sticky`) al hacer scroll, debajo del header; (2) se agrega la columna "Registrado por" a la tabla de resultados de "Consultar Pagos", para saber quién registró cada pago. `sw.js` → `control-pagos-v17`.
+**2026-08-30** — ✅ Marcada como **versión estable** por el usuario. Incluye: fix del tema claro (Android auto-dark), menú "Nuevo Pago / Consultar Pagos" fijo al hacer scroll, y columna "Registrado por" en la tabla de resultados. `sw.js` → `control-pagos-v17`.
+
+## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio
+El 2026-08-30 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** (branch quedó "ahead of origin by 1 commit" sin ningún mensaje de error visible). Causa no confirmada (posible falla de red puntual). **Si el usuario reporta "no veo mis cambios en la web/PWA"**, antes de investigar el código, correr `git status` / `git log origin/main..HEAD --oneline` para descartar que sea simplemente un push pendiente sin subir — es más rápido que revisar caché de Service Worker.
 
 ## Qué es este proyecto
 PWA (app web instalable, sin build ni framework) para **Millennium Energy Co** que permite:
@@ -95,6 +98,7 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - Es decir: **cada cierre de sesión de trabajo = commit + push automático**. No se requiere acción manual de git para mantener el repo actualizado.
 
 ## Historial de cambios recientes
+- **2026-08-30**: ✅ Marcada como **versión estable**. Además, se detectó y corrigió que el commit del hook de `Stop` había quedado sin `push` a GitHub (branch "ahead by 1"); se subió manualmente. Ver nota operativa arriba sobre este modo de falla.
 - **2026-08-30**: (a) `.app-nav` (menú Nuevo Pago/Consultar Pagos) ahora usa `position: sticky; top: 56px;` para quedar fijo bajo el header al hacer scroll. (b) Se agrega columna "Registrado por" en la tabla de resultados de `renderResultados()` — muestra `r['REGISTRADO POR']`, dato que ya se registraba pero no se mostraba. `sw.js` → `control-pagos-v17`.
 - **2026-08-30**: Segundo fix del bug "tema claro no funciona" (el primero, `color-scheme` en CSS, no fue suficiente en Android). Causa real: Chrome en Android tiene una función de "oscurecimiento automático de páginas web" que se activa cuando el teléfono está en modo oscuro, y solo se desactiva si la página declara explícitamente en qué modo está vía `<meta name="color-scheme">` en el `<head>` — no basta con la propiedad CSS. Se agregó `<meta name="color-scheme" id="colorSchemeMeta" content="light">` y se sincroniza su `content` con `data-theme` en cada toggle (función `aplicarTema()` en index.html). Reportado por el usuario: "le doy clic al botón y se aclara un poquito pero no llega a blanco". `sw.js` → `control-pagos-v16`.
 - **2026-08-26**: Fix bug "tema claro no funciona" en la PWA — se agrega `color-scheme: light` en `:root` y `color-scheme: dark` en `[data-theme="dark"]` (index.html). Sin esto, los controles nativos del navegador (selects, inputs, scrollbars) ignoraban el `data-theme` de la app y seguían el modo oscuro/claro del sistema operativo, dando la impresión de que el tema claro estaba roto cuando el SO estaba en modo oscuro. `sw.js` → `control-pagos-v15`.
