@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-08-18** — ✅ Marcada como **versión estable** por el usuario. Reportes automáticos por Google Apps Script (diario + mensual, filtrados por `FECHA REGISTRO`) terminados y funcionando — ver sección "📧 Reportes automáticos" abajo. `index.stable.html` = `index.html` (sw.js `control-pagos-v14`, sin cambios de código esta sesión). Además, frontend listo para: (1) subir varios archivos en "Nuevo Pago", y (2) agregar factura a un registro existente desde "Consultar Pagos" — **pendiente trabajo en n8n para que funcionen del todo**, ver sección "🔧 Pendiente en n8n".
+**2026-08-26** — Fix del bug "tema claro no funciona en la PWA": faltaba declarar `color-scheme` en el CSS, así que los controles nativos (`<select>`, inputs, scrollbars) seguían el modo oscuro/claro del sistema operativo en vez del tema elegido en la app. `sw.js` → `control-pagos-v15`.
 
 ## Qué es este proyecto
 PWA (app web instalable, sin build ni framework) para **Millennium Energy Co** que permite:
@@ -17,7 +17,7 @@ Todo vive en un único [index.html](index.html) (HTML + CSS + JS inline).
 |---|---|
 | Frontend | `index.html` — una sola página, sin dependencias de build |
 | Backup estable | `index.stable.html` — copia de respaldo de la última versión considerada estable |
-| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v14`) |
+| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v15`) |
 | Backend | **n8n** (self-hosted en `ashir-n8n.nr6aco.easypanel.host`), vía dos webhooks: |
 | — Registrar pago | `POST /webhook/81926c9e-22aa-4aef-bb4d-fe4ee520748c` (`N8N_WEBHOOK_URL`) — workflow: Webhook → **Upload file** (Google Drive) → **Append row in sheet** (Google Sheets) → Respond to Webhook |
 | — Consultar pagos | `GET /webhook/c6d11abd-61bc-439c-9dd9-550ed5008ee3` (`N8N_QUERY_URL`) — probablemente lee del mismo Google Sheet |
@@ -95,6 +95,7 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - Es decir: **cada cierre de sesión de trabajo = commit + push automático**. No se requiere acción manual de git para mantener el repo actualizado.
 
 ## Historial de cambios recientes
+- **2026-08-26**: Fix bug "tema claro no funciona" en la PWA — se agrega `color-scheme: light` en `:root` y `color-scheme: dark` en `[data-theme="dark"]` (index.html). Sin esto, los controles nativos del navegador (selects, inputs, scrollbars) ignoraban el `data-theme` de la app y seguían el modo oscuro/claro del sistema operativo, dando la impresión de que el tema claro estaba roto cuando el SO estaba en modo oscuro. `sw.js` → `control-pagos-v15`.
 - **2026-08-18**: ✅ Marcada como **versión estable**. Se agrega `enviarReporteMensual()` al Apps Script (reporta el mes anterior completo, trigger Month timer día 1) y se ajusta `enviarReporteDiario()` para filtrar solo los registros de ese día (antes mandaba todo el histórico). Ambos usan Sheet temporal + export PDF/XLSX. Ver sección "📧 Reportes automáticos" arriba.
 - **2026-08-18**: Configurado reporte diario automático (PDF+Excel, histórico completo) vía Google Apps Script, con trigger "Time-based" ya activo. Enviado a nathan@ylevigroup.com, joseph@ylevigroup.com y contabilidad@energy-millennium.com. No usa n8n.
 - **2026-08-18**: Frontend para múltiples archivos en "Nuevo Pago" (`selectedFiles[]`, input `multiple`, lista de previsualización removible) y botón "+ Agregar" en "Consultar Pagos" para subir factura a registros sin archivo (modal nuevo, `N8N_ADDFILE_URL` placeholder). Requiere trabajo pendiente en n8n — ver sección "🔧 Pendiente en n8n" arriba. `sw.js` → `control-pagos-v14`.
