@@ -649,6 +649,9 @@
       display: flex;
       padding: 0 16px;
       gap: 4px;
+      position: sticky;
+      top: 56px;
+      z-index: 99;
     }
 
     .nav-tab {
@@ -1369,6 +1372,7 @@
               <th>Empresa</th>
               <th>Tipo</th>
               <th>Proveedor</th>
+              <th>Registrado por</th>
               <th>Valor</th>
               <th>Archivo</th>
             </tr>
@@ -1594,6 +1598,7 @@
           <td>${r['EMPRESA'] || '—'}</td>
           <td><span class="badge ${badgeClass}">${tipoLabel}</span></td>
           <td>${r['PROVEEDOR'] || '—'}</td>
+          <td>${r['REGISTRADO POR'] || '—'}</td>
           <td>$${valor.toLocaleString('es-CO')}</td>
           <td>${link}</td>
         </tr>`;
