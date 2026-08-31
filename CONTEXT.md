@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-08-30** — ✅ Marcada como **versión estable** por el usuario. Incluye: fix del tema claro (Android auto-dark), menú "Nuevo Pago / Consultar Pagos" fijo al hacer scroll, y columna "Registrado por" en la tabla de resultados. `sw.js` → `control-pagos-v17`.
+**2026-08-31** — Se agrega columna "Nombre del pago" a la tabla de resultados de "Consultar Pagos" (entre Tipo y Proveedor). `sw.js` → `control-pagos-v18`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio
 El 2026-08-30 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** (branch quedó "ahead of origin by 1 commit" sin ningún mensaje de error visible). Causa no confirmada (posible falla de red puntual). **Si el usuario reporta "no veo mis cambios en la web/PWA"**, antes de investigar el código, correr `git status` / `git log origin/main..HEAD --oneline` para descartar que sea simplemente un push pendiente sin subir — es más rápido que revisar caché de Service Worker.
@@ -20,7 +20,7 @@ Todo vive en un único [index.html](index.html) (HTML + CSS + JS inline).
 |---|---|
 | Frontend | `index.html` — una sola página, sin dependencias de build |
 | Backup estable | `index.stable.html` — copia de respaldo de la última versión considerada estable |
-| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v17`) |
+| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v18`) |
 | Backend | **n8n** (self-hosted en `ashir-n8n.nr6aco.easypanel.host`), vía dos webhooks: |
 | — Registrar pago | `POST /webhook/81926c9e-22aa-4aef-bb4d-fe4ee520748c` (`N8N_WEBHOOK_URL`) — workflow: Webhook → **Upload file** (Google Drive) → **Append row in sheet** (Google Sheets) → Respond to Webhook |
 | — Consultar pagos | `GET /webhook/c6d11abd-61bc-439c-9dd9-550ed5008ee3` (`N8N_QUERY_URL`) — probablemente lee del mismo Google Sheet |
@@ -98,6 +98,7 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - Es decir: **cada cierre de sesión de trabajo = commit + push automático**. No se requiere acción manual de git para mantener el repo actualizado.
 
 ## Historial de cambios recientes
+- **2026-08-31**: Se agrega columna "Nombre del pago" (`r['NOMBRE DE PAGO']`) en `renderResultados()`, ubicada entre "Tipo" y "Proveedor" en el encabezado y en cada fila. `sw.js` → `control-pagos-v18`.
 - **2026-08-30**: ✅ Marcada como **versión estable**. Además, se detectó y corrigió que el commit del hook de `Stop` había quedado sin `push` a GitHub (branch "ahead by 1"); se subió manualmente. Ver nota operativa arriba sobre este modo de falla.
 - **2026-08-30**: (a) `.app-nav` (menú Nuevo Pago/Consultar Pagos) ahora usa `position: sticky; top: 56px;` para quedar fijo bajo el header al hacer scroll. (b) Se agrega columna "Registrado por" en la tabla de resultados de `renderResultados()` — muestra `r['REGISTRADO POR']`, dato que ya se registraba pero no se mostraba. `sw.js` → `control-pagos-v17`.
 - **2026-08-30**: Segundo fix del bug "tema claro no funciona" (el primero, `color-scheme` en CSS, no fue suficiente en Android). Causa real: Chrome en Android tiene una función de "oscurecimiento automático de páginas web" que se activa cuando el teléfono está en modo oscuro, y solo se desactiva si la página declara explícitamente en qué modo está vía `<meta name="color-scheme">` en el `<head>` — no basta con la propiedad CSS. Se agregó `<meta name="color-scheme" id="colorSchemeMeta" content="light">` y se sincroniza su `content` con `data-theme` en cada toggle (función `aplicarTema()` en index.html). Reportado por el usuario: "le doy clic al botón y se aclara un poquito pero no llega a blanco". `sw.js` → `control-pagos-v16`.

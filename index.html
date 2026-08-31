@@ -1371,6 +1371,7 @@
               <th>Fecha</th>
               <th>Empresa</th>
               <th>Tipo</th>
+              <th>Nombre del pago</th>
               <th>Proveedor</th>
               <th>Registrado por</th>
               <th>Valor</th>
@@ -1597,6 +1598,7 @@
           <td>${r['FECHA DE PAGO'] || '—'}</td>
           <td>${r['EMPRESA'] || '—'}</td>
           <td><span class="badge ${badgeClass}">${tipoLabel}</span></td>
+          <td>${r['NOMBRE DE PAGO'] || '—'}</td>
           <td>${r['PROVEEDOR'] || '—'}</td>
           <td>${r['REGISTRADO POR'] || '—'}</td>
           <td>$${valor.toLocaleString('es-CO')}</td>
