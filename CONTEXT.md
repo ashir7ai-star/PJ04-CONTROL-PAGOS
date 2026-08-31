@@ -3,10 +3,10 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-08-31** — Se agrega columna "Nombre del pago" a la tabla de resultados de "Consultar Pagos" (entre Tipo y Proveedor). `sw.js` → `control-pagos-v18`.
+**2026-08-31** — Panel principal ampliado de 880px a 968px (+10%) porque la columna "Archivo" se salía de la vista tras agregar "Nombre del pago" y "Registrado por". `sw.js` → `control-pagos-v19`. También se aumentó a 60s el timeout del hook de auto-push (ver nota operativa abajo).
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio
-El 2026-08-30 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** (branch quedó "ahead of origin by 1 commit" sin ningún mensaje de error visible). Causa no confirmada (posible falla de red puntual). **Si el usuario reporta "no veo mis cambios en la web/PWA"**, antes de investigar el código, correr `git status` / `git log origin/main..HEAD --oneline` para descartar que sea simplemente un push pendiente sin subir — es más rápido que revisar caché de Service Worker.
+El 2026-08-30 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** (branch quedó "ahead of origin by 1 commit" sin ningún mensaje de error visible), y volvió a pasar una segunda vez el mismo día. Causa sospechada: el hook tenía `timeout: 30` segundos para todo el comando (`git add` + `status` + `commit` + `push`), posiblemente insuficiente. **2026-08-31: se subió el timeout a 60s** en `.claude/settings.local.json` (sección `hooks.Stop`) para darle más margen — pendiente confirmar si esto resuelve el problema de raíz. **Si el usuario reporta "no veo mis cambios en la web/PWA"**, antes de investigar el código, correr `git status` / `git log origin/main..HEAD --oneline` para descartar que sea simplemente un push pendiente sin subir (y si pasa de nuevo pese al timeout de 60s, investigar más a fondo: credential helper, latencia real de red, etc.) — es más rápido que revisar caché de Service Worker.
 
 ## Qué es este proyecto
 PWA (app web instalable, sin build ni framework) para **Millennium Energy Co** que permite:
@@ -20,7 +20,7 @@ Todo vive en un único [index.html](index.html) (HTML + CSS + JS inline).
 |---|---|
 | Frontend | `index.html` — una sola página, sin dependencias de build |
 | Backup estable | `index.stable.html` — copia de respaldo de la última versión considerada estable |
-| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v18`) |
+| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v19`) |
 | Backend | **n8n** (self-hosted en `ashir-n8n.nr6aco.easypanel.host`), vía dos webhooks: |
 | — Registrar pago | `POST /webhook/81926c9e-22aa-4aef-bb4d-fe4ee520748c` (`N8N_WEBHOOK_URL`) — workflow: Webhook → **Upload file** (Google Drive) → **Append row in sheet** (Google Sheets) → Respond to Webhook |
 | — Consultar pagos | `GET /webhook/c6d11abd-61bc-439c-9dd9-550ed5008ee3` (`N8N_QUERY_URL`) — probablemente lee del mismo Google Sheet |
@@ -98,6 +98,7 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - Es decir: **cada cierre de sesión de trabajo = commit + push automático**. No se requiere acción manual de git para mantener el repo actualizado.
 
 ## Historial de cambios recientes
+- **2026-08-31**: Panel principal (`main`) ampliado de `max-width: 880px` a `968px` (+10%) porque la tabla de resultados (ahora con "Nombre del pago" y "Registrado por") desbordaba y cortaba la columna "Archivo". `sw.js` → `control-pagos-v19`. Además, se subió el timeout del hook de auto-push de 30s a 60s (ver nota operativa arriba) tras dos fallos silenciosos de `git push`.
 - **2026-08-31**: Se agrega columna "Nombre del pago" (`r['NOMBRE DE PAGO']`) en `renderResultados()`, ubicada entre "Tipo" y "Proveedor" en el encabezado y en cada fila. `sw.js` → `control-pagos-v18`.
 - **2026-08-30**: ✅ Marcada como **versión estable**. Además, se detectó y corrigió que el commit del hook de `Stop` había quedado sin `push` a GitHub (branch "ahead by 1"); se subió manualmente. Ver nota operativa arriba sobre este modo de falla.
 - **2026-08-30**: (a) `.app-nav` (menú Nuevo Pago/Consultar Pagos) ahora usa `position: sticky; top: 56px;` para quedar fijo bajo el header al hacer scroll. (b) Se agrega columna "Registrado por" en la tabla de resultados de `renderResultados()` — muestra `r['REGISTRADO POR']`, dato que ya se registraba pero no se mostraba. `sw.js` → `control-pagos-v17`.
