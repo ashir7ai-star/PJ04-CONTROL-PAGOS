@@ -3,10 +3,16 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-08-31** — Panel principal ampliado de 880px a 968px (+10%) porque la columna "Archivo" se salía de la vista tras agregar "Nombre del pago" y "Registrado por". `sw.js` → `control-pagos-v19`. También se aumentó a 60s el timeout del hook de auto-push (ver nota operativa abajo).
+**2026-08-31** — Panel principal ampliado de 880px a 968px (+10%). **Causa raíz encontrada y corregida** del bug del hook de auto-push (ver nota operativa abajo): el hook corría por PowerShell, cuyo entorno tiene `GCM_INTERACTIVE=never` y `GIT_TERMINAL_PROMPT=0`, bloqueando el acceso de Git Credential Manager al login guardado de GitHub — el `push` fallaba con "terminal prompts disabled" de forma consistente e inmediata (no por timeout). Se cambió el hook a `"shell": "bash"` (ese entorno no tiene esas variables y el `push` siempre funcionó ahí en toda la sesión). `sw.js` → `control-pagos-v19`.
 
-## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio
-El 2026-08-30 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** (branch quedó "ahead of origin by 1 commit" sin ningún mensaje de error visible), y volvió a pasar una segunda vez el mismo día. Causa sospechada: el hook tenía `timeout: 30` segundos para todo el comando (`git add` + `status` + `commit` + `push`), posiblemente insuficiente. **2026-08-31: se subió el timeout a 60s** en `.claude/settings.local.json` (sección `hooks.Stop`) para darle más margen — pendiente confirmar si esto resuelve el problema de raíz. **Si el usuario reporta "no veo mis cambios en la web/PWA"**, antes de investigar el código, correr `git status` / `git log origin/main..HEAD --oneline` para descartar que sea simplemente un push pendiente sin subir (y si pasa de nuevo pese al timeout de 60s, investigar más a fondo: credential helper, latencia real de red, etc.) — es más rápido que revisar caché de Service Worker.
+## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (RESUELTO 2026-08-31)
+El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
+
+**Causa raíz confirmada:** el hook corría con `"shell": "powershell"`. El entorno de PowerShell de este harness tiene seteadas `GCM_INTERACTIVE=never` y `GIT_TERMINAL_PROMPT=0` (para evitar que cualquier comando se quede colgado esperando un prompt interactivo) — pero esto también le impide a Git Credential Manager acceder/refrescar el login guardado de GitHub cuando lo necesita, y el `push` falla de inmediato con: `fatal: Cannot prompt because user interactivity has been disabled` / `fatal: could not read Username for 'https://github.com': terminal prompts disabled`. Se reprodujo el error de forma directa y consistente (`git push origin main` vía PowerShell falla siempre; el mismo comando vía Bash nunca falló en toda la sesión, porque Bash no tiene esas variables seteadas).
+
+**Fix aplicado:** se cambió el hook de `Stop` en `.claude/settings.local.json` de `"shell": "powershell"` a `"shell": "bash"`, traduciendo el comando a sintaxis POSIX (`cd ... && git add -A && if [ -n "$(git status --porcelain)" ]; then git commit -m "Auto: $(date '+%Y-%m-%d %H:%M')" && git push origin main; fi`). Mismo `timeout: 60`.
+
+**Si vuelve a pasar** (el push queda sin subir): correr `git status` / `git log origin/main..HEAD --oneline` para confirmarlo y subir manualmente, y revisar si el hook sigue en `shell: bash` (por si algo lo revirtió) antes de sospechar de otra cosa.
 
 ## Qué es este proyecto
 PWA (app web instalable, sin build ni framework) para **Millennium Energy Co** que permite:

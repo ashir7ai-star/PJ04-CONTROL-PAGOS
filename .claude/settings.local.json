@@ -24,8 +24,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "Set-Location \"c:\\Users\\Nathan\\Documents\\ASHIR AI\\PROYECTOS\\PJ04 CONTROL DE PAGOS\"; git add -A; if (git status --porcelain) { git commit -m ('Auto: ' + (Get-Date -Format 'yyyy-MM-dd HH:mm')); git push origin main }",
-            "shell": "powershell",
+            "command": "cd \"c:/Users/Nathan/Documents/ASHIR AI/PROYECTOS/PJ04 CONTROL DE PAGOS\" && git add -A && if [ -n \"$(git status --porcelain)\" ]; then git commit -m \"Auto: $(date '+%Y-%m-%d %H:%M')\" && git push origin main; fi",
+            "shell": "bash",
             "timeout": 60,
             "statusMessage": "Guardando cambios en GitHub..."
           }
