@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-08-31** — Panel principal ampliado de 880px a 968px (+10%). **Causa raíz encontrada y corregida** del bug del hook de auto-push (ver nota operativa abajo): el hook corría por PowerShell, cuyo entorno tiene `GCM_INTERACTIVE=never` y `GIT_TERMINAL_PROMPT=0`, bloqueando el acceso de Git Credential Manager al login guardado de GitHub — el `push` fallaba con "terminal prompts disabled" de forma consistente e inmediata (no por timeout). Se cambió el hook a `"shell": "bash"` (ese entorno no tiene esas variables y el `push` siempre funcionó ahí en toda la sesión). `sw.js` → `control-pagos-v19`.
+**2026-09-10** — Se agregan dos tipos de pago nuevos ("Viáticos" y "Caja Menor") y un modo de **vista restringida por link** (`?vista=viaticos` / `?vista=caja_menor`) para dar acceso limitado a dos personas nuevas, sin que vean el resto de los pagos del sistema. Ver sección "🔗 Vista restringida por link" abajo — incluye una limitación importante sobre instalación como PWA que hay que leer antes de repartir los links. `sw.js` → `control-pagos-v20`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (RESUELTO 2026-08-31)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -26,7 +26,7 @@ Todo vive en un único [index.html](index.html) (HTML + CSS + JS inline).
 |---|---|
 | Frontend | `index.html` — una sola página, sin dependencias de build |
 | Backup estable | `index.stable.html` — copia de respaldo de la última versión considerada estable |
-| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v19`) |
+| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v20`) |
 | Backend | **n8n** (self-hosted en `ashir-n8n.nr6aco.easypanel.host`), vía dos webhooks: |
 | — Registrar pago | `POST /webhook/81926c9e-22aa-4aef-bb4d-fe4ee520748c` (`N8N_WEBHOOK_URL`) — workflow: Webhook → **Upload file** (Google Drive) → **Append row in sheet** (Google Sheets) → Respond to Webhook |
 | — Consultar pagos | `GET /webhook/c6d11abd-61bc-439c-9dd9-550ed5008ee3` (`N8N_QUERY_URL`) — probablemente lee del mismo Google Sheet |
@@ -34,6 +34,32 @@ Todo vive en un único [index.html](index.html) (HTML + CSS + JS inline).
 | Reporte diario | Google Apps Script (bound al Sheet, independiente de n8n) — ver sección "📧 Reporte diario automático" |
 | Hosting | GitHub Pages (por el `scope`/`start_url` del manifest) |
 | Repo | https://github.com/ashir7ai-star/PJ04-CONTROL-PAGOS |
+
+## 🔗 Vista restringida por link (Viáticos / Caja Menor) — 2026-09-10
+
+### Qué se pidió
+Dar acceso al sistema a dos personas nuevas, cada una responsable de un tipo de gasto (Viáticos, Caja Menor), pero **sin que puedan ver los demás pagos registrados** (proveedores, compras, impuestos, etc. de las dos empresas).
+
+### Decisión de diseño (elegida explícitamente por el usuario)
+El sistema **no tiene login/usuarios** — es una sola página estática. Se le ofrecieron dos opciones:
+1. Link privado + filtrado real en el servidor (más seguro, requiere tocar n8n).
+2. Link privado + solo ocultar en pantalla (más simple, **elegida**).
+
+**Implicación de seguridad importante, ya comunicada al usuario:** con la opción elegida, el navegador de estas dos personas **sigue recibiendo TODOS los registros** desde `N8N_QUERY_URL` — el filtrado pasa solo en JavaScript, en el cliente. Alguien con conocimientos técnicos (F12 → pestaña Network) podría ver la respuesta completa con todos los pagos, no solo los suyos. Esto es aceptado como riesgo asumido, no es un bug pendiente de arreglar — si en el futuro se quiere subir el nivel de seguridad, hay que migrar a la opción 1 (filtrar en n8n antes de responder).
+
+### Cómo funciona
+- Se agregaron dos tipos de pago nuevos: **`viaticos`** ("Viáticos") y **`caja_menor`** ("Caja Menor"), como dos botones más en el selector de "Tipo de pago" de `index.html` (ahora 6 tipos en total), con sus propios badges de color (`.badge-viaticos`, `.badge-caja`).
+- Nuevo parámetro de URL **`?vista=viaticos`** o **`?vista=caja_menor`**. Al detectarlo (`vistaRestringida` en el `<script>`), la página:
+  - En "Nuevo Pago": oculta el selector de "Tipo de pago" completo y fija `tipoFactura` al valor correspondiente (el usuario no puede registrar otro tipo).
+  - En "Consultar Pagos": oculta el filtro "Tipo de pago" y fuerza `filtrarRows()` a devolver solo filas de ese tipo, sin importar qué pase con el `<select>` oculto (incluso "Limpiar" no lo desbloquea — está forzado en la función, no solo en el valor inicial).
+  - Cambia los títulos/subtítulos y las etiquetas de navegación (ej. "Nuevo Gasto de Viáticos", "Consultar Caja Menor") para que quede claro que es una vista acotada.
+- Los links a repartir:
+  - `https://ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/?vista=viaticos`
+  - `https://ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/?vista=caja_menor`
+- El link normal (sin `?vista=`) sigue mostrando todo, sin restricciones — para el usuario con acceso completo.
+
+### ⚠️ Limitación conocida: instalar como PWA (ícono en el celular)
+`manifest.json` tiene un `start_url` fijo (`/PJ04-CONTROL-PAGOS/`, sin query string). Si una de las dos personas restringidas intenta "Agregar a pantalla de inicio" desde su link (`?vista=viaticos`), es probable que el ícono instalado abra la app en la URL del `start_url` del manifest — es decir, **la vista completa sin restricción**, no la vista acotada. Por ahora, a estas dos personas hay que indicarles que usen el link como marcador/acceso directo del navegador, no que lo "instalen" como PWA. Si se quiere un ícono propio en el celular que sí respete la restricción, hay que crear manifests separados por vista y cambiar dinámicamente el `<link rel="manifest">` según el parámetro — no implementado todavía, pendiente si se pide.
 
 ## 📧 Reportes automáticos (Google Apps Script, sin n8n)
 Para evitar depender de n8n y como salvaguarda tras el incidente de la cuenta eliminada, se configuraron dos reportes automáticos **directamente en Google Apps Script**, vinculados al Google Sheet "CONTROL DE PAGOS":
@@ -104,6 +130,7 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - Es decir: **cada cierre de sesión de trabajo = commit + push automático**. No se requiere acción manual de git para mantener el repo actualizado.
 
 ## Historial de cambios recientes
+- **2026-09-10**: Se agregan tipos de pago "Viáticos" y "Caja Menor" (botones, badges, opciones de filtro) y modo de vista restringida por `?vista=viaticos`/`?vista=caja_menor` en `index.html` — oculta el selector/filtro de tipo y fuerza el resultado a esa categoría, pensado para dar acceso limitado a dos personas nuevas sin exponer el resto de pagos. Filtrado solo en cliente (decisión del usuario, no en n8n) — ver sección "🔗 Vista restringida por link" arriba para el detalle y las limitaciones (incluye una de instalación como PWA). `sw.js` → `control-pagos-v20`.
 - **2026-08-31**: Panel principal (`main`) ampliado de `max-width: 880px` a `968px` (+10%) porque la tabla de resultados (ahora con "Nombre del pago" y "Registrado por") desbordaba y cortaba la columna "Archivo". `sw.js` → `control-pagos-v19`. Además, se subió el timeout del hook de auto-push de 30s a 60s (ver nota operativa arriba) tras dos fallos silenciosos de `git push`.
 - **2026-08-31**: Se agrega columna "Nombre del pago" (`r['NOMBRE DE PAGO']`) en `renderResultados()`, ubicada entre "Tipo" y "Proveedor" en el encabezado y en cada fila. `sw.js` → `control-pagos-v18`.
 - **2026-08-30**: ✅ Marcada como **versión estable**. Además, se detectó y corrigió que el commit del hook de `Stop` había quedado sin `push` a GitHub (branch "ahead by 1"); se subió manualmente. Ver nota operativa arriba sobre este modo de falla.

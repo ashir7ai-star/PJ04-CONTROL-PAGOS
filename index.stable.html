@@ -813,6 +813,8 @@
     .badge-pago    { background: var(--success-light); color: var(--success); }
     .badge-compra  { background: var(--primary-light); color: var(--primary); }
     .badge-venta   { background: var(--warning-light); color: var(--warning); }
+    .badge-viaticos { background: rgba(8,145,178,0.1); color: #0891b2; }
+    .badge-caja     { background: rgba(219,39,119,0.1); color: #db2777; }
 
     .link-factura {
       color: var(--primary);
@@ -1139,28 +1141,28 @@
         <polyline points="14 2 14 8 20 8"/>
         <line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
       </svg>
-      Nuevo Pago
+      <span id="navFormLabel">Nuevo Pago</span>
     </button>
     <button class="nav-tab" data-view="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
       </svg>
-      Consultar Pagos
+      <span id="navSearchLabel">Consultar Pagos</span>
     </button>
   </nav>
 
   <!-- Main -->
   <main>
     <div class="page-header">
-      <p class="page-title">Nuevo Pago</p>
-      <p class="page-subtitle">Completa los datos y envía el pago al sistema.</p>
+      <p class="page-title" id="formTitle">Nuevo Pago</p>
+      <p class="page-subtitle" id="formSubtitle">Completa los datos y envía el pago al sistema.</p>
     </div>
 
     <form id="paymentForm" novalidate>
 
       <!-- Tipo de factura -->
-      <div class="section-label">Tipo de pago <span class="req">*</span></div>
-      <div class="tipo-selector">
+      <div class="section-label" id="tipoSectionLabel">Tipo de pago <span class="req">*</span></div>
+      <div class="tipo-selector" id="tipoSelector">
 
         <button type="button" class="tipo-btn" data-value="pago_proveedor">
           <div class="tipo-icon">
@@ -1206,6 +1208,27 @@
             </svg>
           </div>
           <span class="tipo-label">Pago Impuestos</span>
+        </button>
+
+        <button type="button" class="tipo-btn" data-value="viaticos">
+          <div class="tipo-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+            </svg>
+          </div>
+          <span class="tipo-label">Viáticos</span>
+        </button>
+
+        <button type="button" class="tipo-btn" data-value="caja_menor">
+          <div class="tipo-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
+              <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
+              <path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/>
+            </svg>
+          </div>
+          <span class="tipo-label">Caja Menor</span>
         </button>
 
       </div>
@@ -1303,8 +1326,8 @@
   <!-- Vista: Consultar Pagos -->
   <main id="viewSearch" style="display:none;">
     <div class="page-header">
-      <p class="page-title">Consultar Pagos</p>
-      <p class="page-subtitle">Filtra y busca pagos registrados en el sistema.</p>
+      <p class="page-title" id="searchTitle">Consultar Pagos</p>
+      <p class="page-subtitle" id="searchSubtitle">Filtra y busca pagos registrados en el sistema.</p>
     </div>
 
     <!-- Filtros -->
@@ -1319,7 +1342,7 @@
             <option value="AMPAC SAS">AMPAC SAS</option>
           </select>
         </div>
-        <div class="field">
+        <div class="field" id="fTipoField">
           <label for="fTipo">Tipo de pago</label>
           <select id="fTipo">
             <option value="">Todos</option>
@@ -1327,6 +1350,8 @@
             <option value="compra">Compra</option>
             <option value="venta">Venta</option>
             <option value="impuestos">Pago Impuestos</option>
+            <option value="viaticos">Viáticos</option>
+            <option value="caja_menor">Caja Menor</option>
           </select>
         </div>
         <div class="field">
@@ -1454,6 +1479,32 @@
     // ─── URL del webhook "Agregar factura" (PENDIENTE: crear en n8n y pegar aquí) ───
     const N8N_ADDFILE_URL = 'PENDIENTE_CONFIGURAR_EN_N8N';
 
+    // ─── Vista restringida por link (?vista=viaticos | ?vista=caja_menor) ──
+    // Oculta a nivel de pantalla el resto de tipos de pago. NO es una restricción
+    // de servidor: la consulta sigue trayendo todos los registros del sistema y
+    // el filtrado ocurre en el navegador (decisión explícita del usuario).
+    const vistaRestringida = ['viaticos', 'caja_menor'].includes(new URLSearchParams(location.search).get('vista'))
+      ? new URLSearchParams(location.search).get('vista')
+      : null;
+
+    if (vistaRestringida) {
+      const nombreVista = vistaRestringida === 'viaticos' ? 'Viáticos' : 'Caja Menor';
+
+      document.getElementById('tipoSelector').style.display     = 'none';
+      document.getElementById('tipoSectionLabel').style.display = 'none';
+      document.getElementById('tipoFactura').value = vistaRestringida;
+      document.getElementById('formTitle').textContent    = 'Nuevo Gasto de ' + nombreVista;
+      document.getElementById('formSubtitle').textContent = 'Completa los datos y envía el gasto al sistema.';
+
+      document.getElementById('fTipoField').style.display = 'none';
+      document.getElementById('fTipo').value = vistaRestringida;
+      document.getElementById('searchTitle').textContent    = 'Consultar ' + nombreVista;
+      document.getElementById('searchSubtitle').textContent = 'Filtra y busca gastos de ' + nombreVista.toLowerCase() + ' registrados en el sistema.';
+
+      document.getElementById('navFormLabel').textContent   = 'Nuevo Gasto';
+      document.getElementById('navSearchLabel').textContent = 'Consultar ' + nombreVista;
+    }
+
     // ─── Navegación entre vistas ───────────────────────────────────
     const navTabs   = document.querySelectorAll('.nav-tab');
     const viewForm  = document.getElementById('paymentForm').closest('main');
@@ -1536,7 +1587,7 @@
 
     function filtrarRows(rows) {
       const empresa  = document.getElementById('fEmpresa').value.toLowerCase();
-      const tipo     = document.getElementById('fTipo').value.toLowerCase();
+      const tipo     = vistaRestringida || document.getElementById('fTipo').value.toLowerCase();
       const prov     = document.getElementById('fProveedor').value.toLowerCase().trim();
       const numFac   = document.getElementById('fNumeroFactura').value.toLowerCase().trim();
       const fi       = document.getElementById('fFechaInicio')._flatpickr.selectedDates[0];
@@ -1584,8 +1635,8 @@
 
       tbody.innerHTML = rows.map(r => {
         const tipo = String(r['TIPO FACTURA'] || '').toLowerCase();
-        const badgeClass = tipo.includes('impuesto') ? 'badge-impuestos' : tipo.includes('pago') ? 'badge-pago' : tipo === 'compra' ? 'badge-compra' : 'badge-venta';
-        const tipoLabel  = tipo.includes('impuesto') ? 'Pago Impuestos' : tipo.includes('pago') ? 'Pago Proveedor' : tipo === 'compra' ? 'Compra' : 'Venta';
+        const badgeClass = tipo.includes('impuesto') ? 'badge-impuestos' : tipo.includes('viatic') ? 'badge-viaticos' : tipo.includes('caja') ? 'badge-caja' : tipo.includes('pago') ? 'badge-pago' : tipo === 'compra' ? 'badge-compra' : 'badge-venta';
+        const tipoLabel  = tipo.includes('impuesto') ? 'Pago Impuestos' : tipo.includes('viatic') ? 'Viáticos' : tipo.includes('caja') ? 'Caja Menor' : tipo.includes('pago') ? 'Pago Proveedor' : tipo === 'compra' ? 'Compra' : 'Venta';
         const url   = extractUrl(r['URL ARCHIVO'] || '');
         const idReg = r['ID REGISTRO'];
         const link  = url
@@ -1970,8 +2021,12 @@
 
     function resetForm() {
       form.reset();
-      tipoHidden.value = '';
       tipoBtns.forEach(b => b.classList.remove('active'));
+      if (vistaRestringida) {
+        tipoHidden.value = vistaRestringida;
+      } else {
+        tipoHidden.value = '';
+      }
       selectedFiles = [];
       renderFilePreviewList();
       fechaPicker.setDate('today');
