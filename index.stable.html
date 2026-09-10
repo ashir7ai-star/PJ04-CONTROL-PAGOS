@@ -1479,30 +1479,30 @@
     // ─── URL del webhook "Agregar factura" (PENDIENTE: crear en n8n y pegar aquí) ───
     const N8N_ADDFILE_URL = 'PENDIENTE_CONFIGURAR_EN_N8N';
 
-    // ─── Vista restringida por link (?vista=viaticos | ?vista=caja_menor) ──
+    // ─── Vista restringida por link (?vista=gastos) ─────────────────
+    // Un solo link para las dos personas nuevas (Viáticos + Caja Menor).
     // Oculta a nivel de pantalla el resto de tipos de pago. NO es una restricción
     // de servidor: la consulta sigue trayendo todos los registros del sistema y
     // el filtrado ocurre en el navegador (decisión explícita del usuario).
-    const vistaRestringida = ['viaticos', 'caja_menor'].includes(new URLSearchParams(location.search).get('vista'))
-      ? new URLSearchParams(location.search).get('vista')
-      : null;
+    const TIPOS_GASTOS = ['viaticos', 'caja_menor'];
+    const vistaRestringida = new URLSearchParams(location.search).get('vista') === 'gastos' ? 'gastos' : null;
 
-    if (vistaRestringida) {
-      const nombreVista = vistaRestringida === 'viaticos' ? 'Viáticos' : 'Caja Menor';
+    if (vistaRestringida === 'gastos') {
+      // Nuevo Pago: solo dejar visibles los botones de Viáticos y Caja Menor
+      document.querySelectorAll('.tipo-btn').forEach(btn => {
+        if (!TIPOS_GASTOS.includes(btn.dataset.value)) btn.style.display = 'none';
+      });
+      document.getElementById('formTitle').textContent    = 'Nuevo Gasto';
+      document.getElementById('formSubtitle').textContent = 'Registra un gasto de viáticos o caja menor.';
 
-      document.getElementById('tipoSelector').style.display     = 'none';
-      document.getElementById('tipoSectionLabel').style.display = 'none';
-      document.getElementById('tipoFactura').value = vistaRestringida;
-      document.getElementById('formTitle').textContent    = 'Nuevo Gasto de ' + nombreVista;
-      document.getElementById('formSubtitle').textContent = 'Completa los datos y envía el gasto al sistema.';
-
-      document.getElementById('fTipoField').style.display = 'none';
-      document.getElementById('fTipo').value = vistaRestringida;
-      document.getElementById('searchTitle').textContent    = 'Consultar ' + nombreVista;
-      document.getElementById('searchSubtitle').textContent = 'Filtra y busca gastos de ' + nombreVista.toLowerCase() + ' registrados en el sistema.';
+      // Consultar Pagos: el filtro de tipo solo ofrece estas dos opciones
+      document.getElementById('fTipo').innerHTML =
+        '<option value="">Todos</option><option value="viaticos">Viáticos</option><option value="caja_menor">Caja Menor</option>';
+      document.getElementById('searchTitle').textContent    = 'Consultar Gastos';
+      document.getElementById('searchSubtitle').textContent = 'Filtra y busca gastos de viáticos y caja menor registrados en el sistema.';
 
       document.getElementById('navFormLabel').textContent   = 'Nuevo Gasto';
-      document.getElementById('navSearchLabel').textContent = 'Consultar ' + nombreVista;
+      document.getElementById('navSearchLabel').textContent = 'Consultar Gastos';
     }
 
     // ─── Navegación entre vistas ───────────────────────────────────
@@ -1587,7 +1587,7 @@
 
     function filtrarRows(rows) {
       const empresa  = document.getElementById('fEmpresa').value.toLowerCase();
-      const tipo     = vistaRestringida || document.getElementById('fTipo').value.toLowerCase();
+      const tipo     = document.getElementById('fTipo').value.toLowerCase();
       const prov     = document.getElementById('fProveedor').value.toLowerCase().trim();
       const numFac   = document.getElementById('fNumeroFactura').value.toLowerCase().trim();
       const fi       = document.getElementById('fFechaInicio')._flatpickr.selectedDates[0];
@@ -1600,6 +1600,7 @@
         const rNum     = String(r['NUMERO DE FACTURA']  || '').toLowerCase();
         const rFecha   = parseFecha(r['FECHA DE PAGO']);
 
+        if (vistaRestringida === 'gastos' && !TIPOS_GASTOS.some(t => rTipo.includes(t))) return false;
         if (empresa && !rEmpresa.includes(empresa))  return false;
         if (tipo    && !rTipo.includes(tipo))         return false;
         if (prov    && !rProv.includes(prov))         return false;
@@ -2021,12 +2022,8 @@
 
     function resetForm() {
       form.reset();
+      tipoHidden.value = '';
       tipoBtns.forEach(b => b.classList.remove('active'));
-      if (vistaRestringida) {
-        tipoHidden.value = vistaRestringida;
-      } else {
-        tipoHidden.value = '';
-      }
       selectedFiles = [];
       renderFilePreviewList();
       fechaPicker.setDate('today');

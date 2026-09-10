@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-09-10** — Se agregan dos tipos de pago nuevos ("Viáticos" y "Caja Menor") y un modo de **vista restringida por link** (`?vista=viaticos` / `?vista=caja_menor`) para dar acceso limitado a dos personas nuevas, sin que vean el resto de los pagos del sistema. Ver sección "🔗 Vista restringida por link" abajo — incluye una limitación importante sobre instalación como PWA que hay que leer antes de repartir los links. `sw.js` → `control-pagos-v20`.
+**2026-09-10** — Simplificado el modo de vista restringida a **un solo link** (`?vista=gastos`) que combina "Viáticos" y "Caja Menor" — antes eran dos links separados, el usuario pidió unificarlos ya que las dos personas nuevas pueden compartir el mismo. Ver sección "🔗 Vista restringida por link" abajo. `sw.js` → `control-pagos-v21`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -28,7 +28,7 @@ Todo vive en un único [index.html](index.html) (HTML + CSS + JS inline).
 |---|---|
 | Frontend | `index.html` — una sola página, sin dependencias de build |
 | Backup estable | `index.stable.html` — copia de respaldo de la última versión considerada estable |
-| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v20`) |
+| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v21`) |
 | Backend | **n8n** (self-hosted en `ashir-n8n.nr6aco.easypanel.host`), vía dos webhooks: |
 | — Registrar pago | `POST /webhook/81926c9e-22aa-4aef-bb4d-fe4ee520748c` (`N8N_WEBHOOK_URL`) — workflow: Webhook → **Upload file** (Google Drive) → **Append row in sheet** (Google Sheets) → Respond to Webhook |
 | — Consultar pagos | `GET /webhook/c6d11abd-61bc-439c-9dd9-550ed5008ee3` (`N8N_QUERY_URL`) — probablemente lee del mismo Google Sheet |
@@ -51,17 +51,16 @@ El sistema **no tiene login/usuarios** — es una sola página estática. Se le 
 
 ### Cómo funciona
 - Se agregaron dos tipos de pago nuevos: **`viaticos`** ("Viáticos") y **`caja_menor`** ("Caja Menor"), como dos botones más en el selector de "Tipo de pago" de `index.html` (ahora 6 tipos en total), con sus propios badges de color (`.badge-viaticos`, `.badge-caja`).
-- Nuevo parámetro de URL **`?vista=viaticos`** o **`?vista=caja_menor`**. Al detectarlo (`vistaRestringida` en el `<script>`), la página:
-  - En "Nuevo Pago": oculta el selector de "Tipo de pago" completo y fija `tipoFactura` al valor correspondiente (el usuario no puede registrar otro tipo).
-  - En "Consultar Pagos": oculta el filtro "Tipo de pago" y fuerza `filtrarRows()` a devolver solo filas de ese tipo, sin importar qué pase con el `<select>` oculto (incluso "Limpiar" no lo desbloquea — está forzado en la función, no solo en el valor inicial).
-  - Cambia los títulos/subtítulos y las etiquetas de navegación (ej. "Nuevo Gasto de Viáticos", "Consultar Caja Menor") para que quede claro que es una vista acotada.
-- Los links a repartir:
-  - `https://ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/?vista=viaticos`
-  - `https://ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/?vista=caja_menor`
+- **Un solo parámetro de URL: `?vista=gastos`** (simplificado el 2026-09-10 — originalmente eran dos links separados por tipo, `?vista=viaticos` / `?vista=caja_menor`, pero el usuario pidió unificarlos ya que las dos personas nuevas pueden compartir el mismo link). Al detectarlo (`vistaRestringida === 'gastos'` en el `<script>`, constante `TIPOS_GASTOS = ['viaticos', 'caja_menor']`), la página:
+  - En "Nuevo Pago": oculta los 4 botones de tipo originales (Pago a Proveedor, Compra, Venta, Pago Impuestos) y deja visibles solo "Viáticos" y "Caja Menor" — el usuario elige entre esos dos con el flujo normal de clic (no hay auto-selección, porque ahora hay una elección real entre dos opciones).
+  - En "Consultar Pagos": reemplaza las opciones del `<select>` de "Tipo de pago" para que solo ofrezca "Todos" (dentro del universo de gastos), "Viáticos" o "Caja Menor" — y `filtrarRows()` aplica además un filtro duro (`TIPOS_GASTOS.some(t => rTipo.includes(t))`) que excluye cualquier fila que no sea de esos dos tipos, sin importar el resto de filtros.
+  - Cambia títulos/subtítulos y etiquetas de navegación a "Nuevo Gasto" / "Consultar Gastos".
+- El link a repartir a las dos personas nuevas (el mismo para ambas):
+  - `https://ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/?vista=gastos`
 - El link normal (sin `?vista=`) sigue mostrando todo, sin restricciones — para el usuario con acceso completo.
 
 ### ⚠️ Limitación conocida: instalar como PWA (ícono en el celular)
-`manifest.json` tiene un `start_url` fijo (`/PJ04-CONTROL-PAGOS/`, sin query string). Si una de las dos personas restringidas intenta "Agregar a pantalla de inicio" desde su link (`?vista=viaticos`), es probable que el ícono instalado abra la app en la URL del `start_url` del manifest — es decir, **la vista completa sin restricción**, no la vista acotada. Por ahora, a estas dos personas hay que indicarles que usen el link como marcador/acceso directo del navegador, no que lo "instalen" como PWA. Si se quiere un ícono propio en el celular que sí respete la restricción, hay que crear manifests separados por vista y cambiar dinámicamente el `<link rel="manifest">` según el parámetro — no implementado todavía, pendiente si se pide.
+`manifest.json` tiene un `start_url` fijo (`/PJ04-CONTROL-PAGOS/`, sin query string). Si alguna de las dos personas restringidas intenta "Agregar a pantalla de inicio" desde `?vista=gastos`, es probable que el ícono instalado abra la app en la URL del `start_url` del manifest — es decir, **la vista completa sin restricción**, no la vista acotada. Por ahora, hay que indicarles que usen el link como marcador/acceso directo del navegador, no que lo "instalen" como PWA. Si se quiere un ícono propio en el celular que sí respete la restricción, hay que crear un manifest separado para esta vista y cambiar dinámicamente el `<link rel="manifest">` según el parámetro — no implementado todavía, pendiente si se pide.
 
 ## 📧 Reportes automáticos (Google Apps Script, sin n8n)
 Para evitar depender de n8n y como salvaguarda tras el incidente de la cuenta eliminada, se configuraron dos reportes automáticos **directamente en Google Apps Script**, vinculados al Google Sheet "CONTROL DE PAGOS":
@@ -132,6 +131,7 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - Es decir: **cada cierre de sesión de trabajo = commit + push automático**. No se requiere acción manual de git para mantener el repo actualizado.
 
 ## Historial de cambios recientes
+- **2026-09-10**: Simplificado el modo de vista restringida a un solo link `?vista=gastos` (antes dos links, `?vista=viaticos` y `?vista=caja_menor`). Ahora "Nuevo Pago" muestra solo los botones Viáticos/Caja Menor (elección real, sin auto-fill) y "Consultar Pagos" limita las opciones del `<select>` de tipo a esas dos, con un filtro duro adicional en `filtrarRows()`. `sw.js` → `control-pagos-v21`.
 - **2026-09-10**: Se agregan tipos de pago "Viáticos" y "Caja Menor" (botones, badges, opciones de filtro) y modo de vista restringida por `?vista=viaticos`/`?vista=caja_menor` en `index.html` — oculta el selector/filtro de tipo y fuerza el resultado a esa categoría, pensado para dar acceso limitado a dos personas nuevas sin exponer el resto de pagos. Filtrado solo en cliente (decisión del usuario, no en n8n) — ver sección "🔗 Vista restringida por link" arriba para el detalle y las limitaciones (incluye una de instalación como PWA). `sw.js` → `control-pagos-v20`.
 - **2026-08-31**: Panel principal (`main`) ampliado de `max-width: 880px` a `968px` (+10%) porque la tabla de resultados (ahora con "Nombre del pago" y "Registrado por") desbordaba y cortaba la columna "Archivo". `sw.js` → `control-pagos-v19`. Además, se subió el timeout del hook de auto-push de 30s a 60s (ver nota operativa arriba) tras dos fallos silenciosos de `git push`.
 - **2026-08-31**: Se agrega columna "Nombre del pago" (`r['NOMBRE DE PAGO']`) en `renderResultados()`, ubicada entre "Tipo" y "Proveedor" en el encabezado y en cada fila. `sw.js` → `control-pagos-v18`.
