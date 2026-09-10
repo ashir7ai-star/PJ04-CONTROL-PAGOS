@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-09-10** — Simplificado el modo de vista restringida a **un solo link** (`?vista=gastos`) que combina "Viáticos" y "Caja Menor" — antes eran dos links separados, el usuario pidió unificarlos ya que las dos personas nuevas pueden compartir el mismo. Ver sección "🔗 Vista restringida por link" abajo. `sw.js` → `control-pagos-v21`.
+**2026-09-10** — Fix visual: al hacer clic en "Viáticos" o "Caja Menor" en "Nuevo Pago" no se veía ningún color/selección — faltaba el CSS `.tipo-btn.active[data-value="..."]` para esos dos tipos (sí existía para los 4 originales). El clic funcionaba (`tipoHidden.value` se seteaba bien), solo faltaba el estilo. Agregado con los mismos colores de los badges (`#0891b2` viáticos, `#db2777` caja menor). `sw.js` → `control-pagos-v22`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -28,7 +28,7 @@ Todo vive en un único [index.html](index.html) (HTML + CSS + JS inline).
 |---|---|
 | Frontend | `index.html` — una sola página, sin dependencias de build |
 | Backup estable | `index.stable.html` — copia de respaldo de la última versión considerada estable |
-| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v21`) |
+| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v22`) |
 | Backend | **n8n** (self-hosted en `ashir-n8n.nr6aco.easypanel.host`), vía dos webhooks: |
 | — Registrar pago | `POST /webhook/81926c9e-22aa-4aef-bb4d-fe4ee520748c` (`N8N_WEBHOOK_URL`) — workflow: Webhook → **Upload file** (Google Drive) → **Append row in sheet** (Google Sheets) → Respond to Webhook |
 | — Consultar pagos | `GET /webhook/c6d11abd-61bc-439c-9dd9-550ed5008ee3` (`N8N_QUERY_URL`) — probablemente lee del mismo Google Sheet |
@@ -131,6 +131,7 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - Es decir: **cada cierre de sesión de trabajo = commit + push automático**. No se requiere acción manual de git para mantener el repo actualizado.
 
 ## Historial de cambios recientes
+- **2026-09-10**: Fix visual — se agrega el CSS `.tipo-btn.active[data-value="viaticos"]` y `[data-value="caja_menor"]` (faltaba desde que se crearon los botones), así que ahora al hacer clic sí se ve el borde/fondo/color de selección, igual que en los 4 tipos originales. `sw.js` → `control-pagos-v22`.
 - **2026-09-10**: Simplificado el modo de vista restringida a un solo link `?vista=gastos` (antes dos links, `?vista=viaticos` y `?vista=caja_menor`). Ahora "Nuevo Pago" muestra solo los botones Viáticos/Caja Menor (elección real, sin auto-fill) y "Consultar Pagos" limita las opciones del `<select>` de tipo a esas dos, con un filtro duro adicional en `filtrarRows()`. `sw.js` → `control-pagos-v21`.
 - **2026-09-10**: Se agregan tipos de pago "Viáticos" y "Caja Menor" (botones, badges, opciones de filtro) y modo de vista restringida por `?vista=viaticos`/`?vista=caja_menor` en `index.html` — oculta el selector/filtro de tipo y fuerza el resultado a esa categoría, pensado para dar acceso limitado a dos personas nuevas sin exponer el resto de pagos. Filtrado solo en cliente (decisión del usuario, no en n8n) — ver sección "🔗 Vista restringida por link" arriba para el detalle y las limitaciones (incluye una de instalación como PWA). `sw.js` → `control-pagos-v20`.
 - **2026-08-31**: Panel principal (`main`) ampliado de `max-width: 880px` a `968px` (+10%) porque la tabla de resultados (ahora con "Nombre del pago" y "Registrado por") desbordaba y cortaba la columna "Archivo". `sw.js` → `control-pagos-v19`. Además, se subió el timeout del hook de auto-push de 30s a 60s (ver nota operativa arriba) tras dos fallos silenciosos de `git push`.
