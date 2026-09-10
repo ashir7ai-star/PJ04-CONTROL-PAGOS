@@ -5,14 +5,16 @@
 ## Última actualización
 **2026-09-10** — Se agregan dos tipos de pago nuevos ("Viáticos" y "Caja Menor") y un modo de **vista restringida por link** (`?vista=viaticos` / `?vista=caja_menor`) para dar acceso limitado a dos personas nuevas, sin que vean el resto de los pagos del sistema. Ver sección "🔗 Vista restringida por link" abajo — incluye una limitación importante sobre instalación como PWA que hay que leer antes de repartir los links. `sw.js` → `control-pagos-v20`.
 
-## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (RESUELTO 2026-08-31)
+## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
 
-**Causa raíz confirmada:** el hook corría con `"shell": "powershell"`. El entorno de PowerShell de este harness tiene seteadas `GCM_INTERACTIVE=never` y `GIT_TERMINAL_PROMPT=0` (para evitar que cualquier comando se quede colgado esperando un prompt interactivo) — pero esto también le impide a Git Credential Manager acceder/refrescar el login guardado de GitHub cuando lo necesita, y el `push` falla de inmediato con: `fatal: Cannot prompt because user interactivity has been disabled` / `fatal: could not read Username for 'https://github.com': terminal prompts disabled`. Se reprodujo el error de forma directa y consistente (`git push origin main` vía PowerShell falla siempre; el mismo comando vía Bash nunca falló en toda la sesión, porque Bash no tiene esas variables seteadas).
+**Causa raíz parcial confirmada:** el hook corría con `"shell": "powershell"`. Ese entorno tiene seteadas `GCM_INTERACTIVE=never` y `GIT_TERMINAL_PROMPT=0` (para que ningún comando se cuelgue esperando un prompt interactivo) — pero esto también le impide a Git Credential Manager acceder/refrescar el login guardado de GitHub, y el `push` falla de inmediato con `fatal: Cannot prompt because user interactivity has been disabled` / `terminal prompts disabled`. Se reprodujo de forma directa y consistente por PowerShell; por Bash nunca falló en las pruebas manuales.
 
-**Fix aplicado:** se cambió el hook de `Stop` en `.claude/settings.local.json` de `"shell": "powershell"` a `"shell": "bash"`, traduciendo el comando a sintaxis POSIX (`cd ... && git add -A && if [ -n "$(git status --porcelain)" ]; then git commit -m "Auto: $(date '+%Y-%m-%d %H:%M')" && git push origin main; fi`). Mismo `timeout: 60`.
+**Fix aplicado (2026-08-31):** se cambió el hook de `Stop` en `.claude/settings.local.json` de `"shell": "powershell"` a `"shell": "bash"` (comando traducido a sintaxis POSIX). Mismo `timeout: 60`.
 
-**Si vuelve a pasar** (el push queda sin subir): correr `git status` / `git log origin/main..HEAD --oneline` para confirmarlo y subir manualmente, y revisar si el hook sigue en `shell: bash` (por si algo lo revirtió) antes de sospechar de otra cosa.
+**⚠️ 2026-09-10: volvió a pasar incluso con `shell: bash`.** El commit se hizo bien, el push quedó sin subir otra vez (branch "ahead of origin by 1"), confirmado con `git log origin/main..HEAD`. Se subió manualmente sin problema (igual que siempre al hacerlo a mano). Osea: el cambio a Bash resolvió la causa de credenciales de PowerShell, pero **no es la única causa** — sigue habiendo algo (posiblemente el proceso del hook cortándose por el ciclo de vida del host/VSCode, no por timeout ni por credenciales) que hace que el `push` no siempre se complete.
+
+**Mientras esto no quede resuelto de raíz:** al empezar cualquier sesión nueva, o si el usuario dice "no veo mis cambios", correr `git status` + `git fetch origin` + `git log origin/main..HEAD --oneline` para confirmar si hay un push pendiente, y subirlo manualmente (`git push origin main`) — no asumir que el hook lo hizo solo, aunque el `shell` ya esté en `bash`.
 
 ## Qué es este proyecto
 PWA (app web instalable, sin build ni framework) para **Millennium Energy Co** que permite:
