@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-09-10** — ✅ Marcada como **versión estable** por el usuario. Incluye: tipos de pago "Viáticos"/"Caja Menor", vista restringida `?vista=gastos`, y el fix visual de selección de esos dos botones. `sw.js` → `control-pagos-v22`.
+**2026-09-14** — Se agregan botones **"Excel" y "PDF"** en "Consultar Pagos" para descargar la consulta actual (filtrada o general), 100% client-side (sin backend). Funciona igual en el link completo y en `?vista=gastos`. Ver sección "📤 Exportar consulta (Excel/PDF)" abajo. `sw.js` → `control-pagos-v23`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -28,7 +28,7 @@ Todo vive en un único [index.html](index.html) (HTML + CSS + JS inline).
 |---|---|
 | Frontend | `index.html` — una sola página, sin dependencias de build |
 | Backup estable | `index.stable.html` — copia de respaldo de la última versión considerada estable |
-| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v22`) |
+| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v23`) |
 | Backend | **n8n** (self-hosted en `ashir-n8n.nr6aco.easypanel.host`), vía dos webhooks: |
 | — Registrar pago | `POST /webhook/81926c9e-22aa-4aef-bb4d-fe4ee520748c` (`N8N_WEBHOOK_URL`) — workflow: Webhook → **Upload file** (Google Drive) → **Append row in sheet** (Google Sheets) → Respond to Webhook |
 | — Consultar pagos | `GET /webhook/c6d11abd-61bc-439c-9dd9-550ed5008ee3` (`N8N_QUERY_URL`) — probablemente lee del mismo Google Sheet |
@@ -61,6 +61,18 @@ El sistema **no tiene login/usuarios** — es una sola página estática. Se le 
 
 ### ⚠️ Limitación conocida: instalar como PWA (ícono en el celular)
 `manifest.json` tiene un `start_url` fijo (`/PJ04-CONTROL-PAGOS/`, sin query string). Si alguna de las dos personas restringidas intenta "Agregar a pantalla de inicio" desde `?vista=gastos`, es probable que el ícono instalado abra la app en la URL del `start_url` del manifest — es decir, **la vista completa sin restricción**, no la vista acotada. Por ahora, hay que indicarles que usen el link como marcador/acceso directo del navegador, no que lo "instalen" como PWA. Si se quiere un ícono propio en el celular que sí respete la restricción, hay que crear un manifest separado para esta vista y cambiar dinámicamente el `<link rel="manifest">` según el parámetro — no implementado todavía, pendiente si se pide.
+
+## 📤 Exportar consulta (Excel/PDF) — 2026-09-14
+En "Consultar Pagos" (y su variante restringida "Consultar Gastos" con `?vista=gastos`), el encabezado de resultados tiene dos botones nuevos: **Excel** y **PDF**, que descargan exactamente los resultados que se están viendo en pantalla en ese momento (respetando todos los filtros activos — empresa, tipo, proveedor, N° de pago, rango de fechas — y, si aplica, el bloqueo de tipo de la vista restringida).
+
+- **100% client-side, sin backend ni n8n.** Se usan dos librerías cargadas por CDN (jsdelivr, mismo proveedor que flatpickr) y precacheadas en `sw.js` para que funcionen también offline en la PWA instalada:
+  - [SheetJS/xlsx](https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js) para generar el `.xlsx`.
+  - [jsPDF](https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js) + [jspdf-autotable](https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js) para el `.pdf`.
+- **De dónde salen los datos:** `ultimosResultados` (variable global en `index.html`) se actualiza cada vez que `renderResultados()` corre — siempre son los resultados de la última búsqueda ejecutada, no todo el sistema.
+- **Contenido de ambos archivos:** encabezado "Millennium Energy Co" + título dinámico (toma el texto de `#searchTitle`, así que dice "Consultar Pagos" o "Consultar Gastos" según la vista), línea con el resumen de filtros activos (`resumenFiltros()`), fecha/hora de generación, tabla con las mismas columnas que se ven en pantalla, y una fila de TOTAL al final.
+- **Nombre de archivo:** `<Título_reporte>_<fecha>_<hora>.xlsx|pdf`, ej. `Consultar_Pagos_2026-09-14_1530.xlsx`.
+- **Refactor asociado:** se extrajeron los helpers `tipoInfo(tipoRaw)` (antes duplicado en dos sitios) y `valorDe(r)`, reusados tanto en `renderResultados()` como en las funciones de exportación — evita que la lógica de tipos/badges se desincronice entre la tabla en pantalla y lo exportado.
+- **Limitación conocida:** SheetJS en su edición gratuita (`xlsx.full.min.js`) no soporta negrita/colores al escribir — el Excel exportado tiene fusión de celdas para el título pero sin formato de texto en negrita. El PDF sí tiene estilo completo (colores, encabezado azul corporativo, numeración de páginas) porque jsPDF+autotable no tiene esa restricción.
 
 ## 📧 Reportes automáticos (Google Apps Script, sin n8n)
 Para evitar depender de n8n y como salvaguarda tras el incidente de la cuenta eliminada, se configuraron dos reportes automáticos **directamente en Google Apps Script**, vinculados al Google Sheet "CONTROL DE PAGOS":
@@ -131,6 +143,7 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - Es decir: **cada cierre de sesión de trabajo = commit + push automático**. No se requiere acción manual de git para mantener el repo actualizado.
 
 ## Historial de cambios recientes
+- **2026-09-14**: Botones "Excel" y "PDF" en "Consultar Pagos" para descargar la consulta actual (respeta filtros y vista restringida). Client-side con SheetJS + jsPDF/autotable (CDN, precacheados en `sw.js`). Refactor: `tipoInfo()`/`valorDe()` helpers extraídos para no duplicar lógica entre `renderResultados()` y la exportación. Ver sección "📤 Exportar consulta" arriba. `sw.js` → `control-pagos-v23`.
 - **2026-09-10**: ✅ Marcada como **versión estable** — `index.stable.html` = `index.html` (incluye Viáticos/Caja Menor, vista `?vista=gastos`, y el fix visual de selección).
 - **2026-09-10**: Fix visual — se agrega el CSS `.tipo-btn.active[data-value="viaticos"]` y `[data-value="caja_menor"]` (faltaba desde que se crearon los botones), así que ahora al hacer clic sí se ve el borde/fondo/color de selección, igual que en los 4 tipos originales. `sw.js` → `control-pagos-v22`.
 - **2026-09-10**: Simplificado el modo de vista restringida a un solo link `?vista=gastos` (antes dos links, `?vista=viaticos` y `?vista=caja_menor`). Ahora "Nuevo Pago" muestra solo los botones Viáticos/Caja Menor (elección real, sin auto-fill) y "Consultar Pagos" limita las opciones del `<select>` de tipo a esas dos, con un filtro duro adicional en `filtrarRows()`. `sw.js` → `control-pagos-v21`.

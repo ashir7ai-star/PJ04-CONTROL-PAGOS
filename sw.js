@@ -1,11 +1,14 @@
-const CACHE = 'control-pagos-v22';
+const CACHE = 'control-pagos-v23';
 const ASSETS = [
   '/PJ04-CONTROL-PAGOS/',
   '/PJ04-CONTROL-PAGOS/index.html',
   'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
   'https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css',
   'https://cdn.jsdelivr.net/npm/flatpickr',
-  'https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js'
+  'https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js',
+  'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+  'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js',
+  'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js'
 ];
 
 self.addEventListener('install', e => {
