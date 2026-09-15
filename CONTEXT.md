@@ -211,6 +211,48 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - Cuando se considera que `index.html` está en un punto **estable**, se copia a `index.stable.html` (comando permitido: `copy index.html index.stable.html`). Ese cambio también queda protegido por el mismo hook de auto-commit/push.
 - Es decir: **cada cierre de sesión de trabajo = commit + push automático**. No se requiere acción manual de git para mantener el repo actualizado.
 
+## 🔐 PROPUESTA EN ANÁLISIS: login real + permisos por sección (planteada 2026-09-15)
+**Estado: solo análisis, NADA implementado.** El usuario la planteó y dijo que continuamos después. No empezar a construir sin confirmar las decisiones del final de esta sección.
+
+### Qué pidió el usuario
+1. Cada sección con usuarios y permisos propios, administrables por los dos admins desde una **sección de Configuración** nueva (asignar correo → sección).
+2. **Login**, preferiblemente con Google (o correo/contraseña), con registro de usuarios nuevos (nombre, correo, teléfono).
+3. **Reglas de visualización por sección**: quien tenga "Viáticos" no puede ver los pagos de "Registro de pagos", etc.
+4. **Unificar los links** — eliminar el `?vista=gastos` y controlar todo con el login.
+5. **Separar los datos por hoja**: Viáticos → hoja nueva "Viaticos"; Caja Menor → hoja nueva "Caja Menor"; el resto sigue en la hoja principal.
+
+### El punto crítico del análisis
+**Un login en el frontend NO da seguridad si los endpoints siguen abiertos.** Hoy el webhook de consulta de n8n devuelve todos los pagos a cualquiera que sepa la URL, y el Apps Script está desplegado como "Anyone". Poner una pantalla de login encima sería el mismo teatro que ya tenemos con `?vista=gastos`. Para que la restricción sea real, **el servidor debe identificar al que llama y devolver solo lo que le corresponde**.
+
+### Arquitectura recomendada
+- **Google Sign-In (Google Identity Services)** en el frontend → se obtiene un **ID token (JWT)** → se manda en cada petición → **Apps Script lo verifica contra Google** (`https://oauth2.googleapis.com/tokeninfo?id_token=...`, validando `aud` = nuestro Client ID y `email_verified`) y extrae el correo verificado. Ese correo no se puede falsificar desde el cliente.
+  - Se descarta usuario/contraseña propio: implicaría guardar y hashear contraseñas, recuperación, etc. Riesgo innecesario cuando Google lo resuelve.
+  - Se descarta desplegar el Web App como "Execute as: User accessing" (que daría `Session.getActiveUser()`): **no funciona con `fetch` desde otro origen** (GitHub Pages). Solo funcionaría si la app entera se sirviera desde Apps Script con HtmlService, lo que cambiaría la URL y rompería la PWA actual.
+- **Hoja "USUARIOS"**: `CORREO · NOMBRE · TELEFONO · ROL (admin|usuario) · SECCIONES (lista: pagos, viaticos, caja_menor, aprobaciones) · ESTADO (pendiente|activo|inactivo) · FECHA REGISTRO`.
+- **Flujo de alta**: usuario entra → login Google → el backend no lo encuentra → lo crea como `pendiente` pidiéndole nombre y teléfono → no ve nada hasta que un admin lo active y le asigne secciones desde Configuración. Resuelve registro y control de acceso en un solo flujo, sin auto-asignación de permisos.
+- **Permisos por hoja**: al separar Viáticos y Caja Menor en hojas propias, el permiso se vuelve "qué hoja puede leer el servidor para ti" — mucho más robusto que filtrar filas, y encaja con el punto 5 del usuario.
+
+### Consecuencia grande: obliga a salir de n8n del todo
+El filtrado por permisos tiene que ocurrir donde se validó el token (Apps Script). Eso implica **migrar "Nuevo Pago" (escritura + archivo) y "Consultar Pagos" (lectura) de n8n a Apps Script**. Va en la dirección que el usuario ya quería, pero **es una reescritura grande, no un agregado**.
+
+### Costos honestos que ya se le comunicaron
+1. **Los envíos se vuelven más lentos**: "Nuevo Pago" pasaría de n8n (~3-5s) a Apps Script (~15-30s con archivo) — justo la lentitud que le molestó en Aprobaciones. Mitigable, no eliminable.
+2. **Todos necesitan cuenta de Google.**
+3. **Hacerlo por fases**, el sistema está en producción con pagos reales.
+
+### Fases propuestas
+1. Hojas "Viaticos" y "Caja Menor" + migrar escritura/lectura a Apps Script.
+2. Login Google + hoja USUARIOS + registro en estado pendiente.
+3. Sección "Configuración" para administrar usuarios.
+4. Aplicar reglas por sección en el servidor y eliminar `?vista=gastos`.
+
+### Decisiones pendientes de confirmar con el usuario
+- ¿Google Sign-In (recomendado) o correo/contraseña?
+- ¿Acepta migrar todo fuera de n8n y la lentitud que implica en "Nuevo Pago"?
+- Los registros de Viáticos/Caja Menor que ya existen en la hoja principal: ¿se migran a las hojas nuevas o el histórico se queda donde está y solo lo nuevo va separado?
+- ¿Un usuario puede tener varias secciones a la vez? ¿Los admins ven todo siempre?
+- ¿Qué pasa con los pagos que registre un usuario de Viáticos — solo ve los suyos o todos los de su sección?
+
 ## ⚡ Rendimiento de Aprobaciones — por qué se siente lento (2026-09-15)
 **Apps Script es inherentemente lento para este caso.** Un `solicitar_aprobacion` hace, de forma síncrona antes de responder: decodificar base64 → crear archivo en Drive → `setSharing` (llamada extra a la API de Drive, ~1-3s por archivo) → `appendRow` en el Sheet → enviar correo HTML. Fácilmente 15-30 segundos. Un `consultar_solicitudes` arranca en frío en ~2-4s.
 
