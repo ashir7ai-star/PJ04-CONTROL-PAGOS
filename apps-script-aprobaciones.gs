@@ -213,28 +213,11 @@ function decidirSolicitud_(body) {
     if (col !== -1) hoja.getRange(filaIndex + 1, col + 1).setValue(cambios[campo]);
   });
 
-  if (aprobado) registrarPagoOficial_(solicitud);
+  // Nota: aprobar NO registra nada en la hoja de Control de Pagos.
+  // Es solo un visto bueno visible en el módulo de Aprobaciones (decisión del usuario).
   notificarSolicitante_(solicitud, cambios['ESTADO'], body.comentario);
 
   return { status: 'success' };
-}
-
-// Al aprobar, crea el registro oficial en la hoja principal de Control de Pagos.
-function registrarPagoOficial_(solicitud) {
-  const hojaPagos = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
-  agregarFilaPorEncabezados_(hojaPagos, {
-    'FECHA REGISTRO': Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'),
-    'EMPRESA':        solicitud['EMPRESA'],
-    'TIPO FACTURA':   solicitud['TIPO DE PAGO'],
-    'REGISTRADO POR': solicitud['SOLICITADO POR'],
-    'NOMBRE DE PAGO': solicitud['NOMBRE DEL PAGO'],
-    'PROVEEDOR':      solicitud['PROVEEDOR'],
-    'FECHA DE PAGO':  solicitud['FECHA DE PAGO'],
-    'VALOR FACTURA':  solicitud['VALOR'],
-    'NOTAS':          solicitud['NOTAS'],
-    'URL ARCHIVO':    solicitud['URL ARCHIVO'],
-    'ID REGISTRO':    new Date().toISOString()
-  });
 }
 
 function notificarSolicitante_(solicitud, estado, comentario) {
@@ -250,7 +233,7 @@ function notificarSolicitante_(solicitud, estado, comentario) {
     'Valor:           ' + formatoMoneda_(solicitud['VALOR']) + '\n';
 
   if (aprobado) {
-    cuerpo += '\nQuedó registrada en el sistema de Control de Pagos.';
+    cuerpo += '\nYa cuentas con el visto bueno para proceder.';
   } else if (comentario) {
     cuerpo += '\nMotivo del rechazo: ' + comentario;
   }

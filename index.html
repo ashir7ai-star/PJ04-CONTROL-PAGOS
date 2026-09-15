@@ -2957,7 +2957,7 @@
       const btnRechazar = e.target.closest('.btn-rechazar');
 
       if (btnAprobar) {
-        if (!confirm('¿Aprobar esta solicitud? Se registrará como pago oficial en el sistema.')) return;
+        if (!confirm('¿Dar el visto bueno a esta solicitud? Se le notificará al solicitante.')) return;
         await decidirSolicitud(btnAprobar.dataset.id, 'aprobado', '', btnAprobar);
       }
 
@@ -2984,7 +2984,7 @@
         });
 
         if (result.status === 'success') {
-          showToast('success', decision === 'aprobado' ? '¡Solicitud aprobada!' : 'Solicitud rechazada', decision === 'aprobado' ? 'Se registró como pago oficial.' : 'Se notificó al solicitante.');
+          showToast('success', decision === 'aprobado' ? '¡Solicitud aprobada!' : 'Solicitud rechazada', 'Se le notificó al solicitante.');
           buscarSolicitudes();
         } else {
           throw new Error(result.message || 'Respuesta inesperada del servidor');
