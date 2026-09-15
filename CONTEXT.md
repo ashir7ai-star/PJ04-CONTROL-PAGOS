@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-09-14** — Se agregan botones **"Excel" y "PDF"** en "Consultar Pagos" para descargar la consulta actual (filtrada o general), 100% client-side (sin backend). Funciona igual en el link completo y en `?vista=gastos`. Ver sección "📤 Exportar consulta (Excel/PDF)" abajo. `sw.js` → `control-pagos-v23`.
+**2026-09-15** — ✅ Marcada como **versión estable** por el usuario. Incluye los botones "Excel"/"PDF" de exportación en "Consultar Pagos" (ver sección "📤 Exportar consulta (Excel/PDF)" abajo). `sw.js` → `control-pagos-v23`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -143,6 +143,7 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - Es decir: **cada cierre de sesión de trabajo = commit + push automático**. No se requiere acción manual de git para mantener el repo actualizado.
 
 ## Historial de cambios recientes
+- **2026-09-15**: ✅ Marcada como **versión estable** — `index.stable.html` = `index.html` (incluye exportación a Excel/PDF).
 - **2026-09-14**: Botones "Excel" y "PDF" en "Consultar Pagos" para descargar la consulta actual (respeta filtros y vista restringida). Client-side con SheetJS + jsPDF/autotable (CDN, precacheados en `sw.js`). Refactor: `tipoInfo()`/`valorDe()` helpers extraídos para no duplicar lógica entre `renderResultados()` y la exportación. Ver sección "📤 Exportar consulta" arriba. `sw.js` → `control-pagos-v23`.
 - **2026-09-10**: ✅ Marcada como **versión estable** — `index.stable.html` = `index.html` (incluye Viáticos/Caja Menor, vista `?vista=gastos`, y el fix visual de selección).
 - **2026-09-10**: Fix visual — se agrega el CSS `.tipo-btn.active[data-value="viaticos"]` y `[data-value="caja_menor"]` (faltaba desde que se crearon los botones), así que ahora al hacer clic sí se ve el borde/fondo/color de selección, igual que en los 4 tipos originales. `sw.js` → `control-pagos-v22`.
