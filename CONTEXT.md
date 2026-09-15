@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-09-15** — ✅ Módulo **"Aprobaciones"** desplegado y funcionando. 🚫 **Decisión de arquitectura: este módulo y todo desarrollo futuro NO usan n8n** — el backend es un **Google Apps Script Web App** ya en producción (código en [apps-script-aprobaciones.gs](apps-script-aprobaciones.gs)). Ver sección "✅ Módulo de Aprobaciones" abajo. `sw.js` → `control-pagos-v28`.
+**2026-09-15** — ✅ Módulo **"Aprobaciones"** desplegado y funcionando. 🚫 **Decisión de arquitectura: este módulo y todo desarrollo futuro NO usan n8n** — el backend es un **Google Apps Script Web App** ya en producción (código en [apps-script.gs](apps-script.gs)). Ver sección "✅ Módulo de Aprobaciones" abajo. `sw.js` → `control-pagos-v28`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -87,14 +87,14 @@ Las 3 operaciones van por la MISMA URL, distinguidas por el parámetro `action`:
 - `ESTADO` arranca en `Pendiente` y pasa a `Aprobado`/`Rechazado`.
 - El script escribe usando los **encabezados reales** de la hoja (`agregarFilaPorEncabezados_`), así que el orden de las columnas puede cambiar sin romper nada.
 
-### El backend: `apps-script-aprobaciones.gs` (en el repo)
-El código completo está versionado en el repo como [apps-script-aprobaciones.gs](apps-script-aprobaciones.gs) — **ese archivo no se ejecuta desde el repo**, es la copia de referencia de lo que hay que pegar en el editor de Apps Script del Sheet. Si se edita el script en Google, **actualizar también esa copia en el repo** para que no se desincronicen.
+### El backend: `apps-script.gs` (en el repo)
+[apps-script.gs](apps-script.gs) contiene el **proyecto de Apps Script COMPLETO** — bloque A (reportes diario/mensual, que ya existían) + bloque B (Aprobaciones). **Ese archivo no se ejecuta desde el repo**: es la copia espejo de lo que está pegado en el editor de Apps Script del Sheet. Al editar de un lado, actualizar el otro. Para pegarlo en Google se reemplaza el contenido completo del editor, no se anexa.
 
 Funciones principales: `doGet`/`doPost` (enrutan por `action`), `crearSolicitud_`, `consultarSolicitudes_`, `decidirSolicitud_`, más helpers (`hojaSolicitudes_`, `carpetaFacturas_`, `subirArchivos_`, `agregarFilaPorEncabezados_`, `notificarAdmins_`, `notificarSolicitante_`). Convive sin colisiones con las funciones de reportes que ya estaban (`enviarReporteDiario`, `enviarReporteMensual`, etc.).
 
 ### Pasos de instalación (pendientes)
 1. Sheet "CONTROL DE PAGOS" → **Extensiones → Apps Script**.
-2. Pegar el contenido de `apps-script-aprobaciones.gs` **al final** del archivo existente (sin borrar las funciones de reportes). Verificar que no exista ya otro `doGet`/`doPost` en el proyecto — solo puede haber uno de cada.
+2. Pegar el contenido de `apps-script.gs` **al final** del archivo existente (sin borrar las funciones de reportes). Verificar que no exista ya otro `doGet`/`doPost` en el proyecto — solo puede haber uno de cada.
 3. **Deploy → New deployment → Web app** — Execute as: **Me**, Who has access: **Anyone** → Deploy → autorizar permisos (Drive, Sheets, Gmail).
 4. Copiar la URL que termina en `/exec` y pegarla en `APPS_SCRIPT_URL` en `index.html`.
 5. Bump de `sw.js`, sync de `index.stable.html`, commit+push.
@@ -213,7 +213,7 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - **2026-09-15**: Correos de Aprobaciones rediseñados en **HTML corporativo** (`plantillaCorreo_()` + helpers `filaDetalle_`, `enlacesArchivos_`, `etiquetaTipo_` en el Apps Script): encabezado azul con la marca, badge de estado con color según el caso (ámbar pendiente / verde aprobada / rojo rechazada), monto destacado, tabla de detalles y botón a la app. Se mandan con `htmlBody` + fallback de texto plano. En "Revisar Solicitudes" se agregó botón **Actualizar**, estado de carga y anti-caché (`&_=Date.now()`) en la consulta, porque las solicitudes recién creadas tardaban en aparecer. `sw.js` → `control-pagos-v28`.
 - **2026-09-15**: ✅ Apps Script desplegado como Web App y conectado (`APPS_SCRIPT_URL` con la URL real). Se quitaron las guardas `=== 'PENDIENTE_CONFIGURAR'` que quedaron como código muerto. El módulo de Aprobaciones queda operativo end-to-end. `sw.js` → `control-pagos-v28`.
 - **2026-09-15**: Se quita el auto-registro en "Control de Pagos" al aprobar (función `registrarPagoOficial_` eliminada del Apps Script). A pedido del usuario, aprobar es **solo un visto bueno visual** + notificación al solicitante. No reintroducir sin que lo pida.
-- **2026-09-15**: 🚫 **Se abandona n8n para desarrollos nuevos** (pedido explícito del usuario). El módulo de Aprobaciones se re-cableó de 3 webhooks de n8n a un solo **Google Apps Script Web App** (`APPS_SCRIPT_URL`, archivo [apps-script-aprobaciones.gs](apps-script-aprobaciones.gs) con el backend completo: crear solicitud, consultar, aprobar/rechazar, subir archivos a Drive y notificar por correo). Archivos van en base64 dentro del JSON y los POST usan `Content-Type: text/plain` para evitar el preflight CORS. `sw.js` → `control-pagos-v28`.
+- **2026-09-15**: 🚫 **Se abandona n8n para desarrollos nuevos** (pedido explícito del usuario). El módulo de Aprobaciones se re-cableó de 3 webhooks de n8n a un solo **Google Apps Script Web App** (`APPS_SCRIPT_URL`, archivo [apps-script.gs](apps-script.gs) con el backend completo: crear solicitud, consultar, aprobar/rechazar, subir archivos a Drive y notificar por correo). Archivos van en base64 dentro del JSON y los POST usan `Content-Type: text/plain` para evitar el preflight CORS. `sw.js` → `control-pagos-v28`.
 - **2026-09-15**: Frontend completo del módulo "Aprobaciones" (tercera pestaña: solicitar pago → revisar → aprobar/rechazar). Refactor de `initSelectorTipo()`/`initUploadZone()`/`initFormateadorValor()` para reusar la lógica entre "Nuevo Pago" y "Nueva Solicitud". `sw.js` → `control-pagos-v28`.
 - **2026-09-15**: ✅ Marcada como **versión estable** — `index.stable.html` = `index.html` (incluye exportación a Excel/PDF).
 - **2026-09-14**: Botones "Excel" y "PDF" en "Consultar Pagos" para descargar la consulta actual (respeta filtros y vista restringida). Client-side con SheetJS + jsPDF/autotable (CDN, precacheados en `sw.js`). Refactor: `tipoInfo()`/`valorDe()` helpers extraídos para no duplicar lógica entre `renderResultados()` y la exportación. Ver sección "📤 Exportar consulta" arriba. `sw.js` → `control-pagos-v23`.

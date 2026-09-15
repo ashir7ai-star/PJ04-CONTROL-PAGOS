@@ -1,28 +1,142 @@
 // ══════════════════════════════════════════════════════════════════════════
-// PJ04 CONTROL DE PAGOS — Backend del módulo "Aprobaciones"
-// Google Apps Script (NO usa n8n).
+// PJ04 CONTROL DE PAGOS — Google Apps Script completo
+// Copia de referencia de lo que está pegado en: Sheet "CONTROL DE PAGOS"
+// → Extensiones → Apps Script.
 //
-// CÓMO INSTALARLO:
-//   1. Abre el Google Sheet "CONTROL DE PAGOS" → Extensiones → Apps Script.
-//   2. PEGA este código AL FINAL del archivo existente (debajo de las funciones
-//      de reportes diario/mensual). No borres lo que ya está.
-//   3. Guarda (Ctrl+S).
-//   4. Deploy → New deployment → tipo "Web app":
-//        - Execute as:      Me
-//        - Who has access:  Anyone
-//      → Deploy → autoriza los permisos que pida.
-//   5. Copia la URL que termina en /exec y pégala en index.html, en la
-//      constante APPS_SCRIPT_URL.
+// Contiene dos bloques:
+//   A) Reportes automáticos (diario y mensual) — corren por triggers de tiempo.
+//   B) Backend del módulo "Aprobaciones" — Web App (doGet/doPost).
 //
-// IMPORTANTE: cada vez que edites este código, los cambios NO llegan solos a
-// la app. Hay que ir a Deploy → Manage deployments → ✏️ (editar) →
-// Version: "New version" → Deploy. Si no, la app sigue usando la versión vieja.
+// ⚠️ Si editas este código en Google, los cambios NO llegan solos a la app web.
+//    Hay que ir a: Deploy → Manage deployments → ✏️ → Version: "New version"
+//    → Deploy. Si no, la app sigue ejecutando la versión vieja.
+// ══════════════════════════════════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// A) REPORTES AUTOMÁTICOS (diario / mensual)
+// ══════════════════════════════════════════════════════════════════════════
+
+const DESTINATARIOS = ['nathan@ylevigroup.com', 'joseph@ylevigroup.com', 'contabilidad@energy-millennium.com'];
+const ZONA = 'America/Bogota';
+
+function leerDatos_() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  const rows = values.slice(1).map(row => {
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = row[i]);
+    return obj;
+  });
+  return { headers, rows };
+}
+
+function parseFechaRegistro_(val) {
+  if (!val) return null;
+  if (val instanceof Date) return val;
+  const partes = String(val).split(' ');
+  const [d, m, y] = partes[0].split('/').map(Number);
+  if (!d || !m || !y) return null;
+  return new Date(y, m - 1, d);
+}
+
+function mismoDia_(fecha, ref) {
+  return !!fecha && fecha.getFullYear() === ref.getFullYear() &&
+         fecha.getMonth() === ref.getMonth() && fecha.getDate() === ref.getDate();
+}
+
+function mismoMes_(fecha, ref) {
+  return !!fecha && fecha.getFullYear() === ref.getFullYear() &&
+         fecha.getMonth() === ref.getMonth();
+}
+
+// Crea un Sheet temporal con las filas filtradas, lo exporta a PDF+XLSX y lo borra
+function generarArchivos_(headers, filas, nombreBase) {
+  const temp = SpreadsheetApp.create(nombreBase);
+  const hoja = temp.getSheets()[0];
+  hoja.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+  if (filas.length > 0) hoja.getRange(2, 1, filas.length, headers.length).setValues(filas);
+  SpreadsheetApp.flush();
+
+  const tempId = temp.getId();
+  const gid = hoja.getSheetId();
+
+  const pdfBlob = UrlFetchApp.fetch(
+    `https://docs.google.com/spreadsheets/d/${tempId}/export?format=pdf&gid=${gid}&size=A4&portrait=false&fitw=true&gridlines=true`,
+    { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } }
+  ).getBlob().setName(`${nombreBase}.pdf`);
+
+  const xlsxBlob = UrlFetchApp.fetch(
+    `https://docs.google.com/spreadsheets/d/${tempId}/export?format=xlsx`,
+    { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } }
+  ).getBlob().setName(`${nombreBase}.xlsx`);
+
+  DriveApp.getFileById(tempId).setTrashed(true);
+  return { pdfBlob, xlsxBlob };
+}
+
+function totalValor_(headers, filas) {
+  const idx = headers.indexOf('VALOR FACTURA');
+  if (idx === -1) return 0;
+  return filas.reduce((s, f) => s + (parseFloat(f[idx]) || 0), 0);
+}
+
+// Trigger: Time-driven → Day timer
+function enviarReporteDiario() {
+  const hoy = new Date();
+  const { headers, rows } = leerDatos_();
+  const filtradas = rows.filter(r => mismoDia_(parseFechaRegistro_(r['FECHA REGISTRO']), hoy));
+  const filas = filtradas.map(r => headers.map(h => r[h]));
+
+  const fechaTxt = Utilities.formatDate(hoy, ZONA, 'dd/MM/yyyy');
+  const { pdfBlob, xlsxBlob } = generarArchivos_(headers, filas, `Reporte_Diario_Pagos_${Utilities.formatDate(hoy, ZONA, 'yyyy-MM-dd')}`);
+  const total = totalValor_(headers, filas);
+
+  MailApp.sendEmail({
+    to: DESTINATARIOS.join(','),
+    subject: `Reporte diario de pagos — ${fechaTxt}`,
+    body: filas.length > 0
+      ? `Adjunto el reporte de los pagos registrados hoy (${fechaTxt}).\n\nRegistros de hoy: ${filas.length}\nValor total del día: $${total.toLocaleString('es-CO')}\n\nCorreo generado automáticamente.`
+      : `Hoy (${fechaTxt}) no se registraron pagos nuevos.\n\nCorreo generado automáticamente.`,
+    attachments: [pdfBlob, xlsxBlob]
+  });
+}
+
+// Trigger: Time-driven → Month timer (día 1). Reporta el mes que acaba de cerrar.
+function enviarReporteMensual() {
+  const hoy = new Date();
+  const refMes = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+  const { headers, rows } = leerDatos_();
+  const filtradas = rows.filter(r => mismoMes_(parseFechaRegistro_(r['FECHA REGISTRO']), refMes));
+  const filas = filtradas.map(r => headers.map(h => r[h]));
+
+  const mesTxt = Utilities.formatDate(refMes, ZONA, 'MMMM yyyy');
+  const { pdfBlob, xlsxBlob } = generarArchivos_(headers, filas, `Reporte_Mensual_Pagos_${Utilities.formatDate(refMes, ZONA, 'yyyy-MM')}`);
+  const total = totalValor_(headers, filas);
+
+  MailApp.sendEmail({
+    to: DESTINATARIOS.join(','),
+    subject: `Reporte mensual de pagos — ${mesTxt}`,
+    body: `Adjunto el reporte de todos los pagos registrados durante ${mesTxt}.\n\nTotal de registros del mes: ${filas.length}\nValor total del mes: $${total.toLocaleString('es-CO')}\n\nCorreo generado automáticamente.`,
+    attachments: [pdfBlob, xlsxBlob]
+  });
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// B) MÓDULO DE APROBACIONES (Web App)
+//
+// Despliegue: Deploy → New deployment → Web app
+//   Execute as: Me · Who has access: Anyone
+// La URL /exec va en la constante APPS_SCRIPT_URL de index.html.
 // ══════════════════════════════════════════════════════════════════════════
 
 const NOMBRE_HOJA_SOLICITUDES = 'SOLICITUDES DE APROBACION';
 const NOMBRE_CARPETA_DRIVE    = 'PJ04 FACTURAS';
 const CORREOS_ADMIN           = ['nathan@ylevigroup.com', 'joseph@ylevigroup.com'];
 const ZONA_HORARIA            = 'America/Bogota';
+const URL_APP                 = 'https://ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/';
 
 const ENCABEZADOS_SOLICITUDES = [
   'ID SOLICITUD', 'FECHA SOLICITUD', 'EMPRESA', 'TIPO DE PAGO', 'NOMBRE DEL PAGO',
@@ -123,8 +237,6 @@ function etiquetaTipo_(tipo) {
 
 // ─── Plantilla HTML de correo ─────────────────────────────────────────────
 
-const URL_APP = 'https://ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/';
-
 function filaDetalle_(etiqueta, valor) {
   if (!valor) return '';
   return '<tr>' +
@@ -141,7 +253,7 @@ function enlacesArchivos_(urlArchivo) {
   ).join('&nbsp;·&nbsp;');
 }
 
-// Arma el correo completo. color = acento del encabezado; etiqueta = texto del estado.
+// Arma el correo completo. color = acento del estado; etiquetaEstado = texto del badge.
 function plantillaCorreo_(opciones) {
   return '' +
   '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif;background:#f5f5f7;padding:24px 12px;">' +

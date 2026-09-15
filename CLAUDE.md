@@ -3,7 +3,7 @@
 - Antes de empezar a trabajar, lee [CONTEXT.md](CONTEXT.md) para entender el estado actual del proyecto.
 
 ## 🚫 Regla de arquitectura: no usar n8n en desarrollos nuevos
-El usuario pidió explícitamente (2026-09-15) **no depender más de n8n**. Para cualquier funcionalidad nueva que necesite backend (guardar datos, subir archivos, enviar correos), usar el **Google Apps Script** que ya está vinculado al Sheet "CONTROL DE PAGOS", desplegado como Web App. Ventaja adicional: el código lo podemos escribir completo nosotros (ver [apps-script-aprobaciones.gs](apps-script-aprobaciones.gs) como referencia), en vez de guiar al usuario paso a paso por la GUI de n8n.
+El usuario pidió explícitamente (2026-09-15) **no depender más de n8n**. Para cualquier funcionalidad nueva que necesite backend (guardar datos, subir archivos, enviar correos), usar el **Google Apps Script** que ya está vinculado al Sheet "CONTROL DE PAGOS", desplegado como Web App. Ventaja adicional: el código lo podemos escribir completo nosotros (ver [apps-script.gs](apps-script.gs) como referencia), en vez de guiar al usuario paso a paso por la GUI de n8n.
 
 Los módulos viejos (Nuevo Pago, Consultar Pagos, Agregar Factura) **siguen en n8n y no se tocan** — funcionan, y migrarlos sin que el usuario lo pida es riesgo innecesario.
 
