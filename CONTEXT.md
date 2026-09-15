@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-09-15** — ✅ Módulo **"Aprobaciones"** desplegado y funcionando. 🚫 **Decisión de arquitectura: este módulo y todo desarrollo futuro NO usan n8n** — el backend es un **Google Apps Script Web App** ya en producción (código en [apps-script.gs](apps-script.gs)). Ver sección "✅ Módulo de Aprobaciones" abajo. `sw.js` → `control-pagos-v31`.
+**2026-09-15** — ✅ Marcada como **versión estable**. Módulo **"Aprobaciones"** desplegado y funcionando. 🚫 **Decisión de arquitectura: este módulo y todo desarrollo futuro NO usan n8n** — el backend es un **Google Apps Script Web App** ya en producción (código en [apps-script.gs](apps-script.gs)). Ver sección "✅ Módulo de Aprobaciones" abajo. `sw.js` → `control-pagos-v31`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -226,6 +226,7 @@ El usuario reportó que al enviar aparecía **"No se pudo conectar con el sistem
 **Si se necesita más velocidad en el futuro:** lo más pesado es el correo dentro del request. Se podría diferir con un trigger `.after()` de Apps Script guardando el payload en `CacheService`, a costa de más complejidad y de que el correo llegue ~1 minuto después.
 
 ## Historial de cambios recientes
+- **2026-09-15**: ✅ Marcada como **versión estable** — `index.stable.html` = `index.html`. Incluye el módulo de Aprobaciones completo y operativo (Apps Script v3), correos HTML y las mitigaciones de rendimiento.
 - **2026-09-15**: Mitigaciones de lentitud en Aprobaciones tras prueba real del usuario (falso "No se pudo conectar" pese a que la solicitud sí se guardaba). Se descartó CORS con `curl`; era latencia. Cambios: un solo envío de correo a ambos admins, verificación post-fallo (`solicitudExiste()`), timeout de 120s con `AbortController`, caché local de la lista con pintado instantáneo, filtros de estado sin ir al servidor, y actualización optimista al aprobar/rechazar. Ver sección "⚡ Rendimiento de Aprobaciones" arriba. `sw.js` → `control-pagos-v31`.
 - **2026-09-15**: Correos de Aprobaciones rediseñados en **HTML corporativo** (`plantillaCorreo_()` + helpers `filaDetalle_`, `enlacesArchivos_`, `etiquetaTipo_` en el Apps Script): encabezado azul con la marca, badge de estado con color según el caso (ámbar pendiente / verde aprobada / rojo rechazada), monto destacado, tabla de detalles y botón a la app. Se mandan con `htmlBody` + fallback de texto plano. En "Revisar Solicitudes" se agregó botón **Actualizar**, estado de carga y anti-caché (`&_=Date.now()`) en la consulta, porque las solicitudes recién creadas tardaban en aparecer. `sw.js` → `control-pagos-v31`.
 - **2026-09-15**: ✅ Apps Script desplegado como Web App y conectado (`APPS_SCRIPT_URL` con la URL real). Se quitaron las guardas `=== 'PENDIENTE_CONFIGURAR'` que quedaron como código muerto. El módulo de Aprobaciones queda operativo end-to-end. `sw.js` → `control-pagos-v31`.
