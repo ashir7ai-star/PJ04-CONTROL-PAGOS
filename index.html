@@ -1942,10 +1942,31 @@
     // ─── URL del webhook "Agregar factura" (PENDIENTE: crear en n8n y pegar aquí) ───
     const N8N_ADDFILE_URL = 'PENDIENTE_CONFIGURAR_EN_N8N';
 
-    // ─── URLs del módulo de Aprobaciones (PENDIENTE: crear en n8n y pegar aquí) ───
-    const N8N_SOLICITUD_URL            = 'PENDIENTE_CONFIGURAR_EN_N8N';
-    const N8N_CONSULTAR_SOLICITUDES_URL = 'PENDIENTE_CONFIGURAR_EN_N8N';
-    const N8N_DECIDIR_SOLICITUD_URL    = 'PENDIENTE_CONFIGURAR_EN_N8N';
+    // ─── Backend del módulo de Aprobaciones: Google Apps Script Web App ───
+    // NO usa n8n. Es el mismo Apps Script del Sheet (el de los reportes), desplegado
+    // como Web App. Una sola URL atiende las 3 operaciones vía el parámetro "action".
+    // PENDIENTE: desplegar y pegar aquí la URL que termina en /exec
+    const APPS_SCRIPT_URL = 'PENDIENTE_CONFIGURAR';
+
+    // Apps Script no responde bien al preflight CORS, así que se envía como
+    // text/plain (el cuerpo sigue siendo JSON y se parsea igual del otro lado).
+    async function postAppsScript(payload) {
+      const response = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+      return response.json();
+    }
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload  = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
 
     // ─── Vista restringida por link (?vista=gastos) ─────────────────
     // Un solo link para las dos personas nuevas (Viáticos + Caja Menor).
@@ -2739,37 +2760,44 @@
         return;
       }
 
+      if (APPS_SCRIPT_URL === 'PENDIENTE_CONFIGURAR') {
+        showToast('error', 'Función no configurada', 'Falta desplegar el Apps Script y pegar su URL en la app.');
+        return;
+      }
+
       setLoadingSolicitud(true);
 
       try {
-        const formData = new FormData();
-        formData.append('tipo_factura',   tipoHiddenSolicitud.value);
-        formData.append('empresa',        document.getElementById('empresaSolicitud').value);
-        formData.append('solicitado_por', document.getElementById('solicitadoPor').value.trim());
-        formData.append('correo',         document.getElementById('correoSolicitante').value.trim());
-        formData.append('nombre_pago',    document.getElementById('nombrePagoSolicitud').value.trim());
-        formData.append('proveedor',      document.getElementById('proveedorSolicitud').value.trim());
-        formData.append('fecha_pago',     fechaPickerSolicitud.selectedDates[0]
-          ? fechaPickerSolicitud.formatDate(fechaPickerSolicitud.selectedDates[0], 'Y-m-d')
-          : document.getElementById('fechaPagoSolicitud').value);
-        formData.append('monto',          document.getElementById('montoSolicitud').value.replace(/\./g, ''));
-        formData.append('notas',          document.getElementById('notasSolicitud').value.trim());
-        formData.append('fecha_envio',    new Date().toISOString());
-        uploadSolicitud.getFiles().forEach(file => formData.append('archivo', file));
+        const archivos = await Promise.all(
+          uploadSolicitud.getFiles().map(async file => ({
+            nombre: file.name,
+            tipo:   file.type || 'application/octet-stream',
+            datos:  await fileToBase64(file)
+          }))
+        );
 
-        if (N8N_SOLICITUD_URL === 'PENDIENTE_CONFIGURAR_EN_N8N') {
-          showToast('error', 'Función no configurada', 'Falta conectar el webhook de "Solicitar Aprobación" en n8n.');
-          return;
-        }
+        const result = await postAppsScript({
+          action:         'solicitar_aprobacion',
+          tipo_factura:   tipoHiddenSolicitud.value,
+          empresa:        document.getElementById('empresaSolicitud').value,
+          solicitado_por: document.getElementById('solicitadoPor').value.trim(),
+          correo:         document.getElementById('correoSolicitante').value.trim(),
+          nombre_pago:    document.getElementById('nombrePagoSolicitud').value.trim(),
+          proveedor:      document.getElementById('proveedorSolicitud').value.trim(),
+          fecha_pago:     fechaPickerSolicitud.selectedDates[0]
+            ? fechaPickerSolicitud.formatDate(fechaPickerSolicitud.selectedDates[0], 'Y-m-d')
+            : document.getElementById('fechaPagoSolicitud').value,
+          monto:          document.getElementById('montoSolicitud').value.replace(/\./g, ''),
+          notas:          document.getElementById('notasSolicitud').value.trim(),
+          fecha_envio:    new Date().toISOString(),
+          archivos
+        });
 
-        const response = await fetch(N8N_SOLICITUD_URL, { method: 'POST', body: formData });
-        const result   = await response.json().catch(() => ({}));
-
-        if (response.ok && result.status === 'success') {
+        if (result.status === 'success') {
           showToast('success', '¡Solicitud enviada!', 'Un administrador la revisará pronto. Te avisaremos por correo la decisión.');
           resetSolicitudForm();
         } else {
-          throw new Error(result.message || 'HTTP ' + response.status);
+          throw new Error(result.message || 'Respuesta inesperada del servidor');
         }
       } catch (err) {
         console.error(err);
@@ -2822,15 +2850,15 @@
       const list  = document.getElementById('solicitudesList');
       const empty = document.getElementById('solicitudesEmpty');
 
-      if (N8N_CONSULTAR_SOLICITUDES_URL === 'PENDIENTE_CONFIGURAR_EN_N8N') {
+      if (APPS_SCRIPT_URL === 'PENDIENTE_CONFIGURAR') {
         list.innerHTML = '';
         empty.style.display = '';
-        empty.querySelector('p').textContent = 'Falta conectar el webhook de "Consultar Solicitudes" en n8n.';
+        empty.querySelector('p').textContent = 'Falta desplegar el Apps Script y pegar su URL en la app.';
         return;
       }
 
       try {
-        const res = await fetch(N8N_CONSULTAR_SOLICITUDES_URL);
+        const res = await fetch(APPS_SCRIPT_URL + '?action=consultar_solicitudes');
         const raw = await res.json();
         let rows = raw;
         if (typeof raw === 'string') rows = JSON.parse(raw);
@@ -2941,26 +2969,25 @@
     });
 
     async function decidirSolicitud(id, decision, comentario, botonOrigen) {
-      if (N8N_DECIDIR_SOLICITUD_URL === 'PENDIENTE_CONFIGURAR_EN_N8N') {
-        showToast('error', 'Función no configurada', 'Falta conectar el webhook de "Decidir Solicitud" en n8n.');
+      if (APPS_SCRIPT_URL === 'PENDIENTE_CONFIGURAR') {
+        showToast('error', 'Función no configurada', 'Falta desplegar el Apps Script y pegar su URL en la app.');
         return;
       }
       if (botonOrigen) botonOrigen.disabled = true;
       try {
-        const formData = new FormData();
-        formData.append('id', id);
-        formData.append('decision', decision);
-        formData.append('revisado_por', nombreRevisor());
-        formData.append('comentario', comentario || '');
+        const result = await postAppsScript({
+          action:       'decidir_solicitud',
+          id:           id,
+          decision:     decision,
+          revisado_por: nombreRevisor(),
+          comentario:   comentario || ''
+        });
 
-        const response = await fetch(N8N_DECIDIR_SOLICITUD_URL, { method: 'POST', body: formData });
-        const result   = await response.json().catch(() => ({}));
-
-        if (response.ok && result.status === 'success') {
+        if (result.status === 'success') {
           showToast('success', decision === 'aprobado' ? '¡Solicitud aprobada!' : 'Solicitud rechazada', decision === 'aprobado' ? 'Se registró como pago oficial.' : 'Se notificó al solicitante.');
           buscarSolicitudes();
         } else {
-          throw new Error(result.message || 'HTTP ' + response.status);
+          throw new Error(result.message || 'Respuesta inesperada del servidor');
         }
       } catch (err) {
         console.error(err);
