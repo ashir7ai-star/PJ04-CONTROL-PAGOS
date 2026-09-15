@@ -219,7 +219,25 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 2. **Login**, preferiblemente con Google (o correo/contraseña), con registro de usuarios nuevos (nombre, correo, teléfono).
 3. **Reglas de visualización por sección**: quien tenga "Viáticos" no puede ver los pagos de "Registro de pagos", etc.
 4. **Unificar los links** — eliminar el `?vista=gastos` y controlar todo con el login.
-5. **Separar los datos por hoja**: Viáticos → hoja nueva "Viaticos"; Caja Menor → hoja nueva "Caja Menor"; el resto sigue en la hoja principal.
+5. **Separar los datos por hoja y por carpeta de Drive** (ampliado el 2026-09-15): cada sección tiene su propia hoja en el Sheet **y su propia carpeta en Drive** para los archivos adjuntos.
+
+### Modelo de secciones (sección = tipo de pago = hoja = carpeta = permiso)
+| Sección | Hoja del Sheet | Carpeta Drive | ¿Existe hoy? |
+|---|---|---|---|
+| Registro de Pagos (Proveedor, Compra, Venta) | la principal actual | `PJ04 FACTURAS` | ✅ |
+| Viáticos | `Viaticos` | `PJ04 VIATICOS` | tipo sí, hoja/carpeta no |
+| Caja Menor | `Caja Menor` | `PJ04 CAJA MENOR` | tipo sí, hoja/carpeta no |
+| Pago Impuestos | `Pago Impuestos` | `PJ04 IMPUESTOS` | tipo sí, hoja/carpeta no |
+| **Seguridad Social** | `Seguridad Social` | `PJ04 SEGURIDAD SOCIAL` | ❌ **tipo de pago NUEVO** |
+| **Pago Nómina** | `Pago Nomina` | `PJ04 NOMINA` | ❌ **tipo de pago NUEVO** |
+| Aprobaciones | `SOLICITUDES DE APROBACION` | ¿carpeta propia? (pendiente) | hoja sí |
+
+**Ojo:** "Seguridad Social" y "Pago Nómina" **no existen como tipo de pago**. Hay que crearlos completos igual que se hizo con Viáticos/Caja Menor: botón en el selector con ícono, `data-value`, badge de color, opción en el filtro de "Tipo de pago", y CSS `.tipo-btn.active[data-value="..."]` (este último se olvidó la vez pasada y el usuario reportó que "no se selecciona de ningún color").
+
+Efecto secundario bueno: un usuario restringido lee **una sola hoja**, así que su consulta será más rápida que hoy. Los admins leen todas.
+
+### ⚠️ Esto ROMPE los reportes diario/mensual
+`leerDatos_()` en `apps-script.gs` usa `SpreadsheetApp.getActiveSpreadsheet().getSheets()[0]` — **solo la primera hoja**. Apenas se separen los datos, los reportes seguirán llegando pero **sin Viáticos, Caja Menor, Impuestos, Nómina ni Seguridad Social, y sin ningún aviso de que están incompletos**. Hay que decidir si el reporte consolida todas las hojas o si se manda uno por sección. **No olvidar esto al implementar la fase 1.**
 
 ### El punto crítico del análisis
 **Un login en el frontend NO da seguridad si los endpoints siguen abiertos.** Hoy el webhook de consulta de n8n devuelve todos los pagos a cualquiera que sepa la URL, y el Apps Script está desplegado como "Anyone". Poner una pantalla de login encima sería el mismo teatro que ya tenemos con `?vista=gastos`. Para que la restricción sea real, **el servidor debe identificar al que llama y devolver solo lo que le corresponde**.
@@ -247,11 +265,17 @@ El filtrado por permisos tiene que ocurrir donde se validó el token (Apps Scrip
 4. Aplicar reglas por sección en el servidor y eliminar `?vista=gastos`.
 
 ### Decisiones pendientes de confirmar con el usuario
+**Sobre el login y los permisos:**
 - ¿Google Sign-In (recomendado) o correo/contraseña?
 - ¿Acepta migrar todo fuera de n8n y la lentitud que implica en "Nuevo Pago"?
-- Los registros de Viáticos/Caja Menor que ya existen en la hoja principal: ¿se migran a las hojas nuevas o el histórico se queda donde está y solo lo nuevo va separado?
 - ¿Un usuario puede tener varias secciones a la vez? ¿Los admins ven todo siempre?
 - ¿Qué pasa con los pagos que registre un usuario de Viáticos — solo ve los suyos o todos los de su sección?
+
+**Sobre la separación en hojas/carpetas:**
+- ¿"Pago a Proveedor", "Compra" y "Venta" quedan juntos en la hoja principal como una sola sección ("Registro de Pagos"), o cada uno también va aparte? (El usuario solo pidió 5 hojas nuevas, lo que sugiere que quedan juntos — confirmar.)
+- Los registros de Viáticos/Caja Menor/Impuestos que **ya existen** en la hoja principal: ¿se migran a las hojas nuevas o el histórico se queda donde está y solo lo nuevo va separado?
+- **Reportes diario/mensual**: ¿consolidan todas las hojas, o se manda un reporte por sección a los responsables de cada una?
+- **Aprobaciones**: ¿carpeta propia en Drive? ¿Un usuario de Viáticos solo puede solicitar aprobaciones de tipo Viáticos, o de cualquier tipo? (Hoy el módulo permite cualquier tipo a cualquiera, por decisión explícita del usuario.)
 
 ## ⚡ Rendimiento de Aprobaciones — por qué se siente lento (2026-09-15)
 **Apps Script es inherentemente lento para este caso.** Un `solicitar_aprobacion` hace, de forma síncrona antes de responder: decodificar base64 → crear archivo en Drive → `setSharing` (llamada extra a la API de Drive, ~1-3s por archivo) → `appendRow` en el Sheet → enviar correo HTML. Fácilmente 15-30 segundos. Un `consultar_solicitudes` arranca en frío en ~2-4s.
