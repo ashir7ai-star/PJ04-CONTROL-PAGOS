@@ -1988,13 +1988,32 @@
 
     // Apps Script no responde bien al preflight CORS, así que se envía como
     // text/plain (el cuerpo sigue siendo JSON y se parsea igual del otro lado).
-    async function postAppsScript(payload) {
-      const response = await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload)
-      });
-      return response.json();
+    // Apps Script tarda bastante (Drive + Sheets + correo), por eso el timeout es amplio.
+    async function postAppsScript(payload, timeoutMs = 120000) {
+      const control = new AbortController();
+      const alarma  = setTimeout(() => control.abort(), timeoutMs);
+      try {
+        const response = await fetch(APPS_SCRIPT_URL, {
+          method:  'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body:    JSON.stringify(payload),
+          signal:  control.signal
+        });
+        return await response.json();
+      } finally {
+        clearTimeout(alarma);
+      }
+    }
+
+    // Trae las solicitudes crudas del servidor (sin filtrar ni pintar).
+    async function traerSolicitudes() {
+      // El parámetro _ evita que el navegador sirva una respuesta cacheada
+      const res = await fetch(APPS_SCRIPT_URL + '?action=consultar_solicitudes&_=' + Date.now());
+      const raw = await res.json();
+      let rows = raw;
+      if (typeof raw === 'string') rows = JSON.parse(raw);
+      if (!Array.isArray(rows)) rows = Object.values(rows);
+      return rows.filter(r => r['ID SOLICITUD'] || r['SOLICITADO POR']);
     }
 
     function fileToBase64(file) {
@@ -2798,7 +2817,8 @@
         return;
       }
 
-      setLoadingSolicitud(true);
+      setLoadingSolicitud(true, 'Preparando archivos...');
+      const idEnvio = new Date().toISOString();
 
       try {
         const archivos = await Promise.all(
@@ -2808,6 +2828,8 @@
             datos:  await fileToBase64(file)
           }))
         );
+
+        setLoadingSolicitud(true, 'Enviando, puede tardar...');
 
         const result = await postAppsScript({
           action:         'solicitar_aprobacion',
@@ -2822,28 +2844,50 @@
             : document.getElementById('fechaPagoSolicitud').value,
           monto:          document.getElementById('montoSolicitud').value.replace(/\./g, ''),
           notas:          document.getElementById('notasSolicitud').value.trim(),
-          fecha_envio:    new Date().toISOString(),
+          fecha_envio:    idEnvio,
           archivos
         });
 
         if (result.status === 'success') {
-          showToast('success', '¡Solicitud enviada!', 'Un administrador la revisará pronto. Te avisaremos por correo la decisión.');
-          resetSolicitudForm();
+          solicitudEnviadaOk();
         } else {
           throw new Error(result.message || 'Respuesta inesperada del servidor');
         }
       } catch (err) {
         console.error(err);
-        showToast('error', 'Error al enviar', 'No se pudo conectar con el sistema. Intenta de nuevo.');
+        // Apps Script suele completar el trabajo aunque la respuesta no llegue
+        // (tarda mucho). Antes de dar error, se confirma contra el servidor.
+        setLoadingSolicitud(true, 'Verificando...');
+        if (await solicitudExiste(idEnvio)) {
+          solicitudEnviadaOk();
+        } else {
+          showToast('error', 'Error al enviar', 'No se pudo registrar la solicitud. Intenta de nuevo.');
+        }
       } finally {
         setLoadingSolicitud(false);
       }
     });
 
-    function setLoadingSolicitud(on) {
+    function solicitudEnviadaOk() {
+      showToast('success', '¡Solicitud enviada!', 'Un administrador la revisará pronto. Te avisaremos por correo la decisión.');
+      resetSolicitudForm();
+    }
+
+    // Confirma si una solicitud llegó al sistema, buscándola por su ID.
+    async function solicitudExiste(id) {
+      try {
+        const rows = await traerSolicitudes();
+        return rows.some(r => String(r['ID SOLICITUD']) === String(id));
+      } catch (err) {
+        console.error('No se pudo verificar la solicitud:', err);
+        return false;
+      }
+    }
+
+    function setLoadingSolicitud(on, texto) {
       btnSubmitSolicitud.disabled     = on;
       spinnerSolicitud.style.display  = on ? 'block' : 'none';
-      btnTextSolicitud.textContent    = on ? 'Enviando...' : 'Enviar Solicitud';
+      btnTextSolicitud.textContent    = on ? (texto || 'Enviando...') : 'Enviar Solicitud';
       btnArrowSolicitud.style.display = on ? 'none' : '';
     }
 
@@ -2879,6 +2923,18 @@
       return 'Pendiente';
     }
 
+    // Última lista conocida. Se pinta de inmediato al abrir el panel para que no
+    // se vea vacío mientras Apps Script responde (tarda varios segundos).
+    let solicitudesCache = JSON.parse(localStorage.getItem('solicitudesCache') || '[]');
+
+    function pintarSolicitudesFiltradas() {
+      const filtro = document.querySelector('#estadoFilterTabs .sub-tab.active').dataset.estado;
+      let rows = solicitudesCache;
+      if (filtro) rows = rows.filter(r => String(r['ESTADO'] || '').toLowerCase().includes(filtro));
+      rows = rows.slice().sort((a, b) => new Date(b['FECHA SOLICITUD'] || 0) - new Date(a['FECHA SOLICITUD'] || 0));
+      renderSolicitudes(rows);
+    }
+
     async function buscarSolicitudes() {
       const list    = document.getElementById('solicitudesList');
       const empty   = document.getElementById('solicitudesEmpty');
@@ -2886,32 +2942,24 @@
 
       btnRefr.disabled = true;
       btnRefr.classList.add('cargando');
-      if (list.innerHTML === '') {
+
+      if (solicitudesCache.length > 0) {
+        pintarSolicitudesFiltradas();           // algo en pantalla ya mismo
+      } else if (list.innerHTML === '') {
         empty.style.display = '';
         empty.querySelector('p').textContent = 'Cargando solicitudes...';
       }
 
       try {
-        // El parámetro _ evita que el navegador sirva una respuesta cacheada
-        const res = await fetch(APPS_SCRIPT_URL + '?action=consultar_solicitudes&_=' + Date.now());
-        const raw = await res.json();
-        let rows = raw;
-        if (typeof raw === 'string') rows = JSON.parse(raw);
-        if (!Array.isArray(rows)) rows = Object.values(rows);
-        rows = rows.filter(r => r['ID SOLICITUD'] || r['SOLICITADO POR']);
-
-        const filtroActivo = document.querySelector('#estadoFilterTabs .sub-tab.active').dataset.estado;
-        if (filtroActivo) {
-          rows = rows.filter(r => String(r['ESTADO'] || '').toLowerCase().includes(filtroActivo));
-        }
-
-        rows.sort((a, b) => new Date(b['FECHA SOLICITUD'] || 0) - new Date(a['FECHA SOLICITUD'] || 0));
-
-        renderSolicitudes(rows);
+        solicitudesCache = await traerSolicitudes();
+        localStorage.setItem('solicitudesCache', JSON.stringify(solicitudesCache));
+        pintarSolicitudesFiltradas();
       } catch (err) {
         console.error('buscarSolicitudes error:', err);
         showToast('error', 'Error de conexión', 'No se pudo obtener las solicitudes del sistema.');
-        empty.querySelector('p').textContent = 'No se pudo cargar. Intenta con "Actualizar".';
+        if (solicitudesCache.length === 0) {
+          empty.querySelector('p').textContent = 'No se pudo cargar. Intenta con "Actualizar".';
+        }
       } finally {
         btnRefr.disabled = false;
         btnRefr.classList.remove('cargando');
@@ -2987,7 +3035,7 @@
       tab.addEventListener('click', () => {
         document.querySelectorAll('#estadoFilterTabs .sub-tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
-        buscarSolicitudes();
+        pintarSolicitudesFiltradas();   // instantáneo: el filtro es sobre datos ya cargados
       });
     });
 
@@ -3022,13 +3070,21 @@
 
         if (result.status === 'success') {
           showToast('success', decision === 'aprobado' ? '¡Solicitud aprobada!' : 'Solicitud rechazada', 'Se le notificó al solicitante.');
+          // Se refleja en pantalla de una vez; el refresco confirma contra el servidor.
+          const fila = solicitudesCache.find(r => String(r['ID SOLICITUD']) === String(id));
+          if (fila) {
+            fila['ESTADO']       = decision === 'aprobado' ? 'Aprobado' : 'Rechazado';
+            fila['REVISADO POR'] = nombreRevisor();
+            fila['COMENTARIO']   = comentario || '';
+            pintarSolicitudesFiltradas();
+          }
           buscarSolicitudes();
         } else {
           throw new Error(result.message || 'Respuesta inesperada del servidor');
         }
       } catch (err) {
         console.error(err);
-        showToast('error', 'Error al procesar', 'No se pudo conectar con el sistema. Intenta de nuevo.');
+        showToast('error', 'Error al procesar', 'No se pudo conectar con el sistema. Revisa con "Actualizar" si el cambio quedó guardado.');
       } finally {
         if (botonOrigen) botonOrigen.disabled = false;
       }

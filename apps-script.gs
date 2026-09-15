@@ -351,9 +351,14 @@ function notificarAdmins_(fila) {
     'Solicitado por: ' + fila['SOLICITADO POR'] + '\n\n' +
     'Revísala en: ' + URL_APP;
 
-  CORREOS_ADMIN.forEach(correo =>
-    MailApp.sendEmail({ to: correo, subject: asunto, body: textoPlano, htmlBody: html })
-  );
+  // Un solo envío con ambos destinatarios: cada sendEmail cuesta 1-2s y el
+  // usuario está esperando esta respuesta, así que no se hace uno por correo.
+  MailApp.sendEmail({
+    to: CORREOS_ADMIN.join(','),
+    subject: asunto,
+    body: textoPlano,
+    htmlBody: html
+  });
 }
 
 // ─── 2) Consultar solicitudes ─────────────────────────────────────────────
