@@ -364,6 +364,7 @@
 
     input[type="text"],
     input[type="date"],
+    input[type="email"],
     textarea,
     select {
       background: var(--surface-2);
@@ -702,6 +703,40 @@
       font-weight: 600;
     }
 
+    /* ─── Sub-tabs (dentro de una vista) ────────────────────────────── */
+    .sub-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 22px;
+      flex-wrap: wrap;
+    }
+
+    .sub-tab {
+      padding: 8px 16px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-2);
+      font-size: 0.82rem;
+      font-weight: 600;
+      font-family: 'Inter', inherit;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+
+    .sub-tab:hover { border-color: var(--primary); color: var(--primary); }
+
+    .sub-tab.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+
+    .estado-tabs .sub-tab.active { background: var(--text); border-color: var(--text); }
+    .estado-tabs .sub-tab[data-estado="pendiente"].active { background: var(--warning); border-color: var(--warning); }
+    .estado-tabs .sub-tab[data-estado="aprobado"].active  { background: var(--success); border-color: var(--success); }
+    .estado-tabs .sub-tab[data-estado="rechazado"].active { background: var(--error);   border-color: var(--error); }
+
     /* ─── Search panel ───────────────────────────────────────────── */
     .search-filters {
       background: var(--surface);
@@ -749,6 +784,9 @@
     .btn-search:hover { background: var(--primary-hover); }
     .btn-search:disabled { opacity: 0.6; cursor: not-allowed; }
     .btn-search svg { width: 15px; height: 15px; }
+
+    .btn-search.btn-danger { background: var(--error); }
+    .btn-search.btn-danger:hover { background: #e0362c; }
 
     .btn-clear {
       padding: 10px 16px;
@@ -875,6 +913,117 @@
     .badge-viaticos { background: rgba(8,145,178,0.1); color: #0891b2; }
     .badge-caja     { background: rgba(219,39,119,0.1); color: #db2777; }
 
+    .badge-estado-pendiente  { background: var(--warning-light); color: var(--warning); }
+    .badge-estado-aprobado   { background: var(--success-light); color: var(--success); }
+    .badge-estado-rechazado  { background: var(--error-light);   color: var(--error); }
+
+    /* ─── Solicitudes (Aprobaciones) ─────────────────────────────── */
+    .solicitudes-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .solicitud-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      padding: 18px 20px;
+    }
+
+    .solicitud-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .solicitud-nombre {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 3px;
+    }
+
+    .solicitud-meta {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .solicitud-valor {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--primary);
+      white-space: nowrap;
+    }
+
+    .solicitud-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 10px 20px;
+      margin-bottom: 14px;
+      padding: 14px 0;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .solicitud-field-label {
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 2px;
+    }
+
+    .solicitud-field-value {
+      font-size: 0.85rem;
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .solicitud-comentario {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      background: var(--surface-2);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+
+    .solicitud-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn-aprobar, .btn-rechazar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 18px;
+      border-radius: var(--radius-sm);
+      border: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+      font-family: 'Inter', inherit;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+
+    .btn-aprobar svg, .btn-rechazar svg { width: 15px; height: 15px; }
+
+    .btn-aprobar { background: var(--success); color: white; }
+    .btn-aprobar:hover { opacity: 0.88; }
+    .btn-aprobar:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .btn-rechazar { background: var(--surface-2); color: var(--error); border: 1px solid var(--border); }
+    .btn-rechazar:hover { border-color: var(--error); background: var(--error-light); }
+
     .link-factura {
       color: var(--primary);
       text-decoration: none;
@@ -972,6 +1121,8 @@
       gap: 10px;
       margin-top: 16px;
     }
+
+    .modal-textarea { margin-bottom: 4px; }
 
     .link-factura:hover { text-decoration: underline; }
     .link-factura svg { width: 12px; height: 12px; }
@@ -1209,6 +1360,14 @@
         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
       </svg>
       <span id="navSearchLabel">Consultar Pagos</span>
+    </button>
+    <button class="nav-tab" data-view="aprobaciones">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+        <rect x="9" y="3" width="6" height="4" rx="1" ry="1"/>
+        <path d="m9 14 2 2 4-4"/>
+      </svg>
+      Aprobaciones
     </button>
   </nav>
 
@@ -1495,6 +1654,208 @@
     </div>
   </main>
 
+  <!-- Vista: Aprobaciones -->
+  <main id="viewAprobaciones" style="display:none;">
+    <div class="page-header">
+      <p class="page-title">Aprobaciones</p>
+      <p class="page-subtitle">Solicita un pago para aprobación o revisa las solicitudes pendientes.</p>
+    </div>
+
+    <div class="sub-tabs" id="aprobacionesSubTabs">
+      <button type="button" class="sub-tab active" data-subview="nueva">Nueva Solicitud</button>
+      <button type="button" class="sub-tab" data-subview="revisar" id="subTabRevisar">Revisar Solicitudes</button>
+    </div>
+
+    <!-- Panel: Nueva Solicitud -->
+    <div id="panelNuevaSolicitud">
+      <form id="solicitudForm" novalidate>
+
+        <div class="section-label">Tipo de pago <span class="req">*</span></div>
+        <div class="tipo-selector" id="tipoSelectorSolicitud">
+
+          <button type="button" class="tipo-btn" data-value="pago_proveedor">
+            <div class="tipo-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+                <line x1="1" y1="10" x2="23" y2="10"/>
+              </svg>
+            </div>
+            <span class="tipo-label">Pago a Proveedor</span>
+          </button>
+
+          <button type="button" class="tipo-btn" data-value="compra">
+            <div class="tipo-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <path d="M16 10a4 4 0 0 1-8 0"/>
+              </svg>
+            </div>
+            <span class="tipo-label">Compra</span>
+          </button>
+
+          <button type="button" class="tipo-btn" data-value="venta">
+            <div class="tipo-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="1" x2="12" y2="23"/>
+                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+              </svg>
+            </div>
+            <span class="tipo-label">Venta</span>
+          </button>
+
+          <button type="button" class="tipo-btn" data-value="impuestos">
+            <div class="tipo-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="3" y1="22" x2="21" y2="22"/>
+                <line x1="6" y1="18" x2="6" y2="11"/>
+                <line x1="10" y1="18" x2="10" y2="11"/>
+                <line x1="14" y1="18" x2="14" y2="11"/>
+                <line x1="18" y1="18" x2="18" y2="11"/>
+                <polyline points="2 7 12 2 22 7"/>
+                <line x1="2" y1="7" x2="22" y2="7"/>
+              </svg>
+            </div>
+            <span class="tipo-label">Pago Impuestos</span>
+          </button>
+
+          <button type="button" class="tipo-btn" data-value="viaticos">
+            <div class="tipo-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+              </svg>
+            </div>
+            <span class="tipo-label">Viáticos</span>
+          </button>
+
+          <button type="button" class="tipo-btn" data-value="caja_menor">
+            <div class="tipo-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
+                <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
+                <path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/>
+              </svg>
+            </div>
+            <span class="tipo-label">Caja Menor</span>
+          </button>
+
+        </div>
+        <input type="hidden" id="tipoFacturaSolicitud" />
+
+        <div class="card">
+          <p class="card-title">Información de la solicitud</p>
+          <div class="field-group">
+
+            <div class="field-row">
+              <div class="field">
+                <label for="empresaSolicitud">Empresa <span class="req">*</span></label>
+                <select id="empresaSolicitud" required>
+                  <option value="" disabled selected>Seleccionar</option>
+                  <option value="Millennium Co">Millennium Co</option>
+                  <option value="AMPAC SAS">AMPAC SAS</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="solicitadoPor">Solicitado por <span class="req">*</span></label>
+                <input type="text" id="solicitadoPor" placeholder="Nombre completo" required />
+              </div>
+            </div>
+
+            <div class="field-divider"></div>
+
+            <div class="field-row">
+              <div class="field">
+                <label for="correoSolicitante">Correo <span class="req">*</span></label>
+                <input type="email" id="correoSolicitante" placeholder="tu@correo.com" required />
+              </div>
+              <div class="field">
+                <label for="nombrePagoSolicitud">Nombre del pago <span class="req">*</span></label>
+                <input type="text" id="nombrePagoSolicitud" placeholder="Ej: Pago de servicios" required />
+              </div>
+            </div>
+
+            <div class="field-row">
+              <div class="field">
+                <label for="proveedorSolicitud">Proveedor <span class="req">*</span></label>
+                <input type="text" id="proveedorSolicitud" placeholder="Ej: Empresa ABC" required />
+              </div>
+              <div class="field">
+                <label for="fechaPagoSolicitud">Fecha de pago <span class="req">*</span></label>
+                <input type="date" id="fechaPagoSolicitud" required />
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="montoSolicitud">Valor <span class="req">*</span></label>
+              <div class="amount-wrapper">
+                <span class="amount-symbol">$</span>
+                <input type="text" id="montoSolicitud" placeholder="0" inputmode="numeric" autocomplete="off" required />
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="notasSolicitud">Notas adicionales</label>
+              <textarea id="notasSolicitud" placeholder="Observaciones sobre este pago..."></textarea>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="card">
+          <p class="card-title">Documento de soporte</p>
+
+          <div class="upload-zone" id="uploadZoneSolicitud">
+            <input type="file" id="archivoSolicitud" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple />
+            <div class="upload-icon-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </div>
+            <p class="upload-title"><span>Haz clic o arrastra</span> uno o varios archivos aquí</p>
+            <p class="upload-sub">PDF, JPG, PNG — máx. 15 MB c/u</p>
+          </div>
+
+          <div class="file-preview-list" id="filePreviewListSolicitud"></div>
+        </div>
+
+        <p class="hint"><span style="color:var(--error)">*</span> Campos obligatorios</p>
+
+        <button type="submit" class="btn-submit" id="btnSubmitSolicitud">
+          <div class="spinner" id="spinnerSolicitud"></div>
+          <span id="btnTextSolicitud">Enviar Solicitud</span>
+          <svg id="btnArrowSolicitud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"/>
+            <polyline points="12 5 19 12 12 19"/>
+          </svg>
+        </button>
+
+      </form>
+    </div>
+
+    <!-- Panel: Revisar Solicitudes (solo administradores) -->
+    <div id="panelRevisarSolicitudes" style="display:none;">
+      <div class="sub-tabs estado-tabs" id="estadoFilterTabs">
+        <button type="button" class="sub-tab active" data-estado="pendiente">Pendientes</button>
+        <button type="button" class="sub-tab" data-estado="aprobado">Aprobadas</button>
+        <button type="button" class="sub-tab" data-estado="rechazado">Rechazadas</button>
+        <button type="button" class="sub-tab" data-estado="">Todas</button>
+      </div>
+
+      <div id="solicitudesList" class="solicitudes-list"></div>
+
+      <div id="solicitudesEmpty" style="display:none;" class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+          <rect x="9" y="3" width="6" height="4" rx="1" ry="1"/>
+        </svg>
+        <p>No hay solicitudes en este estado.</p>
+      </div>
+    </div>
+  </main>
+
   <footer>
     <p class="footer-text">Desarrollado por: <strong>JND AI SYSTEMS</strong> · J. Nathan De Lima, Full Stack AI Developer</p>
   </footer>
@@ -1549,6 +1910,29 @@
     </div>
   </div>
 
+  <!-- Modal: Rechazar solicitud -->
+  <div class="modal-overlay" id="rechazoOverlay">
+    <div class="modal-box">
+      <div class="modal-header">
+        <p class="modal-title">Rechazar solicitud</p>
+        <button type="button" class="modal-close" id="rechazoClose" title="Cerrar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <p class="modal-sub">Indica brevemente el motivo — se le enviará por correo al solicitante.</p>
+
+      <textarea id="rechazoMotivo" class="modal-textarea" placeholder="Ej: Falta la factura original, el monto no coincide..." required></textarea>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-clear" id="rechazoCancelar">Cancelar</button>
+        <button type="button" class="btn-search btn-danger" id="rechazoConfirmar" style="flex:1;">
+          <div class="spinner" id="rechazoSpinner" style="display:none;"></div>
+          <span id="rechazoBtnText">Confirmar rechazo</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const N8N_WEBHOOK_URL = 'https://ashir-n8n.nr6aco.easypanel.host/webhook/81926c9e-22aa-4aef-bb4d-fe4ee520748c';
 
@@ -1557,6 +1941,11 @@
 
     // ─── URL del webhook "Agregar factura" (PENDIENTE: crear en n8n y pegar aquí) ───
     const N8N_ADDFILE_URL = 'PENDIENTE_CONFIGURAR_EN_N8N';
+
+    // ─── URLs del módulo de Aprobaciones (PENDIENTE: crear en n8n y pegar aquí) ───
+    const N8N_SOLICITUD_URL            = 'PENDIENTE_CONFIGURAR_EN_N8N';
+    const N8N_CONSULTAR_SOLICITUDES_URL = 'PENDIENTE_CONFIGURAR_EN_N8N';
+    const N8N_DECIDIR_SOLICITUD_URL    = 'PENDIENTE_CONFIGURAR_EN_N8N';
 
     // ─── Vista restringida por link (?vista=gastos) ─────────────────
     // Un solo link para las dos personas nuevas (Viáticos + Caja Menor).
@@ -1568,7 +1957,8 @@
 
     if (vistaRestringida === 'gastos') {
       // Nuevo Pago: solo dejar visibles los botones de Viáticos y Caja Menor
-      document.querySelectorAll('.tipo-btn').forEach(btn => {
+      // (Aprobaciones no se restringe: cualquiera puede solicitar cualquier tipo)
+      document.querySelectorAll('#tipoSelector .tipo-btn').forEach(btn => {
         if (!TIPOS_GASTOS.includes(btn.dataset.value)) btn.style.display = 'none';
       });
       document.getElementById('formTitle').textContent    = 'Nuevo Gasto';
@@ -1582,23 +1972,48 @@
 
       document.getElementById('navFormLabel').textContent   = 'Nuevo Gasto';
       document.getElementById('navSearchLabel').textContent = 'Consultar Gastos';
+
+      // Aprobaciones: solo administradores revisan — se oculta esa sub-pestaña
+      document.getElementById('subTabRevisar').style.display = 'none';
     }
 
     // ─── Navegación entre vistas ───────────────────────────────────
-    const navTabs   = document.querySelectorAll('.nav-tab');
-    const viewForm  = document.getElementById('paymentForm').closest('main');
-    const viewSearch = document.getElementById('viewSearch');
+    const navTabs           = document.querySelectorAll('.nav-tab');
+    const viewForm           = document.getElementById('paymentForm').closest('main');
+    const viewSearch         = document.getElementById('viewSearch');
+    const viewAprobaciones   = document.getElementById('viewAprobaciones');
+    const vistasPorNombre    = { form: viewForm, search: viewSearch, aprobaciones: viewAprobaciones };
 
     navTabs.forEach(tab => {
       tab.addEventListener('click', () => {
         navTabs.forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
-        if (tab.dataset.view === 'form') {
-          viewForm.style.display   = '';
-          viewSearch.style.display = 'none';
+        Object.entries(vistasPorNombre).forEach(([nombre, el]) => {
+          el.style.display = nombre === tab.dataset.view ? '' : 'none';
+        });
+        if (tab.dataset.view === 'aprobaciones' && !vistaRestringida) {
+          // Si el panel de revisión ya estaba activo, refresca la lista al volver a entrar
+          if (document.getElementById('subTabRevisar').classList.contains('active')) buscarSolicitudes();
+        }
+      });
+    });
+
+    // ─── Sub-navegación de Aprobaciones ────────────────────────────
+    const subTabs             = document.querySelectorAll('#aprobacionesSubTabs .sub-tab');
+    const panelNuevaSolicitud = document.getElementById('panelNuevaSolicitud');
+    const panelRevisar        = document.getElementById('panelRevisarSolicitudes');
+
+    subTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        subTabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        if (tab.dataset.subview === 'nueva') {
+          panelNuevaSolicitud.style.display = '';
+          panelRevisar.style.display        = 'none';
         } else {
-          viewForm.style.display   = 'none';
-          viewSearch.style.display = '';
+          panelNuevaSolicitud.style.display = 'none';
+          panelRevisar.style.display        = '';
+          buscarSolicitudes();
         }
       });
     });
@@ -2080,24 +2495,35 @@
     }
 
     // ─── Tipo de factura ───────────────────────────────────────────
-    const tipoBtns   = document.querySelectorAll('.tipo-btn');
-    const tipoHidden = document.getElementById('tipoFactura');
-
-    tipoBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        tipoBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        tipoHidden.value = btn.dataset.value;
+    function initSelectorTipo(selectorScope, hiddenInputId) {
+      const btns   = document.querySelectorAll(selectorScope + ' .tipo-btn');
+      const hidden = document.getElementById(hiddenInputId);
+      btns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          btns.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          hidden.value = btn.dataset.value;
+        });
       });
-    });
+      return { btns, hidden };
+    }
+
+    const { btns: tipoBtns, hidden: tipoHidden } = initSelectorTipo('#tipoSelector', 'tipoFactura');
+    const { btns: tipoBtnsSolicitud, hidden: tipoHiddenSolicitud } = initSelectorTipo('#tipoSelectorSolicitud', 'tipoFacturaSolicitud');
 
     // ─── Formateador de valor ──────────────────────────────────────
-    const montoInput = document.getElementById('monto');
-    montoInput.addEventListener('input', () => {
-      const raw = montoInput.value.replace(/\./g, '').replace(/\D/g, '');
-      if (raw === '') { montoInput.value = ''; return; }
-      montoInput.value = parseInt(raw, 10).toLocaleString('es-CO').replace(/,/g, '.');
-    });
+    function initFormateadorValor(inputId) {
+      const input = document.getElementById(inputId);
+      input.addEventListener('input', () => {
+        const raw = input.value.replace(/\./g, '').replace(/\D/g, '');
+        if (raw === '') { input.value = ''; return; }
+        input.value = parseInt(raw, 10).toLocaleString('es-CO').replace(/,/g, '.');
+      });
+      return input;
+    }
+
+    const montoInput          = initFormateadorValor('monto');
+    const montoInputSolicitud = initFormateadorValor('montoSolicitud');
 
     // ─── Flatpickr calendario ──────────────────────────────────────
     const fechaPicker = flatpickr('#fechaPago', {
@@ -2108,63 +2534,78 @@
       allowInput: false,
     });
 
-    // ─── Upload (múltiples archivos) ───────────────────────────────
-    const uploadZone      = document.getElementById('uploadZone');
-    const fileInput       = document.getElementById('archivoFactura');
-    const filePreviewList = document.getElementById('filePreviewList');
+    const fechaPickerSolicitud = flatpickr('#fechaPagoSolicitud', {
+      locale: 'es',
+      dateFormat: 'd/m/Y',
+      defaultDate: 'today',
+      disableMobile: true,
+      allowInput: false,
+    });
 
+    // ─── Upload (múltiples archivos) ───────────────────────────────
     const svgFile  = '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>';
     const svgImage = '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>';
     const svgTrash = '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>';
 
-    let selectedFiles = [];
+    function initUploadZone(zoneId, inputId, previewListId) {
+      const uploadZone      = document.getElementById(zoneId);
+      const fileInput       = document.getElementById(inputId);
+      const filePreviewList = document.getElementById(previewListId);
+      let selectedFiles = [];
 
-    fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
-    uploadZone.addEventListener('click', () => fileInput.click());
-
-    uploadZone.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); uploadZone.classList.add('dragover'); });
-    uploadZone.addEventListener('dragleave', e => { e.preventDefault(); e.stopPropagation(); uploadZone.classList.remove('dragover'); });
-    uploadZone.addEventListener('drop', e => {
-      e.preventDefault(); e.stopPropagation();
-      uploadZone.classList.remove('dragover');
-      addFiles(e.dataTransfer.files);
-    });
-
-    filePreviewList.addEventListener('click', e => {
-      const btn = e.target.closest('.file-remove');
-      if (!btn) return;
-      selectedFiles.splice(parseInt(btn.dataset.index, 10), 1);
-      renderFilePreviewList();
-    });
-
-    function addFiles(fileList) {
-      for (const file of fileList) {
-        if (file.size > 15 * 1024 * 1024) {
-          showToast('error', 'Archivo muy grande', `"${file.name}" supera el límite de 15 MB.`);
-          continue;
+      function addFiles(fileList) {
+        for (const file of fileList) {
+          if (file.size > 15 * 1024 * 1024) {
+            showToast('error', 'Archivo muy grande', `"${file.name}" supera el límite de 15 MB.`);
+            continue;
+          }
+          if (selectedFiles.some(f => f.name === file.name && f.size === file.size)) continue;
+          selectedFiles.push(file);
         }
-        if (selectedFiles.some(f => f.name === file.name && f.size === file.size)) continue;
-        selectedFiles.push(file);
+        render();
       }
-      renderFilePreviewList();
+
+      function render() {
+        filePreviewList.innerHTML = selectedFiles.map((file, i) => {
+          const ext  = file.name.split('.').pop().toLowerCase();
+          const icon = ['jpg','jpeg','png','webp'].includes(ext) ? svgImage : svgFile;
+          return `<div class="file-preview">
+            <div class="file-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${icon}</svg></div>
+            <div class="file-info">
+              <div class="file-name">${escapeHtml(file.name)}</div>
+              <div class="file-size">${formatBytes(file.size)}</div>
+            </div>
+            <button type="button" class="file-remove" data-index="${i}" title="Quitar archivo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">${svgTrash}</svg>
+            </button>
+          </div>`;
+        }).join('');
+      }
+
+      fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
+      uploadZone.addEventListener('click', () => fileInput.click());
+      uploadZone.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); uploadZone.classList.add('dragover'); });
+      uploadZone.addEventListener('dragleave', e => { e.preventDefault(); e.stopPropagation(); uploadZone.classList.remove('dragover'); });
+      uploadZone.addEventListener('drop', e => {
+        e.preventDefault(); e.stopPropagation();
+        uploadZone.classList.remove('dragover');
+        addFiles(e.dataTransfer.files);
+      });
+      filePreviewList.addEventListener('click', e => {
+        const btn = e.target.closest('.file-remove');
+        if (!btn) return;
+        selectedFiles.splice(parseInt(btn.dataset.index, 10), 1);
+        render();
+      });
+
+      return {
+        getFiles: () => selectedFiles,
+        reset: () => { selectedFiles = []; render(); }
+      };
     }
 
-    function renderFilePreviewList() {
-      filePreviewList.innerHTML = selectedFiles.map((file, i) => {
-        const ext  = file.name.split('.').pop().toLowerCase();
-        const icon = ['jpg','jpeg','png','webp'].includes(ext) ? svgImage : svgFile;
-        return `<div class="file-preview">
-          <div class="file-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${icon}</svg></div>
-          <div class="file-info">
-            <div class="file-name">${escapeHtml(file.name)}</div>
-            <div class="file-size">${formatBytes(file.size)}</div>
-          </div>
-          <button type="button" class="file-remove" data-index="${i}" title="Quitar archivo">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">${svgTrash}</svg>
-          </button>
-        </div>`;
-      }).join('');
-    }
+    const uploadNuevoPago   = initUploadZone('uploadZone', 'archivoFactura', 'filePreviewList');
+    const uploadSolicitud   = initUploadZone('uploadZoneSolicitud', 'archivoSolicitud', 'filePreviewListSolicitud');
 
     function formatBytes(b) {
       if (b < 1024) return b + ' B';
@@ -2214,7 +2655,7 @@
         }
       }
 
-      if (selectedFiles.length === 0) {
+      if (uploadNuevoPago.getFiles().length === 0) {
         showToast('error', 'Archivo requerido', 'Debes adjuntar al menos un documento del pago.');
         return;
       }
@@ -2234,7 +2675,7 @@
         formData.append('monto',          document.getElementById('monto').value.replace(/\./g, ''));
         formData.append('notas',          document.getElementById('notas').value.trim());
         formData.append('fecha_envio',    new Date().toISOString());
-        selectedFiles.forEach(file => formData.append('archivo', file));
+        uploadNuevoPago.getFiles().forEach(file => formData.append('archivo', file));
 
         const response = await fetch(N8N_WEBHOOK_URL, { method: 'POST', body: formData });
         const result   = await response.json().catch(() => ({}));
@@ -2264,10 +2705,300 @@
       form.reset();
       tipoHidden.value = '';
       tipoBtns.forEach(b => b.classList.remove('active'));
-      selectedFiles = [];
-      renderFilePreviewList();
+      uploadNuevoPago.reset();
       fechaPicker.setDate('today');
     }
+
+    // ─── Envío de solicitud de aprobación ───────────────────────────
+    const solicitudForm       = document.getElementById('solicitudForm');
+    const btnSubmitSolicitud  = document.getElementById('btnSubmitSolicitud');
+    const spinnerSolicitud    = document.getElementById('spinnerSolicitud');
+    const btnTextSolicitud    = document.getElementById('btnTextSolicitud');
+    const btnArrowSolicitud   = document.getElementById('btnArrowSolicitud');
+
+    solicitudForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      if (!tipoHiddenSolicitud.value) {
+        showToast('error', 'Tipo requerido', 'Selecciona el tipo de pago antes de enviar.');
+        return;
+      }
+
+      const requeridos = ['empresaSolicitud', 'solicitadoPor', 'correoSolicitante', 'nombrePagoSolicitud', 'proveedorSolicitud', 'fechaPagoSolicitud', 'montoSolicitud'];
+      for (const id of requeridos) {
+        const el = document.getElementById(id);
+        if (!el.value.trim()) {
+          el.focus();
+          showToast('error', 'Campo requerido', 'Por favor completa todos los campos obligatorios.');
+          return;
+        }
+      }
+
+      if (uploadSolicitud.getFiles().length === 0) {
+        showToast('error', 'Archivo requerido', 'Debes adjuntar al menos un documento de soporte.');
+        return;
+      }
+
+      setLoadingSolicitud(true);
+
+      try {
+        const formData = new FormData();
+        formData.append('tipo_factura',   tipoHiddenSolicitud.value);
+        formData.append('empresa',        document.getElementById('empresaSolicitud').value);
+        formData.append('solicitado_por', document.getElementById('solicitadoPor').value.trim());
+        formData.append('correo',         document.getElementById('correoSolicitante').value.trim());
+        formData.append('nombre_pago',    document.getElementById('nombrePagoSolicitud').value.trim());
+        formData.append('proveedor',      document.getElementById('proveedorSolicitud').value.trim());
+        formData.append('fecha_pago',     fechaPickerSolicitud.selectedDates[0]
+          ? fechaPickerSolicitud.formatDate(fechaPickerSolicitud.selectedDates[0], 'Y-m-d')
+          : document.getElementById('fechaPagoSolicitud').value);
+        formData.append('monto',          document.getElementById('montoSolicitud').value.replace(/\./g, ''));
+        formData.append('notas',          document.getElementById('notasSolicitud').value.trim());
+        formData.append('fecha_envio',    new Date().toISOString());
+        uploadSolicitud.getFiles().forEach(file => formData.append('archivo', file));
+
+        if (N8N_SOLICITUD_URL === 'PENDIENTE_CONFIGURAR_EN_N8N') {
+          showToast('error', 'Función no configurada', 'Falta conectar el webhook de "Solicitar Aprobación" en n8n.');
+          return;
+        }
+
+        const response = await fetch(N8N_SOLICITUD_URL, { method: 'POST', body: formData });
+        const result   = await response.json().catch(() => ({}));
+
+        if (response.ok && result.status === 'success') {
+          showToast('success', '¡Solicitud enviada!', 'Un administrador la revisará pronto. Te avisaremos por correo la decisión.');
+          resetSolicitudForm();
+        } else {
+          throw new Error(result.message || 'HTTP ' + response.status);
+        }
+      } catch (err) {
+        console.error(err);
+        showToast('error', 'Error al enviar', 'No se pudo conectar con el sistema. Intenta de nuevo.');
+      } finally {
+        setLoadingSolicitud(false);
+      }
+    });
+
+    function setLoadingSolicitud(on) {
+      btnSubmitSolicitud.disabled     = on;
+      spinnerSolicitud.style.display  = on ? 'block' : 'none';
+      btnTextSolicitud.textContent    = on ? 'Enviando...' : 'Enviar Solicitud';
+      btnArrowSolicitud.style.display = on ? 'none' : '';
+    }
+
+    function resetSolicitudForm() {
+      solicitudForm.reset();
+      tipoHiddenSolicitud.value = '';
+      tipoBtnsSolicitud.forEach(b => b.classList.remove('active'));
+      uploadSolicitud.reset();
+      fechaPickerSolicitud.setDate('today');
+    }
+
+    // ─── Revisar solicitudes (solo administradores) ─────────────────
+    function nombreRevisor() {
+      let nombre = localStorage.getItem('revisorNombre');
+      if (!nombre) {
+        nombre = (prompt('Tu nombre, para registrar quién aprueba/rechaza:') || 'Administrador').trim() || 'Administrador';
+        localStorage.setItem('revisorNombre', nombre);
+      }
+      return nombre;
+    }
+
+    function estadoBadgeClase(estado) {
+      const e = String(estado || '').toLowerCase();
+      if (e.includes('aprob'))  return 'badge-estado-aprobado';
+      if (e.includes('rechaz')) return 'badge-estado-rechazado';
+      return 'badge-estado-pendiente';
+    }
+
+    function estadoLabel(estado) {
+      const e = String(estado || '').toLowerCase();
+      if (e.includes('aprob'))  return 'Aprobado';
+      if (e.includes('rechaz')) return 'Rechazado';
+      return 'Pendiente';
+    }
+
+    async function buscarSolicitudes() {
+      const list  = document.getElementById('solicitudesList');
+      const empty = document.getElementById('solicitudesEmpty');
+
+      if (N8N_CONSULTAR_SOLICITUDES_URL === 'PENDIENTE_CONFIGURAR_EN_N8N') {
+        list.innerHTML = '';
+        empty.style.display = '';
+        empty.querySelector('p').textContent = 'Falta conectar el webhook de "Consultar Solicitudes" en n8n.';
+        return;
+      }
+
+      try {
+        const res = await fetch(N8N_CONSULTAR_SOLICITUDES_URL);
+        const raw = await res.json();
+        let rows = raw;
+        if (typeof raw === 'string') rows = JSON.parse(raw);
+        if (!Array.isArray(rows)) rows = Object.values(rows);
+        rows = rows.filter(r => r['ID SOLICITUD'] || r['SOLICITADO POR']);
+
+        const filtroActivo = document.querySelector('#estadoFilterTabs .sub-tab.active').dataset.estado;
+        if (filtroActivo) {
+          rows = rows.filter(r => String(r['ESTADO'] || '').toLowerCase().includes(filtroActivo));
+        }
+
+        rows.sort((a, b) => new Date(b['FECHA SOLICITUD'] || 0) - new Date(a['FECHA SOLICITUD'] || 0));
+
+        renderSolicitudes(rows);
+      } catch (err) {
+        console.error('buscarSolicitudes error:', err);
+        showToast('error', 'Error de conexión', 'No se pudo obtener las solicitudes del sistema.');
+      }
+    }
+
+    function renderSolicitudes(rows) {
+      const list  = document.getElementById('solicitudesList');
+      const empty = document.getElementById('solicitudesEmpty');
+
+      if (rows.length === 0) {
+        list.innerHTML = '';
+        empty.style.display = '';
+        empty.querySelector('p').textContent = 'No hay solicitudes en este estado.';
+        return;
+      }
+      empty.style.display = 'none';
+
+      list.innerHTML = rows.map(r => {
+        const { badgeClass, label: tipoLabel } = tipoInfo(r['TIPO DE PAGO'] || r['TIPO FACTURA']);
+        const estado   = estadoLabel(r['ESTADO']);
+        const estadoCl = estadoBadgeClase(r['ESTADO']);
+        const url      = extractUrl(r['URL ARCHIVO'] || '');
+        const id       = escapeHtml(String(r['ID SOLICITUD'] || ''));
+        const valor    = valorDe({ 'VALOR FACTURA': r['VALOR'] });
+        const pendiente = estado === 'Pendiente';
+
+        const comentario = r['COMENTARIO']
+          ? `<div class="solicitud-comentario"><strong>Comentario:</strong> ${escapeHtml(String(r['COMENTARIO']))}</div>`
+          : '';
+
+        const acciones = pendiente
+          ? `<div class="solicitud-actions">
+               <button type="button" class="btn-aprobar" data-id="${id}">
+                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                 Aprobar
+               </button>
+               <button type="button" class="btn-rechazar" data-id="${id}">
+                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                 Rechazar
+               </button>
+               ${url ? `<a class="link-factura" href="${url}" target="_blank">Ver archivo</a>` : ''}
+             </div>`
+          : (url ? `<div class="solicitud-actions"><a class="link-factura" href="${url}" target="_blank">Ver archivo</a></div>` : '');
+
+        return `<div class="solicitud-card">
+          <div class="solicitud-top">
+            <div>
+              <div class="solicitud-nombre">${r['NOMBRE DEL PAGO'] || '—'}</div>
+              <div class="solicitud-meta">
+                <span class="badge ${badgeClass}">${tipoLabel}</span>
+                &nbsp;·&nbsp; ${r['EMPRESA'] || '—'} &nbsp;·&nbsp; Solicitado por ${r['SOLICITADO POR'] || '—'}
+                &nbsp;·&nbsp; <span class="badge ${estadoCl}">${estado}</span>
+              </div>
+            </div>
+            <div class="solicitud-valor">$${valor.toLocaleString('es-CO')}</div>
+          </div>
+          <div class="solicitud-grid">
+            <div><div class="solicitud-field-label">Proveedor</div><div class="solicitud-field-value">${r['PROVEEDOR'] || '—'}</div></div>
+            <div><div class="solicitud-field-label">Fecha de pago</div><div class="solicitud-field-value">${r['FECHA DE PAGO'] || '—'}</div></div>
+            <div><div class="solicitud-field-label">Correo</div><div class="solicitud-field-value">${r['CORREO'] || '—'}</div></div>
+            <div><div class="solicitud-field-label">Notas</div><div class="solicitud-field-value">${r['NOTAS'] || '—'}</div></div>
+          </div>
+          ${comentario}
+          ${acciones}
+        </div>`;
+      }).join('');
+    }
+
+    document.querySelectorAll('#estadoFilterTabs .sub-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('#estadoFilterTabs .sub-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        buscarSolicitudes();
+      });
+    });
+
+    let idSolicitudActual = null;
+
+    document.getElementById('solicitudesList').addEventListener('click', async e => {
+      const btnAprobar  = e.target.closest('.btn-aprobar');
+      const btnRechazar = e.target.closest('.btn-rechazar');
+
+      if (btnAprobar) {
+        if (!confirm('¿Aprobar esta solicitud? Se registrará como pago oficial en el sistema.')) return;
+        await decidirSolicitud(btnAprobar.dataset.id, 'aprobado', '', btnAprobar);
+      }
+
+      if (btnRechazar) {
+        idSolicitudActual = btnRechazar.dataset.id;
+        document.getElementById('rechazoMotivo').value = '';
+        document.getElementById('rechazoOverlay').classList.add('show');
+      }
+    });
+
+    async function decidirSolicitud(id, decision, comentario, botonOrigen) {
+      if (N8N_DECIDIR_SOLICITUD_URL === 'PENDIENTE_CONFIGURAR_EN_N8N') {
+        showToast('error', 'Función no configurada', 'Falta conectar el webhook de "Decidir Solicitud" en n8n.');
+        return;
+      }
+      if (botonOrigen) botonOrigen.disabled = true;
+      try {
+        const formData = new FormData();
+        formData.append('id', id);
+        formData.append('decision', decision);
+        formData.append('revisado_por', nombreRevisor());
+        formData.append('comentario', comentario || '');
+
+        const response = await fetch(N8N_DECIDIR_SOLICITUD_URL, { method: 'POST', body: formData });
+        const result   = await response.json().catch(() => ({}));
+
+        if (response.ok && result.status === 'success') {
+          showToast('success', decision === 'aprobado' ? '¡Solicitud aprobada!' : 'Solicitud rechazada', decision === 'aprobado' ? 'Se registró como pago oficial.' : 'Se notificó al solicitante.');
+          buscarSolicitudes();
+        } else {
+          throw new Error(result.message || 'HTTP ' + response.status);
+        }
+      } catch (err) {
+        console.error(err);
+        showToast('error', 'Error al procesar', 'No se pudo conectar con el sistema. Intenta de nuevo.');
+      } finally {
+        if (botonOrigen) botonOrigen.disabled = false;
+      }
+    }
+
+    const rechazoOverlay    = document.getElementById('rechazoOverlay');
+    const rechazoSpinner    = document.getElementById('rechazoSpinner');
+    const rechazoBtnText    = document.getElementById('rechazoBtnText');
+    const rechazoConfirmar  = document.getElementById('rechazoConfirmar');
+
+    function cerrarModalRechazo() {
+      rechazoOverlay.classList.remove('show');
+      idSolicitudActual = null;
+    }
+
+    document.getElementById('rechazoClose').addEventListener('click', cerrarModalRechazo);
+    document.getElementById('rechazoCancelar').addEventListener('click', cerrarModalRechazo);
+    rechazoOverlay.addEventListener('click', e => { if (e.target === rechazoOverlay) cerrarModalRechazo(); });
+
+    rechazoConfirmar.addEventListener('click', async () => {
+      const motivo = document.getElementById('rechazoMotivo').value.trim();
+      if (!motivo) {
+        showToast('error', 'Motivo requerido', 'Escribe brevemente el motivo del rechazo.');
+        return;
+      }
+      rechazoConfirmar.disabled = true;
+      rechazoSpinner.style.display = 'block';
+      rechazoBtnText.textContent = 'Rechazando...';
+      await decidirSolicitud(idSolicitudActual, 'rechazado', motivo, null);
+      rechazoConfirmar.disabled = false;
+      rechazoSpinner.style.display = 'none';
+      rechazoBtnText.textContent = 'Confirmar rechazo';
+      cerrarModalRechazo();
+    });
   </script>
 </body>
 </html>

@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-09-15** — ✅ Marcada como **versión estable** por el usuario. Incluye los botones "Excel"/"PDF" de exportación en "Consultar Pagos" (ver sección "📤 Exportar consulta (Excel/PDF)" abajo). `sw.js` → `control-pagos-v23`.
+**2026-09-15** — Frontend completo del nuevo módulo **"Aprobaciones"** (tercera pestaña del menú). **Requiere 3 workflows nuevos en n8n antes de funcionar** — ver sección "✅ Módulo de Aprobaciones" abajo, es la guía más importante del documento en este momento. `sw.js` → `control-pagos-v24`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -28,7 +28,7 @@ Todo vive en un único [index.html](index.html) (HTML + CSS + JS inline).
 |---|---|
 | Frontend | `index.html` — una sola página, sin dependencias de build |
 | Backup estable | `index.stable.html` — copia de respaldo de la última versión considerada estable |
-| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v23`) |
+| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v24`) |
 | Backend | **n8n** (self-hosted en `ashir-n8n.nr6aco.easypanel.host`), vía dos webhooks: |
 | — Registrar pago | `POST /webhook/81926c9e-22aa-4aef-bb4d-fe4ee520748c` (`N8N_WEBHOOK_URL`) — workflow: Webhook → **Upload file** (Google Drive) → **Append row in sheet** (Google Sheets) → Respond to Webhook |
 | — Consultar pagos | `GET /webhook/c6d11abd-61bc-439c-9dd9-550ed5008ee3` (`N8N_QUERY_URL`) — probablemente lee del mismo Google Sheet |
@@ -36,6 +36,80 @@ Todo vive en un único [index.html](index.html) (HTML + CSS + JS inline).
 | Reporte diario | Google Apps Script (bound al Sheet, independiente de n8n) — ver sección "📧 Reporte diario automático" |
 | Hosting | GitHub Pages (por el `scope`/`start_url` del manifest) |
 | Repo | https://github.com/ashir7ai-star/PJ04-CONTROL-PAGOS |
+
+## ✅ Módulo de Aprobaciones — iniciado 2026-09-15, **frontend listo, falta n8n**
+
+### Qué es
+Tercera pestaña del menú (`Nuevo Pago · Consultar Pagos · Aprobaciones`). Le da a la empresa un flujo de **solicitud → revisión → decisión** para pagos/compras, en vez de registrarlos directo. Decisiones de diseño confirmadas por el usuario:
+- **Quién solicita:** cualquier persona con acceso al sistema (link completo o `?vista=gastos`), para cualquier tipo de pago — no se restringe por tipo, a diferencia de "Nuevo Pago" en la vista `?vista=gastos`.
+- **Quién revisa/decide:** solo los administradores (Nathan, Joseph) — el sub-tab "Revisar Solicitudes" se oculta por completo cuando `vistaRestringida === 'gastos'` (mismo mecanismo de ocultar-en-pantalla ya usado en el resto de la app, mismo tradeoff de seguridad aceptado).
+- **Al aprobar:** se crea automáticamente el registro oficial en el historial de "Consultar Pagos" (Sheet "CONTROL DE PAGOS") — nadie tiene que volver a digitarlo en "Nuevo Pago".
+- **Notificaciones:** correo a los administradores por cada solicitud nueva; correo al solicitante (campo "Correo" nuevo en el formulario) cuando se aprueba o rechaza, incluyendo el motivo si fue rechazada.
+
+### Frontend ya implementado en `index.html`
+- **Sub-tabs internos** (`#aprobacionesSubTabs`): "Nueva Solicitud" (formulario, visible siempre) / "Revisar Solicitudes" (cola de revisión, oculta en `?vista=gastos`).
+- **Formulario "Nueva Solicitud"** (`#solicitudForm`): mismos campos que "Nuevo Pago" (selector de 6 tipos, empresa, nombre del pago, proveedor, fecha, valor, notas, archivo(s)) **más un campo nuevo "Correo"** (`#correoSolicitante`, para la notificación de la decisión).
+- **Panel "Revisar Solicitudes"**: filtros por estado (Pendientes/Aprobadas/Rechazadas/Todas, `#estadoFilterTabs`) + tarjetas (`.solicitud-card`) con toda la info, badge de estado, y para las Pendientes botones **Aprobar** (verde, pide confirmación nativa `confirm()`) / **Rechazar** (abre modal `#rechazoOverlay` pidiendo motivo obligatorio, que se envía como `comentario`).
+- **Quién aprueba/rechaza queda registrado** vía `localStorage` (`nombreRevisor()`): la primera vez que alguien aprueba/rechaza en un navegador, se le pide su nombre con un `prompt()` una sola vez y se recuerda para las siguientes veces — no es login real, es solo para completar la columna "Revisado por".
+- **Refactor asociado** (para no duplicar lógica entre el formulario de "Nuevo Pago" y el de "Nueva Solicitud"): se extrajeron `initSelectorTipo(scope, hiddenInputId)`, `initUploadZone(zoneId, inputId, previewListId)` (devuelve `{getFiles, reset}`) e `initFormateadorValor(inputId)`, usados por ambos formularios. **Importante:** `tipoBtns`/`tipoHidden` (Nuevo Pago) y `tipoBtnsSolicitud`/`tipoHiddenSolicitud` (solicitud) son ahora resultado de destructuring de `initSelectorTipo(...)` — si se toca ese bloque, cuidado con romper ambos formularios a la vez.
+
+### Constantes nuevas (placeholders — reemplazar cuando exista el webhook)
+```js
+const N8N_SOLICITUD_URL             = 'PENDIENTE_CONFIGURAR_EN_N8N';
+const N8N_CONSULTAR_SOLICITUDES_URL = 'PENDIENTE_CONFIGURAR_EN_N8N';
+const N8N_DECIDIR_SOLICITUD_URL     = 'PENDIENTE_CONFIGURAR_EN_N8N';
+```
+Mientras sigan así, la app muestra un toast de "Función no configurada" en vez de romperse — no afecta a "Nuevo Pago"/"Consultar Pagos" existentes.
+
+### Modelo de datos — nueva pestaña en el Google Sheet: **"SOLICITUDES DE APROBACIÓN"**
+| Columna | Contenido |
+|---|---|
+| ID SOLICITUD | `{{ $('Webhook').item.json.body.fecha_envio }}` (ISO con milisegundos, igual que "ID REGISTRO" en Control de Pagos — sirve para hacer match al decidir) |
+| FECHA SOLICITUD | mismo valor que ID SOLICITUD (el frontend la parsea con `new Date(...)`, no reformatear) |
+| EMPRESA | `body.empresa` |
+| TIPO DE PAGO | `body.tipo_factura` |
+| NOMBRE DEL PAGO | `body.nombre_pago` |
+| PROVEEDOR | `body.proveedor` |
+| FECHA DE PAGO | `body.fecha_pago` |
+| VALOR | `body.monto` |
+| SOLICITADO POR | `body.solicitado_por` |
+| CORREO | `body.correo` |
+| NOTAS | `body.notas` |
+| URL ARCHIVO | link(s) de Drive (mismo patrón multi-archivo de "Nuevo Pago") |
+| ESTADO | `Pendiente` al crear; `Aprobado`/`Rechazado` al decidir |
+| REVISADO POR | vacío al crear; nombre del admin al decidir |
+| FECHA DECISION | vacío al crear; `{{ $now.toISO() }}` al decidir |
+| COMENTARIO | vacío al crear; motivo del rechazo (si aplica) |
+
+### Los 3 workflows a construir en n8n
+
+**A) "Solicitar Aprobación"** (nuevo webhook POST, pegar la URL en `N8N_SOLICITUD_URL`)
+1. Webhook (POST, multipart/form-data).
+2. Igual que en "Nuevo Pago": nodo **Code** que separa las propiedades binarias `archivo0`, `archivo1`, ... en items independientes → **Upload file** (Google Drive, carpeta "PJ04 FACTURAS") por cada item → **Aggregate** para juntar los links en un solo string.
+3. **Append row in sheet** a la pestaña nueva "SOLICITUDES DE APROBACIÓN" con las columnas de la tabla de arriba (ESTADO = "Pendiente", REVISADO POR/FECHA DECISION/COMENTARIO vacíos).
+4. **Send Email** a nathan@ylevigroup.com y joseph@ylevigroup.com — asunto tipo "Nueva solicitud: {{ nombre_pago }} — ${{ monto }}", cuerpo con los datos clave y recordatorio de entrar a la app → Aprobaciones → Revisar Solicitudes.
+5. **Respond to Webhook** → `{ "status": "success" }`.
+
+**B) "Consultar Solicitudes"** (nuevo webhook GET, pegar la URL en `N8N_CONSULTAR_SOLICITUDES_URL`)
+1. Webhook (GET).
+2. **Google Sheets** — leer todas las filas de "SOLICITUDES DE APROBACIÓN".
+3. **Respond to Webhook** devolviendo el array de filas (mismo patrón que el webhook de "Consultar Pagos" ya existente).
+
+**C) "Decidir Solicitud"** (nuevo webhook POST, pegar la URL en `N8N_DECIDIR_SOLICITUD_URL`) — el más complejo de los tres
+1. Webhook (POST, campos: `id`, `decision` ["aprobado"/"rechazado"], `revisado_por`, `comentario`).
+2. **Google Sheets — Get row(s)**: buscar en "SOLICITUDES DE APROBACIÓN" la fila donde `ID SOLICITUD` == `{{ $json.body.id }}` (necesitamos sus datos completos antes de tocar nada).
+3. **Google Sheets — Update Row**: misma fila (match por ID SOLICITUD), setear:
+   - `ESTADO` = `{{ $json.body.decision === 'aprobado' ? 'Aprobado' : 'Rechazado' }}`
+   - `REVISADO POR` = `{{ $json.body.revisado_por }}`
+   - `FECHA DECISION` = `{{ $now.toISO() }}`
+   - `COMENTARIO` = `{{ $json.body.comentario }}`
+4. **IF**: `{{ $json.body.decision }}` == `aprobado`
+   - **Rama TRUE** → **Append row in sheet** a la pestaña principal **"CONTROL DE PAGOS"** (la de siempre), reusando los datos obtenidos en el paso 2 (Get row): FECHA REGISTRO = ahora, EMPRESA/TIPO FACTURA/NOMBRE DE PAGO/PROVEEDOR/FECHA DE PAGO/VALOR FACTURA/NOTAS/URL ARCHIVO desde la solicitud, REGISTRADO POR = el "Solicitado por" original (o "Aprobado por " + revisado_por, a definir con el usuario si prefiere otra convención), ID REGISTRO = `{{ $now.toISO() }}` (nuevo, distinto del ID SOLICITUD).
+5. **Send Email** al correo del solicitante (columna CORREO obtenida en el paso 2) notificando la decisión — si fue rechazo, incluir el comentario/motivo.
+6. **Respond to Webhook** → `{ "status": "success" }`.
+
+### Pendiente de definir con el usuario al construir el workflow C
+Qué poner exactamente en "REGISTRADO POR" del registro oficial que se crea al aprobar (¿el nombre de quien solicitó, o quien aprobó, o ambos?) — no se preguntó explícitamente, hay que confirmarlo cuando se llegue a esa parte.
 
 ## 🔗 Vista restringida por link (Viáticos / Caja Menor) — 2026-09-10
 
@@ -143,6 +217,7 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - Es decir: **cada cierre de sesión de trabajo = commit + push automático**. No se requiere acción manual de git para mantener el repo actualizado.
 
 ## Historial de cambios recientes
+- **2026-09-15**: Frontend completo del módulo "Aprobaciones" (tercera pestaña: solicitar pago → revisar → aprobar/rechazar). Refactor de `initSelectorTipo()`/`initUploadZone()`/`initFormateadorValor()` para reusar la lógica entre "Nuevo Pago" y "Nueva Solicitud". Requiere 3 workflows nuevos en n8n — ver sección "✅ Módulo de Aprobaciones" arriba. `sw.js` → `control-pagos-v24`.
 - **2026-09-15**: ✅ Marcada como **versión estable** — `index.stable.html` = `index.html` (incluye exportación a Excel/PDF).
 - **2026-09-14**: Botones "Excel" y "PDF" en "Consultar Pagos" para descargar la consulta actual (respeta filtros y vista restringida). Client-side con SheetJS + jsPDF/autotable (CDN, precacheados en `sw.js`). Refactor: `tipoInfo()`/`valorDe()` helpers extraídos para no duplicar lógica entre `renderResultados()` y la exportación. Ver sección "📤 Exportar consulta" arriba. `sw.js` → `control-pagos-v23`.
 - **2026-09-10**: ✅ Marcada como **versión estable** — `index.stable.html` = `index.html` (incluye Viáticos/Caja Menor, vista `?vista=gastos`, y el fix visual de selección).
@@ -174,6 +249,7 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - **2026-04-15**: Commit inicial de la PWA "Control de Pagos".
 
 ## Pendientes / próximos pasos
+- **Prioridad actual:** construir en n8n los 3 workflows del módulo de Aprobaciones (Solicitar / Consultar / Decidir) + la pestaña nueva "SOLICITUDES DE APROBACIÓN" en el Sheet. Ver sección "✅ Módulo de Aprobaciones" arriba para la guía paso a paso, incluye una pregunta pendiente de confirmar con el usuario (qué poner en "Registrado por" al aprobar).
 - Construir en n8n el soporte para múltiples archivos (Code + Aggregate en el workflow de "Nuevo Pago") y el nuevo workflow "Agregar Factura", más la columna "ID REGISTRO" en el Sheet. Ver sección "🔧 Pendiente en n8n" arriba para la guía paso a paso.
 - Una vez creado el webhook "Agregar Factura", reemplazar el placeholder `N8N_ADDFILE_URL` en `index.html` con la URL real.
 
