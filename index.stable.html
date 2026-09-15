@@ -918,6 +918,36 @@
     .badge-estado-rechazado  { background: var(--error-light);   color: var(--error); }
 
     /* ─── Solicitudes (Aprobaciones) ─────────────────────────────── */
+    .revisar-toolbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .btn-refrescar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-2);
+      font-size: 0.8rem;
+      font-weight: 600;
+      font-family: 'Inter', inherit;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all var(--transition);
+    }
+
+    .btn-refrescar svg { width: 14px; height: 14px; transition: transform 0.5s ease; }
+    .btn-refrescar:hover { border-color: var(--primary); color: var(--primary); }
+    .btn-refrescar.cargando svg { transform: rotate(360deg); }
+    .btn-refrescar:disabled { opacity: 0.6; cursor: not-allowed; }
+
     .solicitudes-list {
       display: flex;
       flex-direction: column;
@@ -1837,11 +1867,20 @@
 
     <!-- Panel: Revisar Solicitudes (solo administradores) -->
     <div id="panelRevisarSolicitudes" style="display:none;">
-      <div class="sub-tabs estado-tabs" id="estadoFilterTabs">
-        <button type="button" class="sub-tab active" data-estado="pendiente">Pendientes</button>
-        <button type="button" class="sub-tab" data-estado="aprobado">Aprobadas</button>
-        <button type="button" class="sub-tab" data-estado="rechazado">Rechazadas</button>
-        <button type="button" class="sub-tab" data-estado="">Todas</button>
+      <div class="revisar-toolbar">
+        <div class="sub-tabs estado-tabs" id="estadoFilterTabs">
+          <button type="button" class="sub-tab active" data-estado="pendiente">Pendientes</button>
+          <button type="button" class="sub-tab" data-estado="aprobado">Aprobadas</button>
+          <button type="button" class="sub-tab" data-estado="rechazado">Rechazadas</button>
+          <button type="button" class="sub-tab" data-estado="">Todas</button>
+        </div>
+        <button type="button" class="btn-refrescar" id="btnRefrescarSolicitudes" title="Actualizar lista">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          Actualizar
+        </button>
       </div>
 
       <div id="solicitudesList" class="solicitudes-list"></div>
@@ -2841,11 +2880,20 @@
     }
 
     async function buscarSolicitudes() {
-      const list  = document.getElementById('solicitudesList');
-      const empty = document.getElementById('solicitudesEmpty');
+      const list    = document.getElementById('solicitudesList');
+      const empty   = document.getElementById('solicitudesEmpty');
+      const btnRefr = document.getElementById('btnRefrescarSolicitudes');
+
+      btnRefr.disabled = true;
+      btnRefr.classList.add('cargando');
+      if (list.innerHTML === '') {
+        empty.style.display = '';
+        empty.querySelector('p').textContent = 'Cargando solicitudes...';
+      }
 
       try {
-        const res = await fetch(APPS_SCRIPT_URL + '?action=consultar_solicitudes');
+        // El parámetro _ evita que el navegador sirva una respuesta cacheada
+        const res = await fetch(APPS_SCRIPT_URL + '?action=consultar_solicitudes&_=' + Date.now());
         const raw = await res.json();
         let rows = raw;
         if (typeof raw === 'string') rows = JSON.parse(raw);
@@ -2863,8 +2911,14 @@
       } catch (err) {
         console.error('buscarSolicitudes error:', err);
         showToast('error', 'Error de conexión', 'No se pudo obtener las solicitudes del sistema.');
+        empty.querySelector('p').textContent = 'No se pudo cargar. Intenta con "Actualizar".';
+      } finally {
+        btnRefr.disabled = false;
+        btnRefr.classList.remove('cargando');
       }
     }
+
+    document.getElementById('btnRefrescarSolicitudes').addEventListener('click', buscarSolicitudes);
 
     function renderSolicitudes(rows) {
       const list  = document.getElementById('solicitudesList');

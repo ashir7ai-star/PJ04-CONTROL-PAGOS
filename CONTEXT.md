@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-09-15** — ✅ Módulo **"Aprobaciones"** desplegado y funcionando. 🚫 **Decisión de arquitectura: este módulo y todo desarrollo futuro NO usan n8n** — el backend es un **Google Apps Script Web App** ya en producción (código en [apps-script-aprobaciones.gs](apps-script-aprobaciones.gs)). Ver sección "✅ Módulo de Aprobaciones" abajo. `sw.js` → `control-pagos-v27`.
+**2026-09-15** — ✅ Módulo **"Aprobaciones"** desplegado y funcionando. 🚫 **Decisión de arquitectura: este módulo y todo desarrollo futuro NO usan n8n** — el backend es un **Google Apps Script Web App** ya en producción (código en [apps-script-aprobaciones.gs](apps-script-aprobaciones.gs)). Ver sección "✅ Módulo de Aprobaciones" abajo. `sw.js` → `control-pagos-v28`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -28,7 +28,7 @@ Todo vive en un único [index.html](index.html) (HTML + CSS + JS inline).
 |---|---|
 | Frontend | `index.html` — una sola página, sin dependencias de build |
 | Backup estable | `index.stable.html` — copia de respaldo de la última versión considerada estable |
-| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v27`) |
+| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v28`) |
 | Backend | **n8n** (self-hosted en `ashir-n8n.nr6aco.easypanel.host`), vía dos webhooks: |
 | — Registrar pago | `POST /webhook/81926c9e-22aa-4aef-bb4d-fe4ee520748c` (`N8N_WEBHOOK_URL`) — workflow: Webhook → **Upload file** (Google Drive) → **Append row in sheet** (Google Sheets) → Respond to Webhook |
 | — Consultar pagos | `GET /webhook/c6d11abd-61bc-439c-9dd9-550ed5008ee3` (`N8N_QUERY_URL`) — probablemente lee del mismo Google Sheet |
@@ -210,10 +210,11 @@ El flujo de auto-actualización ya está implementado en `index.html` (registro 
 - Es decir: **cada cierre de sesión de trabajo = commit + push automático**. No se requiere acción manual de git para mantener el repo actualizado.
 
 ## Historial de cambios recientes
-- **2026-09-15**: ✅ Apps Script desplegado como Web App y conectado (`APPS_SCRIPT_URL` con la URL real). Se quitaron las guardas `=== 'PENDIENTE_CONFIGURAR'` que quedaron como código muerto. El módulo de Aprobaciones queda operativo end-to-end. `sw.js` → `control-pagos-v27`.
+- **2026-09-15**: Correos de Aprobaciones rediseñados en **HTML corporativo** (`plantillaCorreo_()` + helpers `filaDetalle_`, `enlacesArchivos_`, `etiquetaTipo_` en el Apps Script): encabezado azul con la marca, badge de estado con color según el caso (ámbar pendiente / verde aprobada / rojo rechazada), monto destacado, tabla de detalles y botón a la app. Se mandan con `htmlBody` + fallback de texto plano. En "Revisar Solicitudes" se agregó botón **Actualizar**, estado de carga y anti-caché (`&_=Date.now()`) en la consulta, porque las solicitudes recién creadas tardaban en aparecer. `sw.js` → `control-pagos-v28`.
+- **2026-09-15**: ✅ Apps Script desplegado como Web App y conectado (`APPS_SCRIPT_URL` con la URL real). Se quitaron las guardas `=== 'PENDIENTE_CONFIGURAR'` que quedaron como código muerto. El módulo de Aprobaciones queda operativo end-to-end. `sw.js` → `control-pagos-v28`.
 - **2026-09-15**: Se quita el auto-registro en "Control de Pagos" al aprobar (función `registrarPagoOficial_` eliminada del Apps Script). A pedido del usuario, aprobar es **solo un visto bueno visual** + notificación al solicitante. No reintroducir sin que lo pida.
-- **2026-09-15**: 🚫 **Se abandona n8n para desarrollos nuevos** (pedido explícito del usuario). El módulo de Aprobaciones se re-cableó de 3 webhooks de n8n a un solo **Google Apps Script Web App** (`APPS_SCRIPT_URL`, archivo [apps-script-aprobaciones.gs](apps-script-aprobaciones.gs) con el backend completo: crear solicitud, consultar, aprobar/rechazar, subir archivos a Drive y notificar por correo). Archivos van en base64 dentro del JSON y los POST usan `Content-Type: text/plain` para evitar el preflight CORS. `sw.js` → `control-pagos-v27`.
-- **2026-09-15**: Frontend completo del módulo "Aprobaciones" (tercera pestaña: solicitar pago → revisar → aprobar/rechazar). Refactor de `initSelectorTipo()`/`initUploadZone()`/`initFormateadorValor()` para reusar la lógica entre "Nuevo Pago" y "Nueva Solicitud". `sw.js` → `control-pagos-v27`.
+- **2026-09-15**: 🚫 **Se abandona n8n para desarrollos nuevos** (pedido explícito del usuario). El módulo de Aprobaciones se re-cableó de 3 webhooks de n8n a un solo **Google Apps Script Web App** (`APPS_SCRIPT_URL`, archivo [apps-script-aprobaciones.gs](apps-script-aprobaciones.gs) con el backend completo: crear solicitud, consultar, aprobar/rechazar, subir archivos a Drive y notificar por correo). Archivos van en base64 dentro del JSON y los POST usan `Content-Type: text/plain` para evitar el preflight CORS. `sw.js` → `control-pagos-v28`.
+- **2026-09-15**: Frontend completo del módulo "Aprobaciones" (tercera pestaña: solicitar pago → revisar → aprobar/rechazar). Refactor de `initSelectorTipo()`/`initUploadZone()`/`initFormateadorValor()` para reusar la lógica entre "Nuevo Pago" y "Nueva Solicitud". `sw.js` → `control-pagos-v28`.
 - **2026-09-15**: ✅ Marcada como **versión estable** — `index.stable.html` = `index.html` (incluye exportación a Excel/PDF).
 - **2026-09-14**: Botones "Excel" y "PDF" en "Consultar Pagos" para descargar la consulta actual (respeta filtros y vista restringida). Client-side con SheetJS + jsPDF/autotable (CDN, precacheados en `sw.js`). Refactor: `tipoInfo()`/`valorDe()` helpers extraídos para no duplicar lógica entre `renderResultados()` y la exportación. Ver sección "📤 Exportar consulta" arriba. `sw.js` → `control-pagos-v23`.
 - **2026-09-10**: ✅ Marcada como **versión estable** — `index.stable.html` = `index.html` (incluye Viáticos/Caja Menor, vista `?vista=gastos`, y el fix visual de selección).

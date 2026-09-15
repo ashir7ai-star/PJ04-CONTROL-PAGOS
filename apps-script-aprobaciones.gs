@@ -110,6 +110,72 @@ function formatoMoneda_(valor) {
   return '$' + n.toLocaleString('es-CO');
 }
 
+function etiquetaTipo_(tipo) {
+  const t = String(tipo || '').toLowerCase();
+  if (t.indexOf('impuesto') !== -1) return 'Pago Impuestos';
+  if (t.indexOf('viatic')   !== -1) return 'Viáticos';
+  if (t.indexOf('caja')     !== -1) return 'Caja Menor';
+  if (t.indexOf('pago')     !== -1) return 'Pago a Proveedor';
+  if (t === 'compra')               return 'Compra';
+  if (t === 'venta')                return 'Venta';
+  return tipo || '—';
+}
+
+// ─── Plantilla HTML de correo ─────────────────────────────────────────────
+
+const URL_APP = 'https://ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/';
+
+function filaDetalle_(etiqueta, valor) {
+  if (!valor) return '';
+  return '<tr>' +
+    '<td style="padding:9px 0;border-bottom:1px solid #ececed;color:#6e6e73;font-size:13px;width:38%;vertical-align:top;">' + etiqueta + '</td>' +
+    '<td style="padding:9px 0;border-bottom:1px solid #ececed;color:#1d1d1f;font-size:13px;font-weight:500;">' + valor + '</td>' +
+    '</tr>';
+}
+
+function enlacesArchivos_(urlArchivo) {
+  if (!urlArchivo) return '';
+  const links = String(urlArchivo).split('\n').filter(String);
+  return links.map((u, i) =>
+    '<a href="' + u + '" style="color:#0071e3;text-decoration:none;">Ver documento' + (links.length > 1 ? ' ' + (i + 1) : '') + '</a>'
+  ).join('&nbsp;·&nbsp;');
+}
+
+// Arma el correo completo. color = acento del encabezado; etiqueta = texto del estado.
+function plantillaCorreo_(opciones) {
+  return '' +
+  '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif;background:#f5f5f7;padding:24px 12px;">' +
+    '<div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e0e0e8;">' +
+
+      '<div style="background:#0071e3;padding:20px 24px;">' +
+        '<div style="color:#ffffff;font-size:17px;font-weight:700;letter-spacing:-0.02em;">Millennium Energy Co</div>' +
+        '<div style="color:rgba(255,255,255,0.82);font-size:12px;margin-top:2px;">Control de Pagos</div>' +
+      '</div>' +
+
+      '<div style="padding:24px;">' +
+        '<div style="display:inline-block;background:' + opciones.colorFondo + ';color:' + opciones.color + ';font-size:11px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;padding:5px 11px;border-radius:20px;">' + opciones.etiquetaEstado + '</div>' +
+        '<div style="font-size:20px;font-weight:700;color:#1d1d1f;margin:14px 0 2px;letter-spacing:-0.02em;">' + opciones.titulo + '</div>' +
+        '<div style="font-size:27px;font-weight:700;color:#0071e3;margin-bottom:4px;letter-spacing:-0.02em;">' + opciones.valor + '</div>' +
+        (opciones.intro ? '<div style="font-size:14px;color:#3d3d3f;margin:14px 0 4px;line-height:1.5;">' + opciones.intro + '</div>' : '') +
+
+        '<table style="width:100%;border-collapse:collapse;margin-top:16px;">' + opciones.detalles + '</table>' +
+
+        (opciones.aviso ? '<div style="margin-top:18px;background:#fafafa;border-left:3px solid ' + opciones.color + ';border-radius:6px;padding:12px 14px;font-size:13px;color:#3d3d3f;line-height:1.5;">' + opciones.aviso + '</div>' : '') +
+
+        (opciones.boton ?
+          '<div style="margin-top:22px;">' +
+            '<a href="' + URL_APP + '" style="display:inline-block;background:#0071e3;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:9px;font-size:14px;font-weight:600;">' + opciones.boton + '</a>' +
+          '</div>' : '') +
+      '</div>' +
+
+      '<div style="padding:14px 24px;background:#fafafa;border-top:1px solid #ececed;font-size:11px;color:#8e8e93;line-height:1.5;">' +
+        'Correo automático del sistema de Control de Pagos.<br>Desarrollado por JND AI SYSTEMS' +
+      '</div>' +
+
+    '</div>' +
+  '</div>';
+}
+
 // ─── 1) Crear solicitud ───────────────────────────────────────────────────
 
 function crearSolicitud_(body) {
@@ -143,21 +209,39 @@ function crearSolicitud_(body) {
 
 function notificarAdmins_(fila) {
   const asunto = 'Nueva solicitud de aprobación: ' + fila['NOMBRE DEL PAGO'] + ' — ' + formatoMoneda_(fila['VALOR']);
-  const cuerpo =
-    'Hay una nueva solicitud de pago pendiente de aprobación.\n\n' +
-    'Empresa:        ' + fila['EMPRESA'] + '\n' +
-    'Tipo:           ' + fila['TIPO DE PAGO'] + '\n' +
-    'Nombre del pago:' + fila['NOMBRE DEL PAGO'] + '\n' +
-    'Proveedor:      ' + fila['PROVEEDOR'] + '\n' +
-    'Valor:          ' + formatoMoneda_(fila['VALOR']) + '\n' +
-    'Fecha de pago:  ' + fila['FECHA DE PAGO'] + '\n' +
-    'Solicitado por: ' + fila['SOLICITADO POR'] + ' (' + fila['CORREO'] + ')\n' +
-    'Notas:          ' + (fila['NOTAS'] || '—') + '\n' +
-    'Archivo(s):     ' + (fila['URL ARCHIVO'] || '—') + '\n\n' +
-    'Para aprobarla o rechazarla, entra a la app:\n' +
-    'https://ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/  →  Aprobaciones  →  Revisar Solicitudes';
 
-  CORREOS_ADMIN.forEach(correo => MailApp.sendEmail(correo, asunto, cuerpo));
+  const detalles =
+    filaDetalle_('Empresa',        fila['EMPRESA']) +
+    filaDetalle_('Tipo',           etiquetaTipo_(fila['TIPO DE PAGO'])) +
+    filaDetalle_('Proveedor',      fila['PROVEEDOR']) +
+    filaDetalle_('Fecha de pago',  fila['FECHA DE PAGO']) +
+    filaDetalle_('Solicitado por', fila['SOLICITADO POR'] + (fila['CORREO'] ? ' · ' + fila['CORREO'] : '')) +
+    filaDetalle_('Notas',          fila['NOTAS']) +
+    filaDetalle_('Documentos',     enlacesArchivos_(fila['URL ARCHIVO']));
+
+  const html = plantillaCorreo_({
+    color:          '#ff9f0a',
+    colorFondo:     'rgba(255,159,10,0.12)',
+    etiquetaEstado: 'Pendiente de aprobación',
+    titulo:         fila['NOMBRE DEL PAGO'],
+    valor:          formatoMoneda_(fila['VALOR']),
+    intro:          'Se registró una nueva solicitud que requiere tu revisión.',
+    detalles:       detalles,
+    boton:          'Revisar solicitud'
+  });
+
+  const textoPlano =
+    'Nueva solicitud pendiente de aprobación\n\n' +
+    fila['NOMBRE DEL PAGO'] + ' — ' + formatoMoneda_(fila['VALOR']) + '\n' +
+    'Empresa: ' + fila['EMPRESA'] + '\n' +
+    'Tipo: ' + etiquetaTipo_(fila['TIPO DE PAGO']) + '\n' +
+    'Proveedor: ' + fila['PROVEEDOR'] + '\n' +
+    'Solicitado por: ' + fila['SOLICITADO POR'] + '\n\n' +
+    'Revísala en: ' + URL_APP;
+
+  CORREOS_ADMIN.forEach(correo =>
+    MailApp.sendEmail({ to: correo, subject: asunto, body: textoPlano, htmlBody: html })
+  );
 }
 
 // ─── 2) Consultar solicitudes ─────────────────────────────────────────────
@@ -211,6 +295,7 @@ function decidirSolicitud_(body) {
   Object.keys(cambios).forEach(campo => {
     const col = encabezados.indexOf(campo);
     if (col !== -1) hoja.getRange(filaIndex + 1, col + 1).setValue(cambios[campo]);
+    solicitud[campo] = cambios[campo];   // para que el correo salga con los datos ya actualizados
   });
 
   // Nota: aprobar NO registra nada en la hoja de Control de Pagos.
@@ -224,19 +309,33 @@ function notificarSolicitante_(solicitud, estado, comentario) {
   if (!solicitud['CORREO']) return;
 
   const aprobado = estado === 'Aprobado';
-  const asunto   = (aprobado ? 'Aprobada' : 'Rechazada') + ': ' + solicitud['NOMBRE DEL PAGO'];
+  const asunto   = (aprobado ? 'Solicitud aprobada' : 'Solicitud rechazada') + ': ' + solicitud['NOMBRE DEL PAGO'];
 
-  let cuerpo =
-    'Tu solicitud de pago fue ' + (aprobado ? 'APROBADA' : 'RECHAZADA') + '.\n\n' +
-    'Nombre del pago: ' + solicitud['NOMBRE DEL PAGO'] + '\n' +
-    'Proveedor:       ' + solicitud['PROVEEDOR'] + '\n' +
-    'Valor:           ' + formatoMoneda_(solicitud['VALOR']) + '\n';
+  const detalles =
+    filaDetalle_('Empresa',       solicitud['EMPRESA']) +
+    filaDetalle_('Tipo',          etiquetaTipo_(solicitud['TIPO DE PAGO'])) +
+    filaDetalle_('Proveedor',     solicitud['PROVEEDOR']) +
+    filaDetalle_('Fecha de pago', solicitud['FECHA DE PAGO']) +
+    filaDetalle_('Revisado por',  solicitud['REVISADO POR']) +
+    filaDetalle_('Documentos',    enlacesArchivos_(solicitud['URL ARCHIVO']));
 
-  if (aprobado) {
-    cuerpo += '\nYa cuentas con el visto bueno para proceder.';
-  } else if (comentario) {
-    cuerpo += '\nMotivo del rechazo: ' + comentario;
-  }
+  const html = plantillaCorreo_({
+    color:          aprobado ? '#34c759' : '#ff3b30',
+    colorFondo:     aprobado ? 'rgba(52,199,89,0.12)' : 'rgba(255,59,48,0.10)',
+    etiquetaEstado: aprobado ? 'Aprobada' : 'Rechazada',
+    titulo:         solicitud['NOMBRE DEL PAGO'],
+    valor:          formatoMoneda_(solicitud['VALOR']),
+    intro:          aprobado
+      ? 'Tu solicitud fue revisada y cuenta con el visto bueno de la administración.'
+      : 'Tu solicitud fue revisada y no fue aprobada.',
+    detalles:       detalles,
+    aviso:          (!aprobado && comentario) ? '<strong>Motivo:</strong> ' + comentario : ''
+  });
 
-  MailApp.sendEmail(solicitud['CORREO'], asunto, cuerpo);
+  const textoPlano =
+    'Tu solicitud "' + solicitud['NOMBRE DEL PAGO'] + '" (' + formatoMoneda_(solicitud['VALOR']) + ') fue ' +
+    (aprobado ? 'APROBADA.' : 'RECHAZADA.') +
+    (!aprobado && comentario ? '\n\nMotivo: ' + comentario : '');
+
+  MailApp.sendEmail({ to: solicitud['CORREO'], subject: asunto, body: textoPlano, htmlBody: html });
 }
