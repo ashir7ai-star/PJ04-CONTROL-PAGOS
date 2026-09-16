@@ -154,6 +154,24 @@ chk('sin anchos fijos escritos en línea (no se adaptan)', enLinea.length === 0,
 chk('hay reglas para celular (<=640px)',  /@media\s*\(max-width:\s*6[0-4]\d px?\)|@media\s*\(max-width:\s*640px\)/.test(css));
 chk('hay reglas para pantallas angostas (<=400px)', /@media\s*\(max-width:\s*4[0-2]\dpx\)/.test(css));
 
+console.log('\n=== Service Worker ===');
+let sw = null;
+try { sw = fs.readFileSync('sw.js', 'utf8'); } catch (e) { /* puede no estar al lado */ }
+if (sw) {
+  // Si el Service Worker intercepta las peticiones a Apps Script, rompe la
+  // redirección con la que Google entrega la respuesta de un POST y el backend
+  // termina viendo "action: undefined". Costó una sesión entera encontrarlo.
+  const hosts = ['script.google.com', 'script.googleusercontent.com', 'accounts.google.com'];
+  hosts.forEach(h => {
+    chk('el Service Worker deja pasar ' + h, sw.indexOf(h) !== -1,
+        'falta en la lista de dominios sin cachear');
+  });
+  chk('el Service Worker filtra por dominio antes de responder',
+      /hostname/.test(sw), 'no hay ningún filtro por hostname en el fetch');
+  // La versión de caché tiene que subir en cada cambio, o nadie recibe nada
+  chk('sw.js declara una versión de caché', /const CACHE = 'control-pagos-v\d+'/.test(sw));
+}
+
 console.log('\n=== Coherencia con el backend ===');
 const clienteFront = (html.match(/const CLIENT_ID_GOOGLE = '([^']+)'/) || [])[1];
 let clienteBack = null;

@@ -1,4 +1,4 @@
-const CACHE = 'control-pagos-v38';
+const CACHE = 'control-pagos-v39';
 const ASSETS = [
   '/PJ04-CONTROL-PAGOS/',
   '/PJ04-CONTROL-PAGOS/index.html',
@@ -26,8 +26,38 @@ self.addEventListener('activate', e => {
   );
 });
 
+// Dominios del backend y del login: el Service Worker NO debe tocarlos.
+//
+// Apps Script entrega la respuesta de un POST con una redirección: primero
+// ejecuta doPost en /exec y después manda un 302 a googleusercontent.com, que
+// el navegador sigue con un GET. Si ese GET pasa por acá, lo relanzábamos como
+// una petición nueva con `fetch(e.request)`, se perdía el contexto de la
+// redirección y el navegador terminaba pidiendo `GET /exec` sin parámetros:
+// el servidor respondía "Acción no reconocida: undefined" y el login moría ahí.
+//
+// Era también la causa de que Aprobaciones pareciera fallar aunque el correo sí
+// llegara: doPost se ejecutaba bien, lo que se rompía era la entrega de la
+// respuesta.
+//
+// Además, nada de esto se debe cachear nunca: son datos vivos.
+const SIN_CACHE = [
+  'script.google.com',
+  'script.googleusercontent.com',
+  'accounts.google.com',
+  'oauth2.googleapis.com'
+];
+
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+
+  let url;
+  try { url = new URL(e.request.url); } catch (err) { return; }
+  if (SIN_CACHE.some(h => url.hostname === h || url.hostname.endsWith('.' + h))) return;
+
+  // Las respuestas redirigidas no se pueden devolver desde un Service Worker
+  // cuando el pedido no está en modo "follow"; se dejan pasar directo.
+  if (e.request.mode === 'navigate' && e.request.redirect !== 'follow') return;
+
   e.respondWith(
     caches.match(e.request).then(cached => cached || fetch(e.request))
   );
