@@ -412,36 +412,67 @@ function verificarEncabezados_(destino, encabezadosPrincipal) {
 // fecha de septiembre leída como diciembre se va al futuro y queda primera.
 //
 // Esto informa qué hay realmente en cada hoja, para decidir con datos.
+// Reduce un texto a su FORMA: los dígitos pasan a ser '9'. Así "15/09/2026 18:40"
+// y "09/12/2026 14:31" son la misma forma, y cualquier formato inesperado salta
+// a la vista en vez de esconderse entre 97 registros parecidos.
+function formaDeTexto_(t) {
+  return String(t).trim().replace(/\d/g, '9');
+}
+
 function revisarFechasRegistro() {
   const lineas = ['CÓMO ESTÁN GUARDADAS LAS FECHAS DE REGISTRO', ''];
   let textoAmbiguo = 0, textoClaro = 0, fechasReales = 0, vacias = 0, otras = 0;
+
+  // Evidencia de formato para TODA la columna. Un solo registro con el primer
+  // número > 12 demuestra que la hoja escribe día/mes; uno con el segundo > 12
+  // demuestra mes/día. Es una prueba, no una suposición — y por eso decide mejor
+  // que mirar cada celda por separado.
+  let pruebaDiaMes = 0, pruebaMesDia = 0;
+  const filas = [];   // para reconstruir el orden que ve la app
 
   hojasDePagos_().forEach(hoja => {
     const valores = hoja.getDataRange().getValues();
     if (valores.length < 2) return;
     const col = valores[0].indexOf('FECHA REGISTRO');
     if (col === -1) return;
+    const colValor = valores[0].indexOf('VALOR');
 
     let dReal = 0, dTexto = 0, dAmbiguo = 0, dVacio = 0;
-    const ejemplos = [];
+    const formas = {};   // forma -> { n, ejemplo }
 
     valores.slice(1).forEach(fila => {
       const v = fila[col];
       if (v === '' || v === null) { dVacio++; vacias++; return; }
 
+      const crudo = (v instanceof Date)
+        ? 'Date(' + Utilities.formatDate(v, ZONA_HORARIA, 'yyyy-MM-dd HH:mm') + ')'
+        : String(v).trim();
+
+      filas.push({
+        hoja:         hoja.getName(),
+        crudo:        crudo,
+        tipo:         (v instanceof Date) ? 'fecha real' : 'texto',
+        valor:        colValor === -1 ? '' : String(fila[colValor]),
+        interpretado: formatearValorDeCelda_('FECHA REGISTRO', v)
+      });
+
       if (v instanceof Date) { dReal++; fechasReales++; return; }
 
       const t = String(v).trim();
+      const forma = formaDeTexto_(t);
+      if (!formas[forma]) formas[forma] = { n: 0, ejemplo: t };
+      formas[forma].n++;
+
       const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
       if (m) {
         dTexto++;
         const a = Number(m[1]), b = Number(m[2]);
         // Si el primer número es > 12, solo puede ser el día: no hay ambigüedad.
-        if (a > 12 || b > 12) { textoClaro++; }
-        else { dAmbiguo++; textoAmbiguo++; if (ejemplos.length < 3) ejemplos.push(t); }
+        if (a > 12) { textoClaro++; pruebaDiaMes++; }
+        else if (b > 12) { textoClaro++; pruebaMesDia++; }
+        else { dAmbiguo++; textoAmbiguo++; }
       } else {
         otras++;
-        if (ejemplos.length < 3) ejemplos.push(t);
       }
     });
 
@@ -449,7 +480,9 @@ function revisarFechasRegistro() {
     lineas.push('   fechas reales de Sheets: ' + dReal);
     lineas.push('   texto:                   ' + dTexto + '  (de los cuales AMBIGUOS: ' + dAmbiguo + ')');
     if (dVacio) lineas.push('   vacías:                  ' + dVacio);
-    if (ejemplos.length) lineas.push('   ejemplos: ' + ejemplos.join(' | '));
+    Object.keys(formas).forEach(f => {
+      lineas.push('   forma "' + f + '" x' + formas[f].n + '   ej: ' + formas[f].ejemplo);
+    });
     lineas.push('');
   });
 
@@ -460,11 +493,30 @@ function revisarFechasRegistro() {
   if (otras)  lineas.push('   formato no reconocido:   ' + otras);
   if (vacias) lineas.push('   vacías:                  ' + vacias);
   lineas.push('');
-  lineas.push(textoAmbiguo === 0
-    ? '✅ No hay fechas ambiguas: el orden cronológico es confiable.'
-    : '⚠️ Hay ' + textoAmbiguo + ' fecha(s) donde no se puede saber si es día/mes o mes/día ' +
-      'mirando solo el texto. Corré normalizarFechasRegistro() para convertirlas todas ' +
-      'al mismo formato.');
+
+  lineas.push('QUÉ FORMATO USA REALMENTE LA HOJA (evidencia, no suposición)');
+  lineas.push('   registros que SOLO pueden ser día/mes: ' + pruebaDiaMes);
+  lineas.push('   registros que SOLO pueden ser mes/día: ' + pruebaMesDia);
+  if (pruebaDiaMes && pruebaMesDia) {
+    lineas.push('   ⚠️ LA COLUMNA TIENE LOS DOS FORMATOS MEZCLADOS.');
+  } else if (pruebaDiaMes) {
+    lineas.push('   ✅ La columna es día/mes. Un "09/12/2026" es 9 de DICIEMBRE.');
+  } else if (pruebaMesDia) {
+    lineas.push('   ✅ La columna es mes/día. Un "09/12/2026" es 12 de SEPTIEMBRE.');
+  } else {
+    lineas.push('   (no hay texto con números > 12 que lo demuestre)');
+  }
+  lineas.push('');
+
+  // Los 10 más recientes SEGÚN LO QUE HOY ENTIENDE EL SERVIDOR. Esto es lo que
+  // se compara contra la pantalla: si acá sale bien y en la app sale mal, el
+  // problema no está en la lectura de la hoja.
+  filas.sort((x, y) => String(y.interpretado).localeCompare(String(x.interpretado)));
+  lineas.push('LOS 10 MÁS RECIENTES, COMO LOS ORDENA HOY EL SERVIDOR');
+  filas.slice(0, 10).forEach((f, i) => {
+    lineas.push('   ' + (i + 1) + '. ' + f.interpretado + '   $' + f.valor +
+                '   [' + f.tipo + ' · crudo: ' + f.crudo + ' · ' + f.hoja + ']');
+  });
 
   const resumen = lineas.join('\n');
   Logger.log(resumen);
