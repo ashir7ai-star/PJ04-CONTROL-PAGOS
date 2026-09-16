@@ -461,6 +461,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-16**: 🔴 **DOS formatos de fecha mezclados en FECHA REGISTRO.** El usuario detectó que algunos registros mostraban mes/día y otros día/mes.
+  - **El problema:** `09/12/2026` es **12 de septiembre** en un formato y **9 de diciembre** en el otro, y mirando solo el texto no se puede distinguir. Las filas de la época de n8n quedaron en mes/día y las del sistema en día/mes. Leídas todas como día/mes, las de n8n se iban al futuro y quedaban primeras: el orden cronológico era falso **sin que nada fallara**.
+  - **Transporte sin ambigüedad:** el servidor ahora envía las fechas con hora en `yyyy-MM-dd HH:mm`, que no se puede leer de dos maneras. El navegador las muestra en `dd/MM/yyyy HH:mm`.
+  - **Dos funciones nuevas** (correr desde el editor): `revisarFechasRegistro()` informa cuántas celdas son fecha real, cuántas texto y cuántas ambiguas; `normalizarFechasRegistro(true)` simula y `(false)` aplica, con respaldo previo del Sheet.
+  - **Cómo desambigua:** un registro **no puede ser del futuro**. Si leer día/mes da una fecha futura y mes/día da una pasada, la fila venía en mes/día. No es una suposición, es la única lectura posible.
+  - ⚠️ **Límite honesto:** si ambas lecturas dan fechas pasadas (por ejemplo `08/09/2026`), la ambigüedad no se puede resolver automáticamente y se asume día/mes.
+
 - **2026-09-16**: 🔴 **La hora del registro se perdía en el servidor.** Aun después de corregir el orden, las fechas llegaban como `09/12/2026 00:00`.
   - **Causa:** cuando Sheets guarda la celda como **fecha real** (no como texto), `consultarPagos_` la formateaba con `yyyy-MM-dd`, que **descarta la hora**. Todos los registros del mismo día llegaban con 00:00 y quedaban empatados, así que el orden cronológico seguía siendo imposible. Afectaba también a `FECHA SOLICITUD`, `FECHA DECISION` y `ULTIMO ACCESO`.
   - **Fix:** `formatearValorDeCelda_()` — las columnas de fecha **con hora** se formatean `dd/MM/yyyy HH:mm`; las de solo fecha siguen en `yyyy-MM-dd`.

@@ -304,9 +304,13 @@ function registrarPago_(body) {
 // 00:00 y quedaban empatados. Las columnas de fecha+hora se formatean con hora.
 function formatearValorDeCelda_(encabezado, valor) {
   if (!(valor instanceof Date)) return valor;
+  // Se envía en formato año-mes-día, que NO se puede interpretar de dos
+  // maneras. Con dd/MM/yyyy, un "09/12/2026" es 12 de septiembre para unos y
+  // 9 de diciembre para otros — y esa confusión ya rompió el orden cronológico.
+  // El navegador lo muestra en dd/MM/yyyy, que es como se lee acá.
   const conHora = ['FECHA REGISTRO', 'FECHA SOLICITUD', 'FECHA DECISION', 'ULTIMO ACCESO'];
   return conHora.indexOf(String(encabezado).trim().toUpperCase()) !== -1
-    ? Utilities.formatDate(valor, ZONA_HORARIA, 'dd/MM/yyyy HH:mm')
+    ? Utilities.formatDate(valor, ZONA_HORARIA, 'yyyy-MM-dd HH:mm')
     : Utilities.formatDate(valor, ZONA_HORARIA, 'yyyy-MM-dd');
 }
 
@@ -352,6 +356,164 @@ function verificarEncabezados_(destino, encabezadosPrincipal) {
       );
     }
   }
+}
+
+// ─── Diagnóstico: ¿cómo están guardadas las FECHA REGISTRO? ───────────────
+//
+// SOLO LECTURA. En Sheets una celda puede ser una FECHA REAL o TEXTO, y las dos
+// se ven igual. Si es texto, además puede estar en dd/MM/yyyy o en MM/dd/yyyy,
+// y "09/12/2026" es 12 de septiembre en uno y 9 de diciembre en el otro.
+//
+// Mezclar ambos formatos rompe el orden cronológico sin que nada falle: una
+// fecha de septiembre leída como diciembre se va al futuro y queda primera.
+//
+// Esto informa qué hay realmente en cada hoja, para decidir con datos.
+function revisarFechasRegistro() {
+  const lineas = ['CÓMO ESTÁN GUARDADAS LAS FECHAS DE REGISTRO', ''];
+  let textoAmbiguo = 0, textoClaro = 0, fechasReales = 0, vacias = 0, otras = 0;
+
+  hojasDePagos_().forEach(hoja => {
+    const valores = hoja.getDataRange().getValues();
+    if (valores.length < 2) return;
+    const col = valores[0].indexOf('FECHA REGISTRO');
+    if (col === -1) return;
+
+    let dReal = 0, dTexto = 0, dAmbiguo = 0, dVacio = 0;
+    const ejemplos = [];
+
+    valores.slice(1).forEach(fila => {
+      const v = fila[col];
+      if (v === '' || v === null) { dVacio++; vacias++; return; }
+
+      if (v instanceof Date) { dReal++; fechasReales++; return; }
+
+      const t = String(v).trim();
+      const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (m) {
+        dTexto++;
+        const a = Number(m[1]), b = Number(m[2]);
+        // Si el primer número es > 12, solo puede ser el día: no hay ambigüedad.
+        if (a > 12 || b > 12) { textoClaro++; }
+        else { dAmbiguo++; textoAmbiguo++; if (ejemplos.length < 3) ejemplos.push(t); }
+      } else {
+        otras++;
+        if (ejemplos.length < 3) ejemplos.push(t);
+      }
+    });
+
+    lineas.push(hoja.getName() + ':');
+    lineas.push('   fechas reales de Sheets: ' + dReal);
+    lineas.push('   texto:                   ' + dTexto + '  (de los cuales AMBIGUOS: ' + dAmbiguo + ')');
+    if (dVacio) lineas.push('   vacías:                  ' + dVacio);
+    if (ejemplos.length) lineas.push('   ejemplos: ' + ejemplos.join(' | '));
+    lineas.push('');
+  });
+
+  lineas.push('RESUMEN');
+  lineas.push('   fechas reales de Sheets: ' + fechasReales + '  (sin ambigüedad posible)');
+  lineas.push('   texto sin ambigüedad:    ' + textoClaro + '  (algún número > 12)');
+  lineas.push('   texto AMBIGUO:           ' + textoAmbiguo + '  (ambos números <= 12)');
+  if (otras)  lineas.push('   formato no reconocido:   ' + otras);
+  if (vacias) lineas.push('   vacías:                  ' + vacias);
+  lineas.push('');
+  lineas.push(textoAmbiguo === 0
+    ? '✅ No hay fechas ambiguas: el orden cronológico es confiable.'
+    : '⚠️ Hay ' + textoAmbiguo + ' fecha(s) donde no se puede saber si es día/mes o mes/día ' +
+      'mirando solo el texto. Corré normalizarFechasRegistro() para convertirlas todas ' +
+      'al mismo formato.');
+
+  const resumen = lineas.join('\n');
+  Logger.log(resumen);
+  return resumen;
+}
+
+// Convierte TODAS las FECHA REGISTRO a fechas reales de Sheets, para que no
+// quede ninguna ambigüedad de formato. Hace respaldo del Sheet antes de tocar.
+//
+// `simular` en true solo informa qué haría, sin modificar nada. SIEMPRE correr
+// primero con true.
+//
+// Sobre las ambiguas: el sistema SIEMPRE escribió dd/MM/yyyy, así que se
+// interpretan así. Si el resultado diera una fecha futura —imposible para un
+// registro— se avisa en vez de convertirla a ciegas.
+function normalizarFechasRegistro(simular) {
+  const soloSimular = (simular !== false);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  if (!soloSimular) {
+    const nombre = 'RESPALDO ANTES DE NORMALIZAR FECHAS ' +
+      Utilities.formatDate(new Date(), ZONA_HORARIA, 'yyyy-MM-dd HH.mm');
+    DriveApp.getFileById(ss.getId()).makeCopy(nombre);
+  }
+
+  const lineas = [soloSimular ? 'SIMULACRO — no se modificó nada.' : 'NORMALIZACIÓN APLICADA', ''];
+  const ahora = new Date();
+  let convertidas = 0, yaEstaban = 0, sospechosas = 0;
+
+  hojasDePagos_().forEach(hoja => {
+    const valores = hoja.getDataRange().getValues();
+    if (valores.length < 2) return;
+    const col = valores[0].indexOf('FECHA REGISTRO');
+    if (col === -1) return;
+
+    let hConv = 0, hOk = 0;
+    for (let i = 1; i < valores.length; i++) {
+      const v = valores[i][col];
+      if (v === '' || v === null) continue;
+      if (v instanceof Date) { hOk++; yaEstaban++; continue; }
+
+      const t = String(v).trim();
+      const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/);
+      if (!m) continue;
+
+      const a = Number(m[1]), b = Number(m[2]);
+      const anio = Number(m[3]), hh = Number(m[4] || 0), mm = Number(m[5] || 0);
+      const margen = ahora.getTime() + 86400000;
+
+      // Interpretación normal: día/mes, que es lo que siempre escribió el sistema.
+      let fecha = new Date(anio, b - 1, a, hh, mm);
+      let nota  = '';
+
+      // Un registro NO puede ser del futuro. Si día/mes da una fecha futura y
+      // mes/día da una pasada, entonces esa fila venía en mes/día (son las de
+      // la época de n8n). No es una suposición: es la única lectura posible.
+      if (fecha.getTime() > margen) {
+        const alterna = new Date(anio, a - 1, b, hh, mm);
+        if (a <= 12 && b <= 31 && alterna.getTime() <= margen) {
+          fecha = alterna;
+          nota  = ' (venía en mes/día)';
+        } else {
+          sospechosas++;
+          lineas.push('   ⚠️ ' + hoja.getName() + ' fila ' + (i + 1) + ': "' + t +
+                      '" da una fecha futura en cualquiera de las dos lecturas. Revisar a mano.');
+          continue;
+        }
+      }
+
+      hConv++; convertidas++;
+      if (nota) {
+        lineas.push('   · ' + hoja.getName() + ' fila ' + (i + 1) + ': "' + t + '" → ' +
+                    Utilities.formatDate(fecha, ZONA_HORARIA, 'yyyy-MM-dd HH:mm') + nota);
+      }
+      if (!soloSimular) hoja.getRange(i + 1, col + 1).setValue(fecha);
+    }
+
+    if (hConv || hOk) {
+      lineas.push(hoja.getName() + ': ' + hConv + ' convertida(s), ' + hOk + ' ya estaban bien.');
+    }
+  });
+
+  lineas.push('');
+  lineas.push('Total a convertir: ' + convertidas + '  ·  ya correctas: ' + yaEstaban +
+              (sospechosas ? '  ·  sospechosas: ' + sospechosas : ''));
+  if (soloSimular) {
+    lineas.push('');
+    lineas.push('Para aplicarlo de verdad: normalizarFechasRegistro(false)');
+  }
+
+  const resumen = lineas.join('\n');
+  Logger.log(resumen);
+  return resumen;
 }
 
 // ─── Diagnóstico: ¿es seguro borrar una carpeta de Drive? ─────────────────
