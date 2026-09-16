@@ -1406,36 +1406,72 @@
       overflow-y: auto;
     }
 
+    /* Un halo muy tenue detrás de la tarjeta: da profundidad sin recurrir a un
+       degradado saturado, que envejece mal y se ve amateur. */
+    .login-overlay::before {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 640px; height: 640px;
+      transform: translate(-50%, -50%);
+      background: radial-gradient(circle, var(--primary-light) 0%, transparent 62%);
+      opacity: 0.75;
+      pointer-events: none;
+    }
+
     .login-card {
+      position: relative;
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
+      border-radius: 18px;
       box-shadow: var(--shadow-lg);
-      padding: 32px 28px;
+      padding: 44px 40px 36px;
       width: 100%;
-      max-width: 400px;
+      max-width: 416px;
       text-align: center;
     }
 
     .login-logo {
-      width: 72px;
-      height: 72px;
+      width: 60px;
+      height: 60px;
       object-fit: contain;
-      margin-bottom: 16px;
+      margin-bottom: 22px;
     }
 
     .login-card h2 {
-      font-size: 1.25rem;
+      font-size: 1.4rem;
       font-weight: 700;
       color: var(--text);
-      margin-bottom: 6px;
+      letter-spacing: -0.021em;
+      margin-bottom: 8px;
     }
 
     .login-card p.login-sub {
-      font-size: 0.86rem;
+      font-size: 0.875rem;
       color: var(--text-muted);
-      line-height: 1.5;
-      margin-bottom: 24px;
+      line-height: 1.55;
+      margin-bottom: 30px;
+    }
+
+    /* Separador con la leyenda del método de acceso. Da jerarquía y explica qué
+       se espera del usuario antes de mostrarle el botón de un tercero. */
+    .login-separador {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 0 0 18px;
+      color: var(--text-muted);
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .login-separador::before,
+    .login-separador::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
     }
 
     .login-boton-zona {
@@ -1443,6 +1479,10 @@
       justify-content: center;
       min-height: 44px;
     }
+    /* Google dibuja el botón en su propio contenedor; esto lo deja alineado al
+       ancho de la tarjeta en vez de flotar centrado con bordes propios. */
+    .login-boton-zona > div { width: 100% !important; }
+    .login-boton-zona iframe { margin: 0 !important; }
 
     .login-aviso {
       border-radius: var(--radius);
@@ -1466,6 +1506,22 @@
       color: var(--text-2);
     }
     .login-usuario img { width: 32px; height: 32px; border-radius: 50%; }
+
+    .login-nota {
+      margin-top: 18px;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      color: var(--text-muted);
+    }
+
+    .login-marca {
+      margin-top: 30px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+      font-size: 0.7rem;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+    }
 
     .login-pie {
       margin-top: 20px;
@@ -1621,13 +1677,17 @@
     <div class="login-card">
       <img src="icons/logo.png" alt="Millennium" class="login-logo" />
       <h2 id="loginTitulo">Control de Pagos</h2>
-      <p class="login-sub" id="loginSubtitulo">Millennium Energy Co · AMPAC SAS</p>
+      <p class="login-sub" id="loginSubtitulo">Ingresá para registrar y consultar los pagos de tu área.</p>
 
       <div id="loginAviso" style="display:none;"></div>
 
       <!-- Paso 1: entrar con Google -->
       <div id="loginPaso1">
+        <div class="login-separador">Acceso corporativo</div>
         <div class="login-boton-zona" id="googleBtn"></div>
+        <p class="login-nota">
+          Usá la cuenta de Google de tu empresa. El acceso lo autoriza un administrador.
+        </p>
       </div>
 
       <!-- Paso 2: la cuenta no está registrada -> pedir datos -->
@@ -1652,6 +1712,8 @@
       <div class="login-pie" id="loginPie" style="display:none;">
         <button type="button" id="btnCambiarCuenta">Entrar con otra cuenta</button>
       </div>
+
+      <div class="login-marca">MILLENNIUM ENERGY CO · AMPAC SAS</div>
     </div>
   </div>
 
@@ -2444,6 +2506,12 @@
     // consultar_solicitudes.
     const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyDHauDZGvZ1CSH3WOY9h-JLnxoKYcRBdV4v7hpPjDW86kK27o3ieFk01ggpBOmHA4-nA/exec';
 
+    // Se declara con `var` y acá arriba a propósito: aplicarTema() la consulta
+    // al cargar la página, antes de que exista el bloque de sesión. Con `var`
+    // vale `undefined` hasta que el bloque de sesión la asigna, y eso es una
+    // lectura válida; con `let` sería un ReferenceError que mataría el script.
+    var redibujarGoogleListo = null;
+
     // ─── Sesión ────────────────────────────────────────────────────
     // Client ID de OAuth. Tiene que ser el MISMO valor que CLIENT_ID_GOOGLE en
     // apps-script.gs: el servidor rechaza cualquier token cuyo "aud" no coincida.
@@ -3066,6 +3134,16 @@
       html.setAttribute('data-theme', theme);
       colorSchemeMeta.setAttribute('content', theme);
       updateThemeBtn(theme);
+      // El botón de Google no hereda nuestro CSS (lo dibuja Google), así que hay
+      // que volver a pedirlo con el tema correcto. Si no, en modo oscuro queda
+      // un recuadro blanco flotando sobre la tarjeta.
+      //
+      // Se llama por esta referencia y NO directo por su nombre: aplicarTema()
+      // corre al cargar la página, mucho antes de que se ejecute el bloque de
+      // sesión, y la función usa variables declaradas con `let` más abajo. Un
+      // `typeof fn === 'function'` no protege de eso (las funciones sí se izan,
+      // las `let` no) y el ReferenceError mataría el script entero.
+      if (redibujarGoogleListo) redibujarGoogleListo();
     }
 
     const savedTheme = localStorage.getItem('theme') || 'light';
@@ -3671,6 +3749,8 @@
 
     function mostrarLogin(tipo, mensaje) {
       loginOverlay.style.display = 'flex';
+      // Ahora que la tarjeta es visible se puede medir su ancho real.
+      setTimeout(redibujarBotonGoogle, 0);
       headerSesion.style.display = 'none';
       loginPaso1.style.display   = '';
       loginPaso2.style.display   = 'none';
@@ -3733,22 +3813,63 @@
       iniciarGoogle();
     }
 
+    let googleInicializado = false;
+
     function iniciarGoogle() {
       if (!window.google || !google.accounts || !google.accounts.id) {
         // La librería de Google todavía no cargó; se reintenta un momento después.
         setTimeout(iniciarGoogle, 300);
         return;
       }
-      google.accounts.id.initialize({
-        client_id: CLIENT_ID_GOOGLE,
-        callback:  onCredencialGoogle,
-        auto_select: true
-      });
-      google.accounts.id.renderButton(document.getElementById('googleBtn'), {
-        theme: 'filled_blue', size: 'large', shape: 'pill',
-        text: 'signin_with', locale: 'es'
+      if (!googleInicializado) {
+        google.accounts.id.initialize({
+          client_id: CLIENT_ID_GOOGLE,
+          callback:  onCredencialGoogle,
+          auto_select: true
+        });
+        googleInicializado = true;
+      }
+      redibujarBotonGoogle();
+    }
+
+    // Google dibuja este botón por su cuenta y no hereda nuestro CSS. Lo único
+    // que podemos controlar son sus opciones, así que se eligen para que quede
+    // integrado: tema acorde al de la app, esquinas rectas como el resto de los
+    // controles, y ancho completo de la tarjeta en vez de una píldora suelta.
+    function redibujarBotonGoogle() {
+      const zona = document.getElementById('googleBtn');
+      if (!zona || !googleInicializado) return;
+      // Con el overlay oculto la zona mide 0 y el botón saldría con el ancho
+      // mínimo. Se redibuja al volver a mostrar el login.
+      if (loginOverlay.style.display === 'none') return;
+
+      const oscuro = document.documentElement.getAttribute('data-theme') === 'dark';
+      zona.innerHTML = '';
+
+      // renderButton necesita el ancho en píxeles; no acepta porcentajes.
+      const ancho = Math.round(Math.min(360, Math.max(240, zona.getBoundingClientRect().width || 320)));
+
+      google.accounts.id.renderButton(zona, {
+        theme:           oscuro ? 'filled_black' : 'outline',
+        size:            'large',
+        shape:           'rectangular',
+        text:            'continue_with',
+        logo_alignment:  'center',
+        locale:          'es',
+        width:           ancho
       });
     }
+
+    // Recién ahora que todo está declarado, aplicarTema() puede usarla.
+    redibujarGoogleListo = redibujarBotonGoogle;
+
+    // Si cambia el ancho de la ventana, el botón queda con el ancho viejo.
+    let tempRedibujo = null;
+    window.addEventListener('resize', () => {
+      if (loginOverlay.style.display === 'none') return;
+      clearTimeout(tempRedibujo);
+      tempRedibujo = setTimeout(redibujarBotonGoogle, 200);
+    });
 
     async function onCredencialGoogle(respuesta) {
       sesion.idToken = respuesta.credential;
