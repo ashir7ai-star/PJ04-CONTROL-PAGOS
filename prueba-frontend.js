@@ -140,11 +140,26 @@ chk('el menú queda fijo al hacer scroll',
 chk('las pestañas se deslizan en pantallas angostas',
     /\.app-nav\s*\{[^}]*overflow-x:\s*auto/.test(css), '.app-nav sin overflow-x:auto');
 
-// El logo del encabezado no puede ser más alto que el encabezado
-const altoHeader = Number((css.match(/\n\s*header\s*\{[^}]*height:\s*(\d+)px/) || [])[1] || 0);
-const ladoLogo   = Number((css.match(/\.brand-logo\s*\{[^}]*width:\s*(\d+)px/) || [])[1] || 0);
-chk('el logo entra en el encabezado', ladoLogo > 0 && altoHeader > 0 && ladoLogo < altoHeader,
-    'logo ' + ladoLogo + 'px vs header ' + altoHeader + 'px');
+// El alto del encabezado y el `top` del menú fijo tienen que salir de la misma
+// variable: si se separan, al hacer scroll el menú se superpone o deja un hueco.
+const headerUsaVar = /\n\s*header\s*\{[^}]*height:\s*var\(--header-h\)/.test(css);
+const navUsaVar    = /\.app-nav\s*\{[^}]*top:\s*var\(--header-h\)/.test(css);
+chk('el encabezado y el menú fijo comparten la misma variable de alto',
+    headerUsaVar && navUsaVar,
+    'header usa var: ' + headerUsaVar + ', .app-nav usa var: ' + navUsaVar);
+
+// En cada tamaño, el logo tiene que entrar dentro del encabezado.
+// Se recorren todos los valores declarados de --header-h y de .brand-logo en el
+// orden en que aparecen, que es el orden en que se aplican las media queries.
+const altos = [...css.matchAll(/--header-h:\s*(\d+)px/g)].map(m => Number(m[1]));
+const logos = [...css.matchAll(/\.brand-logo\s*\{[^}]*width:\s*(\d+)px/g)].map(m => Number(m[1]));
+chk('hay un alto de encabezado y un tamaño de logo por cada corte',
+    altos.length > 0 && altos.length === logos.length,
+    'altos: ' + JSON.stringify(altos) + ' / logos: ' + JSON.stringify(logos));
+const noEntra = logos.map((l, i) => ({ logo: l, alto: altos[i] }))
+                     .filter(p => !(p.logo < p.alto));
+chk('el logo entra en el encabezado en todos los tamaños', noEntra.length === 0,
+    JSON.stringify(noEntra));
 
 // Ningún tamaño en línea en el HTML: no se puede adaptar por media query
 const enLinea = [...html.matchAll(/style="[^"]*width:\s*\d{2,}px[^"]*"/g)].map(m => m[0]);

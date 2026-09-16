@@ -22,6 +22,9 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
+  <!-- Google Identity Services (login). No se precachea en sw.js a propósito:
+       Google la actualiza por su cuenta y una copia vieja rompería el login. -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     /* ─── Variables ──────────────────────────────────────────────── */
     :root {
@@ -44,6 +47,7 @@
       --error-light:   rgba(255,59,48,0.1);
       --warning:       #ff9f0a;
       --warning-light: rgba(255,159,10,0.1);
+      --header-h:      74px;   /* alto del encabezado; el menú fijo se ancla a este valor */
       --radius-sm:     8px;
       --radius:        12px;
       --radius-lg:     16px;
@@ -97,7 +101,10 @@
       -webkit-backdrop-filter: saturate(180%) blur(20px);
       border-bottom: 1px solid var(--border);
       padding: 0 24px;
-      height: 56px;
+      /* La altura del encabezado y el `top` del menú fijo TIENEN que coincidir:
+         si se separan, el menú se superpone al encabezado o deja un hueco al
+         hacer scroll. Por eso salen de la misma variable. */
+      height: var(--header-h);
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -113,7 +120,29 @@
     .header-brand {
       display: flex;
       align-items: center;
-      gap: 0px;
+      gap: 10px;
+      min-width: 0;        /* permite que el texto se recorte en vez de empujar */
+      flex: 1;
+    }
+
+    /* El logo estaba en 64px dentro de un header de 56px: desbordaba y empujaba
+       el texto a tres renglones en pantallas angostas. */
+    .brand-logo {
+      width: 54px;
+      height: 54px;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
+
+    .brand-text {
+      min-width: 0;
+    }
+
+    .brand-text h1,
+    .brand-text p {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .brand-icon {
@@ -690,9 +719,21 @@
       padding: 0 16px;
       gap: 4px;
       position: sticky;
-      top: 56px;
+      top: var(--header-h);   /* debe ser igual a la altura del encabezado */
       z-index: 99;
+      /* En pantallas angostas las pestañas no entran y la última quedaba
+         cortada contra el borde. Se deslizan en vez de desbordar, y así
+         soporta cualquier cantidad de pestañas sin rediseñar nada. */
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: none;            /* Firefox */
+      -ms-overflow-style: none;         /* Edge viejo */
+      -webkit-overflow-scrolling: touch;
+      scroll-snap-type: x proximity;
     }
+    .app-nav::-webkit-scrollbar { display: none; }   /* Chrome / Safari */
+
+    .nav-tab { scroll-snap-align: start; }
 
     .nav-tab {
       background: none;
@@ -1387,16 +1428,443 @@
       background: var(--surface) !important;
       border-color: var(--border) !important;
     }
+    /* ═══ Adaptación a celular y tablet ═══════════════════════════
+       Regla de fondo: la página NUNCA debe deslizarse en horizontal. Solo
+       pueden hacerlo contenedores concretos que lo necesiten (la tabla de
+       resultados y la barra de pestañas), cada uno con su propio scroll. */
+
+    html, body {
+      max-width: 100%;
+      /* `clip` y NO `hidden`: `overflow-x: hidden` convierte al elemento en
+         contenedor de scroll y eso ROMPE el `position: sticky` del encabezado y
+         del menú, que es justamente lo que se pidió que quedara fijo al hacer
+         scroll. `clip` recorta sin crear contenedor de scroll.
+         En navegadores viejos que no lo soportan simplemente no recorta: el
+         desborde real ya está corregido en el origen (logo del encabezado y
+         barra de pestañas), esto es solo una red de seguridad. */
+      overflow-x: clip;
+    }
+
+    /* Nada puede ser más ancho que la pantalla. Las excepciones (tablas anchas)
+       viven dentro de un contenedor con overflow propio.
+       `main` se deja afuera a propósito: ya tiene su propio max-width de 968px
+       para centrar el contenido en escritorio, y pisarlo acá lo ensancharía. */
+    header, nav, footer {
+      max-width: 100%;
+    }
+
+    img, svg { max-width: 100%; }
+
+    /* ── Tablet ── */
+    @media (max-width: 900px) {
+      header { padding: 0 16px; }
+      main   { padding-left: 16px; padding-right: 16px; }
+    }
+
+    /* ── Celular ── */
+    @media (max-width: 640px) {
+      header { padding: 0 14px; }
+      main   { padding-left: 14px; padding-right: 14px; }
+
+      /* El nombre de la empresa es la identidad del producto: tiene prioridad
+         sobre los controles. Se recupera espacio dejando "Salir" y el tema
+         como iconos, no achicando la marca. */
+      :root { --header-h: 66px; }
+      .brand-logo { width: 48px; height: 48px; }
+      .brand-text h1 { font-size: 0.84rem; }
+      .brand-text p  { font-size: 0.66rem; }
+
+      .btn-salir-texto { display: none; }
+      .btn-salir { padding: 7px 9px; }
+      .header-sesion { gap: 8px; }
+      .header-sesion img { width: 27px; height: 27px; }
+
+      .app-nav { padding: 0 8px; gap: 0; }
+      .nav-tab { padding: 13px 12px; font-size: 0.82rem; gap: 6px; }
+      .nav-tab svg { width: 16px; height: 16px; }
+
+      /* El texto del botón de tema ocupa lugar que hace falta para la marca */
+      #themeLabel { display: none; }
+      .theme-toggle { padding: 7px 9px; }
+
+      .page-title    { font-size: 1.5rem; }
+      .page-subtitle { font-size: 0.86rem; }
+
+      .card { padding: 18px 16px; }
+
+      .login-card { padding: 34px 24px 28px; }
+      .login-card h2 { font-size: 1.22rem; }
+
+      .modal-caja { padding: 20px 18px; }
+      .modal-acciones { flex-direction: column-reverse; }
+      .modal-acciones button { width: 100%; }
+    }
+
+    /* ── Celular angosto ── */
+    @media (max-width: 400px) {
+      header { padding: 0 12px; }
+      main   { padding-left: 12px; padding-right: 12px; }
+
+      .brand-text p { display: none; }     /* se conserva el nombre de la empresa */
+      :root { --header-h: 60px; }
+      .brand-logo { width: 44px; height: 44px; }
+      .brand-text h1 { font-size: 0.8rem; }
+      .nav-tab { padding: 12px 10px; font-size: 0.78rem; }
+
+      .page-title { font-size: 1.32rem; }
+      .card { padding: 16px 14px; }
+
+      /* Con muy poco ancho, un tipo por fila se lee mejor que dos apretados */
+      .tipo-selector { grid-template-columns: 1fr; }
+
+      .filter-actions { flex-direction: column; }
+      .filter-actions button { width: 100%; }
+    }
+
+    /* Pantallas bajas en horizontal: el encabezado fijo se come la pantalla */
+    @media (max-height: 520px) and (orientation: landscape) {
+      header, .app-nav { position: static; }
+      .login-overlay { align-items: flex-start; }
+    }
+
+    /* ─── Pantalla de acceso ─────────────────────────────────────── */
+    /* Cubre toda la app hasta que el servidor confirme quién entra. Se pinta
+       sin depender de JS para que nunca se alcance a ver el contenido detrás
+       mientras carga: arranca visible y se oculta recién cuando corresponde. */
+    .login-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9000;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      overflow-y: auto;
+    }
+
+    /* Un halo muy tenue detrás de la tarjeta: da profundidad sin recurrir a un
+       degradado saturado, que envejece mal y se ve amateur. */
+    .login-overlay::before {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 640px; height: 640px;
+      transform: translate(-50%, -50%);
+      background: radial-gradient(circle, var(--primary-light) 0%, transparent 62%);
+      opacity: 0.75;
+      pointer-events: none;
+    }
+
+    .login-card {
+      position: relative;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: var(--shadow-lg);
+      padding: 44px 40px 36px;
+      width: 100%;
+      max-width: 416px;
+      text-align: center;
+    }
+
+    .login-logo {
+      width: 60px;
+      height: 60px;
+      object-fit: contain;
+      margin-bottom: 22px;
+    }
+
+    .login-card h2 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.021em;
+      margin-bottom: 8px;
+    }
+
+    .login-card p.login-sub {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      line-height: 1.55;
+      margin-bottom: 30px;
+    }
+
+    /* Separador con la leyenda del método de acceso. Da jerarquía y explica qué
+       se espera del usuario antes de mostrarle el botón de un tercero. */
+    .login-separador {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 0 0 18px;
+      color: var(--text-muted);
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .login-separador::before,
+    .login-separador::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .login-boton-zona {
+      display: flex;
+      justify-content: center;
+      min-height: 44px;
+    }
+    /* Google dibuja el botón en su propio contenedor; esto lo deja alineado al
+       ancho de la tarjeta en vez de flotar centrado con bordes propios. */
+    .login-boton-zona > div { width: 100% !important; }
+    .login-boton-zona iframe { margin: 0 !important; }
+
+    .login-aviso {
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      font-size: 0.84rem;
+      line-height: 1.5;
+      text-align: left;
+      margin-bottom: 18px;
+      white-space: pre-line;   /* respeta los saltos del detalle técnico */
+      word-break: break-word;
+    }
+    .login-aviso.info    { background: var(--primary-light); color: var(--text-2); border: 1px solid rgba(0,113,227,0.25); }
+    .login-aviso.espera  { background: var(--warning-light); color: var(--text-2); border: 1px solid rgba(255,159,10,0.3); }
+    .login-aviso.error   { background: var(--error-light);   color: var(--text-2); border: 1px solid rgba(255,59,48,0.25); }
+
+    .login-usuario {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 18px;
+      font-size: 0.86rem;
+      color: var(--text-2);
+    }
+    .login-usuario img { width: 32px; height: 32px; border-radius: 50%; }
+
+    .login-nota {
+      margin-top: 18px;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      color: var(--text-muted);
+    }
+
+    .login-marca {
+      margin-top: 30px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+      font-size: 0.7rem;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+    }
+
+    .login-pie {
+      margin-top: 20px;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+    .login-pie button {
+      background: none; border: none; padding: 0;
+      color: var(--primary); font-size: 0.78rem; font-family: inherit;
+      cursor: pointer; text-decoration: underline;
+    }
+
+    /* Identidad del usuario en el encabezado */
+    .header-sesion {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.82rem;
+      color: var(--text-2);
+    }
+    .header-sesion img { width: 30px; height: 30px; border-radius: 50%; }
+    .header-sesion .nombre { font-weight: 600; color: var(--text); }
+    .header-sesion .rol {
+      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em;
+      color: var(--text-muted);
+    }
+    .btn-salir {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 6px 12px;
+      font-family: inherit;
+      font-size: 0.78rem;
+      color: var(--text-2);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      flex-shrink: 0;
+    }
+    .btn-salir svg { width: 15px; height: 15px; flex-shrink: 0; }
+    .btn-salir:hover { background: var(--surface-3); border-color: var(--border-strong); }
+
+    /* ─── Configuración de usuarios ──────────────────────────────── */
+    .tabla-usuarios { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+    .tabla-usuarios th {
+      text-align: left;
+      padding: 10px 12px;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .tabla-usuarios td {
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-2);
+      vertical-align: middle;
+    }
+    .tabla-usuarios tr:last-child td { border-bottom: none; }
+    .tabla-usuarios .correo { color: var(--text); font-weight: 500; }
+
+    .chip-estado {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+    .chip-estado.activo    { background: var(--success-light); color: #248a3d; }
+    .chip-estado.pendiente { background: var(--warning-light); color: #a86400; }
+    .chip-estado.inactivo  { background: var(--surface-3);     color: var(--text-muted); }
+
+    .chip-secciones {
+      display: inline-block;
+      background: var(--surface-3);
+      border-radius: var(--radius-sm);
+      padding: 3px 8px;
+      font-size: 0.74rem;
+      margin: 2px 3px 2px 0;
+      color: var(--text-2);
+    }
+
+    .secciones-picker {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 8px;
+    }
+    .secciones-picker label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 0.84rem;
+      color: var(--text-2);
+      transition: all 0.15s ease;
+    }
+    .secciones-picker label:hover { background: var(--surface-3); }
+    .secciones-picker input { width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }
+
+    .modal-fondo {
+      position: fixed; inset: 0; z-index: 9500;
+      background: rgba(0,0,0,0.45);
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px; overflow-y: auto;
+    }
+    .modal-caja {
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      width: 100%; max-width: 480px;
+      padding: 24px;
+    }
+    .modal-caja h3 { font-size: 1.05rem; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+    .modal-caja .modal-sub { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 20px; }
+    .modal-acciones { display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; }
+
+    @media (max-width: 640px) {
+      .tabla-usuarios thead { display: none; }
+      .tabla-usuarios tr {
+        display: block;
+        border-bottom: 1px solid var(--border);
+        padding: 12px 0;
+      }
+      .tabla-usuarios td {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        border: none;
+        padding: 5px 0;
+      }
+      .tabla-usuarios td::before {
+        content: attr(data-etiqueta);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--text-muted);
+        flex-shrink: 0;
+      }
+      .header-sesion .nombre, .header-sesion .rol { display: none; }
+    }
   </style>
 </head>
 
 <body>
 
   <!-- Header -->
+  <!-- Pantalla de acceso. Arranca visible y tapa la app hasta que el servidor
+       diga quién entra; así nunca se alcanza a ver contenido de fondo. Si el
+       login está apagado en el servidor, se oculta sola al arrancar. -->
+  <div class="login-overlay" id="loginOverlay">
+    <div class="login-card">
+      <img src="icons/logo.png" alt="Millennium" class="login-logo" />
+      <h2 id="loginTitulo">Control de Pagos</h2>
+      <p class="login-sub" id="loginSubtitulo">Ingresá para registrar y consultar los pagos de tu área.</p>
+
+      <div id="loginAviso" style="display:none;"></div>
+
+      <!-- Paso 1: entrar con Google -->
+      <div id="loginPaso1">
+        <div class="login-separador">Acceso corporativo</div>
+        <div class="login-boton-zona" id="googleBtn"></div>
+        <p class="login-nota">
+          Usá la cuenta de Google de tu empresa. El acceso lo autoriza un administrador.
+        </p>
+      </div>
+
+      <!-- Paso 2: la cuenta no está registrada -> pedir datos -->
+      <div id="loginPaso2" style="display:none;">
+        <div class="login-usuario" id="loginUsuarioInfo"></div>
+        <div class="field-group" style="text-align:left;">
+          <div class="field">
+            <label for="regNombre">Nombre completo <span class="req">*</span></label>
+            <input type="text" id="regNombre" placeholder="Nombre y apellido" autocomplete="name" />
+          </div>
+          <div class="field">
+            <label for="regTelefono">Teléfono <span class="req">*</span></label>
+            <input type="tel" id="regTelefono" placeholder="Ej: 300 123 4567" autocomplete="tel" />
+          </div>
+        </div>
+        <button type="button" class="btn-submit" id="btnSolicitarAcceso" style="margin-top:18px;width:100%;">
+          <span id="btnSolicitarTexto">Solicitar acceso</span>
+          <div class="spinner" id="spinnerSolicitarAcceso" style="display:none;"></div>
+        </button>
+      </div>
+
+      <div class="login-pie" id="loginPie" style="display:none;">
+        <button type="button" id="btnCambiarCuenta">Entrar con otra cuenta</button>
+      </div>
+
+      <div class="login-marca">MILLENNIUM ENERGY CO · AMPAC SAS</div>
+    </div>
+  </div>
+
   <header>
     <div class="header-brand">
       <div class="brand-icon">
-        <img src="icons/logo.png" alt="Millennium Logo" style="width:64px;height:64px;object-fit:contain;" />
+        <img src="icons/logo.png" alt="Millennium Logo" class="brand-logo" />
       </div>
       <div class="brand-text">
         <h1>Millennium Energy Co</h1>
@@ -1404,12 +1872,30 @@
       </div>
     </div>
 
-    <button class="theme-toggle" id="themeToggle" title="Cambiar tema">
-      <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-      </svg>
-      <span id="themeLabel">Oscuro</span>
-    </button>
+    <div style="display:flex;align-items:center;gap:14px;">
+      <div class="header-sesion" id="headerSesion" style="display:none;">
+        <img id="sesionFoto" src="" alt="" />
+        <div style="display:flex;flex-direction:column;line-height:1.25;">
+          <span class="nombre" id="sesionNombre"></span>
+          <span class="rol" id="sesionRol"></span>
+        </div>
+        <button type="button" class="btn-salir" id="btnSalir" title="Cerrar sesión" aria-label="Cerrar sesión">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          <span class="btn-salir-texto">Salir</span>
+        </button>
+      </div>
+
+      <button class="theme-toggle" id="themeToggle" title="Cambiar tema">
+        <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+        <span id="themeLabel">Oscuro</span>
+      </button>
+    </div>
   </header>
 
   <!-- Navegación -->
@@ -1435,6 +1921,15 @@
         <path d="m9 14 2 2 4-4"/>
       </svg>
       Aprobaciones
+    </button>
+    <button class="nav-tab" data-view="config" id="navConfig" style="display:none;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+      Configuración
     </button>
   </nav>
 
@@ -1976,6 +2471,102 @@
     </div>
   </main>
 
+  <!-- Configuración: solo administradores -->
+  <main id="viewConfig" style="display:none;">
+    <div class="page-header">
+      <p class="page-title">Configuración</p>
+      <p class="page-subtitle">Quién entra al sistema y qué secciones puede ver.</p>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px;">
+        <p class="card-title" style="margin:0;">Usuarios</p>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn-clear" id="btnRecargarUsuarios">Actualizar</button>
+          <button type="button" class="btn-clear" id="btnNuevoUsuario">+ Agregar usuario</button>
+        </div>
+      </div>
+
+      <p class="login-sub" id="configEstadoLogin" style="text-align:left;margin:8px 0 16px;"></p>
+
+      <div id="configCargando" style="display:none;padding:28px 0;text-align:center;color:var(--text-muted);font-size:0.86rem;">
+        Cargando usuarios…
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table class="tabla-usuarios" id="tablaUsuarios">
+          <thead>
+            <tr>
+              <th>Usuario</th>
+              <th>Teléfono</th>
+              <th>Rol</th>
+              <th>Secciones</th>
+              <th>Estado</th>
+              <th>Último acceso</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="cuerpoTablaUsuarios"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- Modal para crear/editar un usuario -->
+  <div class="modal-fondo" id="modalUsuario" style="display:none;">
+    <div class="modal-caja">
+      <h3 id="modalUsuarioTitulo">Editar usuario</h3>
+      <p class="modal-sub" id="modalUsuarioSub">Asigná rol, estado y las secciones que puede ver.</p>
+
+      <div class="field-group">
+        <div class="field">
+          <label for="mUsuarioCorreo">Correo de Google <span class="req">*</span></label>
+          <input type="email" id="mUsuarioCorreo" placeholder="persona@empresa.com" autocomplete="off" />
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="mUsuarioNombre">Nombre</label>
+            <input type="text" id="mUsuarioNombre" placeholder="Nombre y apellido" />
+          </div>
+          <div class="field">
+            <label for="mUsuarioTelefono">Teléfono</label>
+            <input type="tel" id="mUsuarioTelefono" placeholder="300 123 4567" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="mUsuarioRol">Rol</label>
+            <select id="mUsuarioRol">
+              <option value="usuario">Usuario</option>
+              <option value="admin">Administrador</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="mUsuarioEstado">Estado</label>
+            <select id="mUsuarioEstado">
+              <option value="activo">Activo</option>
+              <option value="pendiente">Pendiente</option>
+              <option value="inactivo">Inactivo</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Secciones que puede ver</label>
+          <div class="secciones-picker" id="mUsuarioSecciones"></div>
+          <p style="font-size:0.76rem;color:var(--text-muted);margin-top:8px;" id="mUsuarioAvisoAdmin"></p>
+        </div>
+      </div>
+
+      <div class="modal-acciones">
+        <button type="button" class="btn-clear" id="btnCancelarUsuario">Cancelar</button>
+        <button type="button" class="btn-submit" id="btnGuardarUsuario" style="width:auto;padding:12px 24px;">
+          <span id="btnGuardarUsuarioTexto">Guardar</span>
+          <div class="spinner" id="spinnerGuardarUsuario" style="display:none;"></div>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <footer>
     <p class="footer-text">Desarrollado por: <strong>JND AI SYSTEMS</strong> · J. Nathan De Lima, Full Stack AI Developer</p>
   </footer>
@@ -2066,23 +2657,60 @@
     // consultar_solicitudes.
     const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyDHauDZGvZ1CSH3WOY9h-JLnxoKYcRBdV4v7hpPjDW86kK27o3ieFk01ggpBOmHA4-nA/exec';
 
+    // Se declara con `var` y acá arriba a propósito: aplicarTema() la consulta
+    // al cargar la página, antes de que exista el bloque de sesión. Con `var`
+    // vale `undefined` hasta que el bloque de sesión la asigna, y eso es una
+    // lectura válida; con `let` sería un ReferenceError que mataría el script.
+    var redibujarGoogleListo = null;
+
+    // ─── Sesión ────────────────────────────────────────────────────
+    // Client ID de OAuth. Tiene que ser el MISMO valor que CLIENT_ID_GOOGLE en
+    // apps-script.gs: el servidor rechaza cualquier token cuyo "aud" no coincida.
+    const CLIENT_ID_GOOGLE = '165996240052-u1qhq59gag42uvuojlgk54m0ojd1hp2g.apps.googleusercontent.com';
+
+    // Estado de la sesión. `modo` lo manda el servidor (estado_login), así que el
+    // login se enciende y se apaga desde el Apps Script sin tocar el frontend.
+    const sesion = {
+      modo:      'off',     // off | suave | estricto
+      idToken:   null,
+      correo:    '',
+      nombre:    '',
+      foto:      '',
+      rol:       'admin',
+      secciones: ['pagos', 'viaticos', 'caja_menor', 'impuestos', 'seguridad_social', 'nomina']
+    };
+
     // Apps Script no responde bien al preflight CORS, así que se envía como
     // text/plain (el cuerpo sigue siendo JSON y se parsea igual del otro lado).
     // Apps Script tarda bastante (Drive + Sheets + correo), por eso el timeout es amplio.
+    // El ID token se adjunta automáticamente a todo lo que salga, para no depender
+    // de acordarse de ponerlo en cada llamada.
     async function postAppsScript(payload, timeoutMs = 120000) {
       const control = new AbortController();
       const alarma  = setTimeout(() => control.abort(), timeoutMs);
+      const cuerpo  = sesion.idToken ? Object.assign({}, payload, { idToken: sesion.idToken }) : payload;
       try {
         const response = await fetch(APPS_SCRIPT_URL, {
           method:  'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body:    JSON.stringify(payload),
+          body:    JSON.stringify(cuerpo),
           signal:  control.signal
         });
-        return await response.json();
+        const datos = await response.json();
+        manejarErrorDeSesion(datos);
+        return datos;
       } finally {
         clearTimeout(alarma);
       }
+    }
+
+    // Si el servidor rechazó la sesión, devolver al login en vez de mostrar un
+    // error suelto que el usuario no sabe cómo resolver.
+    function manejarErrorDeSesion(datos) {
+      if (!datos || datos.status !== 'error' || !datos.codigo) return;
+      if (['SESION_INVALIDA', 'NO_REGISTRADO', 'PENDIENTE_APROBACION', 'USUARIO_INACTIVO'].indexOf(datos.codigo) === -1) return;
+      sesion.idToken = null;
+      mostrarLogin(datos.codigo === 'SESION_INVALIDA' ? 'info' : 'error', datos.message);
     }
 
     // Trae las solicitudes crudas del servidor (sin filtrar ni pintar).
@@ -2110,8 +2738,35 @@
     // Oculta a nivel de pantalla el resto de tipos de pago. NO es una restricción
     // de servidor: la consulta sigue trayendo todos los registros del sistema y
     // el filtrado ocurre en el navegador (decisión explícita del usuario).
+    // ⚠️ Transitorio: convive con el login nuevo. Mientras MODO_LOGIN esté en
+    // 'off' en el servidor, este link sigue siendo lo único que limita a las dos
+    // personas de Viáticos/Caja Menor. Apenas el login se enciende, la sesión
+    // manda y esto se deshace (ver desactivarVistaRestringida). Cuando todos
+    // estén migrados, este bloque entero se puede borrar.
     const TIPOS_GASTOS = ['viaticos', 'caja_menor'];
-    const vistaRestringida = new URLSearchParams(location.search).get('vista') === 'gastos' ? 'gastos' : null;
+    let vistaRestringida = new URLSearchParams(location.search).get('vista') === 'gastos' ? 'gastos' : null;
+
+    // Se guarda el estado original para poder volver atrás si el login se activa.
+    const fTipoOriginal      = document.getElementById('fTipo').innerHTML;
+    const etiquetasOriginales = {
+      formTitle:      document.getElementById('formTitle').textContent,
+      formSubtitle:   document.getElementById('formSubtitle').textContent,
+      searchTitle:    document.getElementById('searchTitle').textContent,
+      searchSubtitle: document.getElementById('searchSubtitle').textContent,
+      navFormLabel:   document.getElementById('navFormLabel').textContent,
+      navSearchLabel: document.getElementById('navSearchLabel').textContent
+    };
+
+    function desactivarVistaRestringida() {
+      if (!vistaRestringida) return;
+      vistaRestringida = null;
+      document.getElementById('fTipo').innerHTML = fTipoOriginal;
+      Object.keys(etiquetasOriginales).forEach(id => {
+        document.getElementById(id).textContent = etiquetasOriginales[id];
+      });
+      document.querySelectorAll('#tipoSelector .tipo-btn').forEach(btn => { btn.style.display = ''; });
+      document.getElementById('subTabRevisar').style.display = '';
+    }
 
     if (vistaRestringida === 'gastos') {
       // Nuevo Pago: solo dejar visibles los botones de Viáticos y Caja Menor
@@ -2140,7 +2795,8 @@
     const viewForm           = document.getElementById('paymentForm').closest('main');
     const viewSearch         = document.getElementById('viewSearch');
     const viewAprobaciones   = document.getElementById('viewAprobaciones');
-    const vistasPorNombre    = { form: viewForm, search: viewSearch, aprobaciones: viewAprobaciones };
+    const viewConfig         = document.getElementById('viewConfig');
+    const vistasPorNombre    = { form: viewForm, search: viewSearch, aprobaciones: viewAprobaciones, config: viewConfig };
 
     navTabs.forEach(tab => {
       tab.addEventListener('click', () => {
@@ -2153,6 +2809,7 @@
           // Si el panel de revisión ya estaba activo, refresca la lista al volver a entrar
           if (document.getElementById('subTabRevisar').classList.contains('active')) buscarSolicitudes();
         }
+        if (tab.dataset.view === 'config') cargarUsuarios();
       });
     });
 
@@ -2603,9 +3260,20 @@
       navigator.serviceWorker.register('/PJ04-CONTROL-PAGOS/sw.js').then(reg => {
         // Forzar chequeo de actualización cada vez que se abre la app
         reg.update();
+
+        // Si quedó una versión nueva esperando (porque la instalación anterior
+        // falló o el navegador no la activó), se la empuja a tomar control. Sin
+        // esto, un Service Worker viejo puede quedarse activo indefinidamente y
+        // el usuario sigue viendo una versión vieja sin enterarse.
+        if (reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
+
         reg.addEventListener('updatefound', () => {
           const newSW = reg.installing;
+          if (!newSW) return;
           newSW.addEventListener('statechange', () => {
+            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+              newSW.postMessage('SKIP_WAITING');
+            }
             if (newSW.state === 'activated') {
               location.reload();
             }
@@ -2628,6 +3296,16 @@
       html.setAttribute('data-theme', theme);
       colorSchemeMeta.setAttribute('content', theme);
       updateThemeBtn(theme);
+      // El botón de Google no hereda nuestro CSS (lo dibuja Google), así que hay
+      // que volver a pedirlo con el tema correcto. Si no, en modo oscuro queda
+      // un recuadro blanco flotando sobre la tarjeta.
+      //
+      // Se llama por esta referencia y NO directo por su nombre: aplicarTema()
+      // corre al cargar la página, mucho antes de que se ejecute el bloque de
+      // sesión, y la función usa variables declaradas con `let` más abajo. Un
+      // `typeof fn === 'function'` no protege de eso (las funciones sí se izan,
+      // las `let` no) y el ReferenceError mataría el script entero.
+      if (redibujarGoogleListo) redibujarGoogleListo();
     }
 
     const savedTheme = localStorage.getItem('theme') || 'light';
@@ -3204,6 +3882,489 @@
       rechazoBtnText.textContent = 'Confirmar rechazo';
       cerrarModalRechazo();
     });
+
+    // ═══════════════════════════════════════════════════════════════
+    // SESIÓN: login con Google, alta de usuarios y permisos por sección
+    //
+    // Importante: esto NO es la seguridad del sistema. Ocultar botones evita
+    // confusión, pero quien conozca la URL del Apps Script podría llamarla
+    // igual. La restricción real la aplica el servidor, que filtra por permisos
+    // antes de responder (contextoDe_ / consultarPagos_ en apps-script.gs).
+    // ═══════════════════════════════════════════════════════════════
+
+    const loginOverlay   = document.getElementById('loginOverlay');
+    const loginPaso1     = document.getElementById('loginPaso1');
+    const loginPaso2     = document.getElementById('loginPaso2');
+    const loginAviso     = document.getElementById('loginAviso');
+    const loginPie       = document.getElementById('loginPie');
+    const headerSesion   = document.getElementById('headerSesion');
+    const navConfig      = document.getElementById('navConfig');
+
+    const ETIQUETA_SECCION = {
+      pagos:            'Registro de Pagos',
+      viaticos:         'Viáticos',
+      caja_menor:       'Caja Menor',
+      impuestos:        'Pago Impuestos',
+      seguridad_social: 'Seguridad Social',
+      nomina:           'Pago Nómina'
+    };
+
+    function mostrarLogin(tipo, mensaje) {
+      loginOverlay.style.display = 'flex';
+      // Ahora que la tarjeta es visible se puede medir su ancho real.
+      setTimeout(redibujarBotonGoogle, 0);
+      headerSesion.style.display = 'none';
+      loginPaso1.style.display   = '';
+      loginPaso2.style.display   = 'none';
+      // Siempre disponible: el botón de Google muestra una sola cuenta, y quien
+      // tenga varias sesiones abiertas necesita poder elegir otra.
+      loginPie.style.display     = '';
+      if (mensaje) {
+        loginAviso.className   = 'login-aviso ' + (tipo || 'info');
+        loginAviso.textContent = mensaje;
+        loginAviso.style.display = '';
+      } else {
+        loginAviso.style.display = 'none';
+      }
+    }
+
+    function ocultarLogin() {
+      loginOverlay.style.display = 'none';
+    }
+
+    // Arranque: le preguntamos al servidor si el login está encendido. Así el
+    // interruptor vive en un solo lado (MODO_LOGIN en el Apps Script) y no hay
+    // que republicar la app para activarlo o desactivarlo.
+    async function arrancarSesion() {
+      // Red de seguridad: la pantalla de acceso arranca visible para que no se
+      // alcance a ver contenido detrás. Si algo sale mal y nadie la oculta, la
+      // app queda tapada y nadie puede trabajar. Este temporizador garantiza
+      // que eso no pase: pase lo que pase, a los 12s se destapa.
+      const salvavidas = setTimeout(() => {
+        if (loginOverlay.style.display !== 'none' && !sesion.correo) {
+          console.warn('arrancarSesion no respondió a tiempo; se destapa la app.');
+          ocultarLogin();
+        }
+      }, 12000);
+
+      let estado = null;
+      try {
+        const control = new AbortController();
+        const alarma  = setTimeout(() => control.abort(), 8000);
+        try {
+          const res = await fetch(APPS_SCRIPT_URL + '?action=estado_login&_=' + Date.now(), { signal: control.signal });
+          estado = await res.json();
+        } finally {
+          clearTimeout(alarma);
+        }
+      } catch (err) {
+        console.error('estado_login:', err);
+      }
+      clearTimeout(salvavidas);
+
+      // Si no se pudo consultar, se asume 'off' y el sistema sigue funcionando.
+      // Preferimos que la app quede usable a dejar a todos afuera por un fallo
+      // de red: la restricción real la hace el servidor de todos modos.
+      sesion.modo = (estado && estado.modo) || 'off';
+
+      if (sesion.modo === 'off') {
+        ocultarLogin();
+        aplicarPermisos();
+        return;
+      }
+
+      mostrarLogin();
+      iniciarGoogle();
+    }
+
+    let googleInicializado = false;
+
+    function iniciarGoogle() {
+      if (!window.google || !google.accounts || !google.accounts.id) {
+        // La librería de Google todavía no cargó; se reintenta un momento después.
+        setTimeout(iniciarGoogle, 300);
+        return;
+      }
+      if (!googleInicializado) {
+        google.accounts.id.initialize({
+          client_id:   CLIENT_ID_GOOGLE,
+          callback:    onCredencialGoogle,
+          // Sin selección automática: en un sistema con permisos por persona,
+          // entrar solo con la cuenta que el navegador tenga a mano es un
+          // problema, no una comodidad. El usuario elige con cuál entra.
+          auto_select: false
+        });
+        googleInicializado = true;
+      }
+      redibujarBotonGoogle();
+    }
+
+    // Google dibuja este botón por su cuenta y no hereda nuestro CSS. Lo único
+    // que podemos controlar son sus opciones, así que se eligen para que quede
+    // integrado: tema acorde al de la app, esquinas rectas como el resto de los
+    // controles, y ancho completo de la tarjeta en vez de una píldora suelta.
+    function redibujarBotonGoogle() {
+      const zona = document.getElementById('googleBtn');
+      if (!zona || !googleInicializado) return;
+      // Con el overlay oculto la zona mide 0 y el botón saldría con el ancho
+      // mínimo. Se redibuja al volver a mostrar el login.
+      if (loginOverlay.style.display === 'none') return;
+
+      const oscuro = document.documentElement.getAttribute('data-theme') === 'dark';
+      zona.innerHTML = '';
+
+      // renderButton necesita el ancho en píxeles; no acepta porcentajes.
+      const ancho = Math.round(Math.min(360, Math.max(240, zona.getBoundingClientRect().width || 320)));
+
+      google.accounts.id.renderButton(zona, {
+        theme:           oscuro ? 'filled_black' : 'outline',
+        size:            'large',
+        shape:           'rectangular',
+        text:            'continue_with',
+        logo_alignment:  'center',
+        locale:          'es',
+        width:           ancho
+      });
+    }
+
+    // Recién ahora que todo está declarado, aplicarTema() puede usarla.
+    redibujarGoogleListo = redibujarBotonGoogle;
+
+    // Si cambia el ancho de la ventana, el botón queda con el ancho viejo.
+    let tempRedibujo = null;
+    window.addEventListener('resize', () => {
+      if (loginOverlay.style.display === 'none') return;
+      clearTimeout(tempRedibujo);
+      tempRedibujo = setTimeout(redibujarBotonGoogle, 200);
+    });
+
+    async function onCredencialGoogle(respuesta) {
+      sesion.idToken = respuesta.credential;
+
+      // Apps Script puede tardar bastante en despertar, y la primera vez además
+      // crea la hoja USUARIOS. Sin una señal visible, el usuario ve el botón
+      // "rebotar" y cree que no pasó nada.
+      loginPaso1.style.display = 'none';
+      loginAviso.className     = 'login-aviso info';
+      loginAviso.textContent   = 'Verificando tu acceso…';
+      loginAviso.style.display = '';
+
+      let datos;
+      try {
+        datos = await postAppsScript({ action: 'iniciar_sesion' }, 90000);
+      } catch (err) {
+        const agotado = err && err.name === 'AbortError';
+        mostrarLogin('error', agotado
+          ? 'El servidor tardó demasiado en responder. Volvé a intentar en un momento.'
+          : 'No pudimos conectarnos con el sistema. Revisá tu conexión e intentá de nuevo.');
+        return;
+      }
+
+      if (datos.status === 'success') {
+        sesion.correo    = datos.correo || '';
+        sesion.nombre    = datos.nombre || '';
+        sesion.foto      = datos.foto || '';
+        sesion.rol       = datos.rol || 'usuario';
+        sesion.secciones = datos.secciones || [];
+        pintarSesionEnHeader();
+        aplicarPermisos();
+        ocultarLogin();
+        return;
+      }
+
+      if (datos.status === 'registro_requerido') {
+        pedirDatosDeRegistro(datos);
+        return;
+      }
+
+      if (datos.status === 'pendiente') {
+        sesion.idToken = null;
+        mostrarLogin('espera', datos.message);
+        loginPie.style.display = '';
+        return;
+      }
+
+      sesion.idToken = null;
+      // El detalle dice QUÉ falló exactamente. Sin él, cualquier causa se ve
+      // igual desde la pantalla y no hay forma de diagnosticar.
+      mostrarLogin('error', (datos.message || 'No pudimos validar tu acceso.') +
+        (datos.detalle ? '\n\nDetalle técnico: ' + datos.detalle : ''));
+      loginPie.style.display = '';
+    }
+
+    function pedirDatosDeRegistro(datos) {
+      loginPaso1.style.display = 'none';
+      loginPaso2.style.display = '';
+      loginPie.style.display   = '';
+      loginAviso.className     = 'login-aviso info';
+      loginAviso.textContent   = datos.message || 'Completá tus datos para solicitar acceso.';
+      loginAviso.style.display = '';
+      document.getElementById('loginUsuarioInfo').textContent = datos.correo || '';
+      document.getElementById('regNombre').value = datos.nombre || '';
+      document.getElementById('regNombre').focus();
+    }
+
+    document.getElementById('btnSolicitarAcceso').addEventListener('click', async () => {
+      const nombre   = document.getElementById('regNombre').value.trim();
+      const telefono = document.getElementById('regTelefono').value.trim();
+      if (!nombre || !telefono) {
+        showToast('error', 'Faltan datos', 'El nombre y el teléfono son obligatorios.');
+        return;
+      }
+
+      const btn     = document.getElementById('btnSolicitarAcceso');
+      const spinner = document.getElementById('spinnerSolicitarAcceso');
+      const texto   = document.getElementById('btnSolicitarTexto');
+      btn.disabled = true; spinner.style.display = 'block'; texto.textContent = 'Enviando…';
+
+      try {
+        const r = await postAppsScript({ action: 'registrar_usuario', nombre: nombre, telefono: telefono }, 45000);
+        if (r.status === 'success') {
+          sesion.idToken = null;
+          mostrarLogin('espera', 'Listo. Un administrador tiene que activar tu acceso; te avisamos por correo.');
+          loginPie.style.display = '';
+        } else {
+          showToast('error', 'No se pudo enviar', r.message || 'Intentá de nuevo.');
+        }
+      } catch (err) {
+        showToast('error', 'Error de conexión', 'No pudimos enviar tu solicitud. Intentá de nuevo.');
+      } finally {
+        btn.disabled = false; spinner.style.display = 'none'; texto.textContent = 'Solicitar acceso';
+      }
+    });
+
+    document.getElementById('btnCambiarCuenta').addEventListener('click', () => {
+      // `disableAutoSelect()` NO cambia la cuenta que muestra el botón de
+      // Google: solo evita que entre sola la próxima vez. Para elegir otra hay
+      // que pasar por el selector de cuentas de Google y volver acá.
+      try { google.accounts.id.disableAutoSelect(); } catch (err) {}
+      sesion.idToken = null;
+      location.href = 'https://accounts.google.com/AccountChooser?continue=' +
+        encodeURIComponent(location.href.split('#')[0]);
+    });
+
+    document.getElementById('btnSalir').addEventListener('click', () => {
+      try { google.accounts.id.disableAutoSelect(); } catch (err) {}
+      sesion.idToken   = null;
+      sesion.correo    = '';
+      sesion.nombre    = '';
+      sesion.foto      = '';
+      sesion.rol       = 'usuario';
+      sesion.secciones = [];
+      mostrarLogin('info', 'Cerraste sesión.');
+      iniciarGoogle();
+    });
+
+    function pintarSesionEnHeader() {
+      if (sesion.modo === 'off') return;
+      headerSesion.style.display = 'flex';
+      const foto = document.getElementById('sesionFoto');
+      if (sesion.foto) { foto.src = sesion.foto; foto.style.display = ''; }
+      else             { foto.style.display = 'none'; }
+      document.getElementById('sesionNombre').textContent = sesion.nombre || sesion.correo;
+      document.getElementById('sesionRol').textContent    = sesion.rol === 'admin' ? 'Administrador' : 'Usuario';
+    }
+
+    // Oculta de la pantalla lo que esta persona no puede usar. Es comodidad,
+    // no seguridad: el servidor vuelve a validar todo.
+    function aplicarPermisos() {
+      // Mientras el login esté apagado, el viejo link ?vista=gastos sigue siendo
+      // lo único que limita a las dos personas de Viáticos/Caja Menor. Si
+      // aplicáramos permisos acá, les volveríamos a mostrar todos los tipos,
+      // porque sin sesión el contexto da acceso a todo. Cuando el login se
+      // encienda, manda la sesión y ?vista=gastos deja de usarse.
+      if (sesion.modo === 'off') {
+        navConfig.style.display = 'none';
+        return;
+      }
+
+      // Con login activo manda la sesión, no el link.
+      desactivarVistaRestringida();
+
+      const puede = (s) => sesion.secciones.indexOf(s) !== -1;
+
+      // Botones de tipo de pago, en los dos formularios
+      document.querySelectorAll('#tipoSelector .tipo-btn, #tipoSelectorSolicitud .tipo-btn').forEach(btn => {
+        const seccion = seccionDeTipoFront(btn.dataset.value);
+        btn.style.display = puede(seccion) ? '' : 'none';
+      });
+
+      // Opciones del filtro de tipo en Consultar Pagos
+      document.querySelectorAll('#fTipo option').forEach(op => {
+        if (!op.value) return;   // "Todos" siempre visible
+        op.hidden = !puede(seccionDeTipoFront(op.value));
+      });
+
+      navConfig.style.display = sesion.rol === 'admin' ? '' : 'none';
+    }
+
+    function seccionDeTipoFront(tipo) {
+      const t = String(tipo || '').toLowerCase();
+      if (t === 'viaticos')         return 'viaticos';
+      if (t === 'caja_menor')       return 'caja_menor';
+      if (t === 'impuestos')        return 'impuestos';
+      if (t === 'seguridad_social') return 'seguridad_social';
+      if (t === 'nomina')           return 'nomina';
+      return 'pagos';
+    }
+
+    // ─── Configuración: administración de usuarios ─────────────────
+
+    const modalUsuario = document.getElementById('modalUsuario');
+    let correoEditando = null;
+
+    async function cargarUsuarios() {
+      const cargando = document.getElementById('configCargando');
+      const cuerpo   = document.getElementById('cuerpoTablaUsuarios');
+      cargando.style.display = '';
+      cuerpo.innerHTML = '';
+
+      try {
+        const r = await postAppsScript({ action: 'listar_usuarios' }, 45000);
+        if (r.status !== 'success') {
+          showToast('error', 'No se pudo cargar', r.message || 'Intentá de nuevo.');
+          return;
+        }
+
+        document.getElementById('configEstadoLogin').textContent =
+          r.modo === 'off'
+            ? 'El control de acceso está APAGADO: cualquiera con el link entra y ve todo. Los permisos de acá recién aplican cuando se active.'
+            : r.modo === 'suave'
+              ? 'Control de acceso en modo SUAVE: quien inicie sesión ve solo lo suyo, pero quien no inicie sesión todavía entra.'
+              : 'Control de acceso ACTIVO: solo entran los usuarios activos de esta lista.';
+
+        pintarUsuarios(r.usuarios || []);
+      } catch (err) {
+        showToast('error', 'Error de conexión', 'No pudimos traer la lista de usuarios.');
+      } finally {
+        cargando.style.display = 'none';
+      }
+    }
+
+    function pintarUsuarios(usuarios) {
+      const cuerpo = document.getElementById('cuerpoTablaUsuarios');
+      if (!usuarios.length) {
+        cuerpo.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--text-muted);">Todavía no hay usuarios cargados.</td></tr>';
+        return;
+      }
+
+      // Pendientes arriba: son los que piden una acción del administrador.
+      const orden = { pendiente: 0, activo: 1, inactivo: 2 };
+      usuarios.sort((a, b) => (orden[a.estado] ?? 3) - (orden[b.estado] ?? 3));
+
+      cuerpo.innerHTML = usuarios.map(u => {
+        const secciones = !u.secciones || u.secciones === 'todas'
+          ? '<span class="chip-secciones">Todas</span>'
+          : u.secciones.split(',').filter(Boolean)
+              .map(s => '<span class="chip-secciones">' + escapeHtml(ETIQUETA_SECCION[s.trim()] || s) + '</span>').join('');
+
+        return '<tr>' +
+          '<td data-etiqueta="Usuario"><div class="correo">' + escapeHtml(u.nombre || '(sin nombre)') + '</div>' +
+            '<div style="font-size:0.78rem;color:var(--text-muted);">' + escapeHtml(u.correo) + '</div></td>' +
+          '<td data-etiqueta="Teléfono">' + escapeHtml(u.telefono || '—') + '</td>' +
+          '<td data-etiqueta="Rol">' + (u.rol === 'admin' ? 'Administrador' : 'Usuario') + '</td>' +
+          '<td data-etiqueta="Secciones">' + secciones + '</td>' +
+          '<td data-etiqueta="Estado"><span class="chip-estado ' + escapeHtml(u.estado) + '">' + escapeHtml(u.estado) + '</span></td>' +
+          '<td data-etiqueta="Último acceso" style="font-size:0.78rem;color:var(--text-muted);">' + escapeHtml(u.acceso || 'nunca') + '</td>' +
+          '<td data-etiqueta=""><button type="button" class="btn-clear" data-editar="' + escapeHtml(u.correo) + '">Editar</button></td>' +
+        '</tr>';
+      }).join('');
+
+      cuerpo.querySelectorAll('[data-editar]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const u = usuarios.filter(x => x.correo === btn.dataset.editar)[0];
+          if (u) abrirModalUsuario(u);
+        });
+      });
+    }
+
+    function pintarSeccionesPicker(seleccionadas) {
+      const cont = document.getElementById('mUsuarioSecciones');
+      const sel  = String(seleccionadas || '').toLowerCase();
+      const todas = sel === 'todas' || sel === '';
+      const lista = sel.split(',').map(s => s.trim());
+
+      cont.innerHTML = Object.keys(ETIQUETA_SECCION).map(clave =>
+        '<label><input type="checkbox" value="' + clave + '"' +
+        ((todas || lista.indexOf(clave) !== -1) ? ' checked' : '') + ' />' +
+        escapeHtml(ETIQUETA_SECCION[clave]) + '</label>'
+      ).join('');
+    }
+
+    function abrirModalUsuario(u) {
+      correoEditando = u ? u.correo : null;
+      document.getElementById('modalUsuarioTitulo').textContent = u ? 'Editar usuario' : 'Agregar usuario';
+      document.getElementById('mUsuarioCorreo').value   = u ? u.correo : '';
+      document.getElementById('mUsuarioCorreo').disabled = !!u;   // el correo identifica la fila
+      document.getElementById('mUsuarioNombre').value   = u ? (u.nombre || '') : '';
+      document.getElementById('mUsuarioTelefono').value = u ? (u.telefono || '') : '';
+      document.getElementById('mUsuarioRol').value      = u ? u.rol : 'usuario';
+      document.getElementById('mUsuarioEstado').value   = u ? u.estado : 'activo';
+      pintarSeccionesPicker(u ? u.secciones : 'todas');
+      document.getElementById('mUsuarioAvisoAdmin').textContent =
+        'Un administrador ve todas las secciones sin importar lo que se marque acá.';
+      modalUsuario.style.display = 'flex';
+    }
+
+    function cerrarModalUsuario() {
+      modalUsuario.style.display = 'none';
+      correoEditando = null;
+    }
+
+    document.getElementById('btnNuevoUsuario').addEventListener('click', () => abrirModalUsuario(null));
+    document.getElementById('btnRecargarUsuarios').addEventListener('click', cargarUsuarios);
+    document.getElementById('btnCancelarUsuario').addEventListener('click', cerrarModalUsuario);
+    modalUsuario.addEventListener('click', e => { if (e.target === modalUsuario) cerrarModalUsuario(); });
+
+    document.getElementById('btnGuardarUsuario').addEventListener('click', async () => {
+      const correo = document.getElementById('mUsuarioCorreo').value.trim().toLowerCase();
+      if (!correo || correo.indexOf('@') === -1) {
+        showToast('error', 'Correo inválido', 'Escribí el correo de Google de la persona.');
+        return;
+      }
+
+      const marcadas = Array.prototype.slice
+        .call(document.querySelectorAll('#mUsuarioSecciones input:checked'))
+        .map(i => i.value);
+      const total     = Object.keys(ETIQUETA_SECCION).length;
+      const secciones = marcadas.length === total ? 'todas' : marcadas.join(',');
+
+      if (!marcadas.length && document.getElementById('mUsuarioRol').value !== 'admin') {
+        showToast('error', 'Sin secciones', 'Marcá al menos una sección, o no va a ver nada.');
+        return;
+      }
+
+      const btn     = document.getElementById('btnGuardarUsuario');
+      const spinner = document.getElementById('spinnerGuardarUsuario');
+      const texto   = document.getElementById('btnGuardarUsuarioTexto');
+      btn.disabled = true; spinner.style.display = 'block'; texto.textContent = 'Guardando…';
+
+      try {
+        const r = await postAppsScript({
+          action:    'guardar_usuario',
+          correo:    correo,
+          nombre:    document.getElementById('mUsuarioNombre').value.trim(),
+          telefono:  document.getElementById('mUsuarioTelefono').value.trim(),
+          rol:       document.getElementById('mUsuarioRol').value,
+          estado:    document.getElementById('mUsuarioEstado').value,
+          secciones: secciones
+        }, 45000);
+
+        if (r.status === 'success') {
+          showToast('success', 'Guardado', 'Los permisos quedaron actualizados.');
+          cerrarModalUsuario();
+          cargarUsuarios();
+        } else {
+          showToast('error', 'No se pudo guardar', r.message || 'Intentá de nuevo.');
+        }
+      } catch (err) {
+        showToast('error', 'Error de conexión', 'No pudimos guardar los cambios.');
+      } finally {
+        btn.disabled = false; spinner.style.display = 'none'; texto.textContent = 'Guardar';
+      }
+    });
+
+    arrancarSesion();
   </script>
 </body>
 </html>

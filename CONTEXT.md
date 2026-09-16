@@ -324,7 +324,15 @@ Definido en `SECCIONES` dentro de [apps-script.gs](apps-script.gs). `hojaDeSecci
 
 Aprobaciones **no** tiene carpeta propia a propósito: es un visto bueno visual temporal, no un registro contable.
 
+## 📁 Carpetas de Drive: se pueden mover, NO renombrar
+`carpetaDeSeccion_()` busca la carpeta **por nombre en todo el Drive** (`DriveApp.getFoldersByName`), sin importar dónde esté. Consecuencias:
+- ✅ **Mover las carpetas a una carpeta madre es seguro.** El script las sigue encontrando y los archivos ya subidos no se tocan (los enlaces del Sheet apuntan al ID del archivo, no a su ubicación).
+- ❌ **Renombrarlas rompe el sistema en silencio**: el script no encuentra la carpeta vieja, **crea una nueva con el nombre original** y los archivos nuevos empiezan a caer ahí, dispersos. Si hay que renombrar, cambiar también `SECCIONES` en [apps-script.gs](apps-script.gs) y redesplegar.
+- ⚠️ **No duplicar nombres.** Si existieran dos carpetas llamadas igual, `getFoldersByName` toma la primera que encuentre y no hay garantía de cuál es.
+- Ojo: en la tabla de secciones "PJ04 FACTURAS" aparece tres veces porque **tres tipos de pago** (Proveedor, Compra, Venta) comparten la sección `pagos`. Es una sola carpeta, no tres.
+
 ## Historial de cambios recientes
+- **2026-09-16**: ✅ Login funcionando en web y PWA (confirmado por el usuario). Logo del encabezado **+50%** (36 → 54px), con el encabezado más alto para alojarlo. **`--header-h` es ahora una variable CSS**: el alto del encabezado y el `top` del menú fijo salen de la misma fuente, porque si se separan el menú se superpone o deja un hueco al hacer scroll. Valores: 74px escritorio / 66px celular / 60px angosto, con logo 54/48/44. La prueba dejó de comparar números fijos y ahora verifica el **invariante real** (misma variable + el logo entra en el encabezado en todos los cortes); verificada reintroduciendo los dos defectos. `sw.js` → `control-pagos-v41`.
 - **2026-09-15**: 🔴 **Segunda causa raíz: la actualización del Service Worker nunca llegaba al celular.** El fix del SW estaba publicado pero el teléfono seguía fallando mientras la web andaba bien.
   - **Qué pasaba:** el `install` usaba `caches.open(CACHE).then(c => c.addAll(ASSETS))`. **`addAll` es todo-o-nada**: si falla UNO solo de los assets —y hay cinco CDN externos en la lista— la instalación entera falla, el Service Worker nuevo **nunca se activa** y el viejo se queda indefinidamente. En redes móviles inestables pasa seguido y **el usuario deja de recibir actualizaciones sin ningún aviso**. Explica también quejas anteriores de "la PWA no se actualiza".
   - **Fix:** `Promise.allSettled(ASSETS.map(u => c.add(u).catch(() => null)))`. Lo que se pueda cachear se cachea; lo que no, se pide a la red cuando haga falta. La app funciona igual y la instalación **nunca** falla.
