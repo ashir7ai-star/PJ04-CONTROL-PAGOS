@@ -368,6 +368,9 @@ Decidido con el usuario el 2026-09-16. **Bloqueado**: no tiene acceso al panel d
 ⚠️ **Las PWA ya instaladas habrá que reinstalarlas**: una PWA queda atada a la dirección donde se instaló. La vieja seguirá andando por redirección, pero conviene reinstalar desde la nueva.
 
 ## 📁 Carpetas de Drive: se pueden mover, NO renombrar
+**Estado al 2026-09-16:** las siete carpetas `PJ04 …` se agruparon dentro de `FACTURAS CONTROL DE PAGOS`. La carpeta vieja `FACTURAS` (de la época de n8n) se vació —sus archivos se movieron a `PJ04 FACTURAS`— y se eliminó. **Verificado con `revisarCarpetaAntesDeBorrar()`: 99 enlaces revisados, 0 rotos.** Mover archivos en Drive no cambia su identificador, así que los enlaces del Sheet sobrevivieron intactos.
+
+
 `carpetaDeSeccion_()` busca la carpeta **por nombre en todo el Drive** (`DriveApp.getFoldersByName`), sin importar dónde esté. Consecuencias:
 - ✅ **Mover las carpetas a una carpeta madre es seguro.** El script las sigue encontrando y los archivos ya subidos no se tocan (los enlaces del Sheet apuntan al ID del archivo, no a su ubicación).
 - ❌ **Renombrarlas rompe el sistema en silencio**: el script no encuentra la carpeta vieja, **crea una nueva con el nombre original** y los archivos nuevos empiezan a caer ahí, dispersos. Si hay que renombrar, cambiar también `SECCIONES` en [apps-script.gs](apps-script.gs) y redesplegar.
