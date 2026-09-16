@@ -1,0 +1,217 @@
+// Pruebas de la lógica de saldos de apps-script.gs.
+// Uso: node prueba-saldos.js apps-script.gs
+//
+// Esto maneja dinero que tiene que cuadrar con el banco, así que se verifica
+// el comportamiento real contra hojas simuladas, no solo que compile.
+
+const fs = require('fs');
+const vm = require('vm');
+
+const RUTA = process.argv[2] || 'apps-script.gs';
+
+let fallos = 0;
+function chk(nombre, cond, detalle) {
+  console.log((cond ? '  ok   ' : '  FALLA') + '  ' + nombre + (cond ? '' : '  → ' + detalle));
+  if (!cond) fallos++;
+}
+
+function hojaFalsa(nombre, filas) {
+  const datos = filas || [];
+  return {
+    getName: () => nombre,
+    getDataRange: () => ({ getValues: () => datos.map(f => f.slice()) }),
+    getLastRow: () => datos.length,
+    getLastColumn: () => (datos[0] ? datos[0].length : 0),
+    getRange: (f, c, nf, nc) => ({
+      getValues: () => [datos[f - 1].slice(c - 1, c - 1 + (nc || 1))],
+      setValues: (v) => { v.forEach((fila, i) => { datos[f - 1 + i] = fila.slice(); }); return { setFontWeight: () => {} }; },
+      setValue: (v) => { datos[f - 1][c - 1] = v; }
+    }),
+    appendRow: (fila) => datos.push(fila.slice()),
+    setFrozenRows: () => {},
+    _datos: datos
+  };
+}
+
+const ENC_PAGOS = ['FECHA REGISTRO', 'EMPRESA', 'TIPO FACTURA', 'REGISTRADO POR',
+                   'NOMBRE DE PAGO', 'PROVEEDOR', 'FECHA DE PAGO', 'VALOR FACTURA'];
+const ENC_SALDOS = ['FECHA', 'CUENTA', 'SALDO BASE', 'CONCEPTO', 'REGISTRADO POR'];
+
+// pagos: [[fechaRegistro, empresa, tipo, valor], ...]
+// saldos: [[fecha, cuenta, base], ...]
+function montar(pagos, saldos, modoLogin) {
+  const filasPagos = [ENC_PAGOS].concat((pagos || []).map(p =>
+    [p[0], p[1], p[2], 'quien', 'nombre', 'prov', '2026-01-01', p[3]]));
+
+  const hojas = {
+    'PAGOS REGISTRADOS': hojaFalsa('PAGOS REGISTRADOS', filasPagos),
+    'SALDOS':            hojaFalsa('SALDOS', [ENC_SALDOS].concat((saldos || []).map(s =>
+                           [s[0], s[1], s[2], 'carga inicial', 'admin']))),
+    'USUARIOS':          hojaFalsa('USUARIOS', [['CORREO','NOMBRE','TELEFONO','ROL','SECCIONES','ESTADO','FECHA REGISTRO','ULTIMO ACCESO']])
+  };
+  const orden = ['PAGOS REGISTRADOS', 'SALDOS', 'USUARIOS'];
+
+  const ctx = {
+    console,
+    SpreadsheetApp: {
+      getActiveSpreadsheet: () => ({
+        getSheets: () => orden.map(n => hojas[n]),
+        getSheetByName: (n) => hojas[n] || null,
+        getNumSheets: () => orden.length,
+        insertSheet: (n) => { hojas[n] = hojaFalsa(n, []); orden.push(n); return hojas[n]; },
+        getName: () => 'CONTROL DE PAGOS', getId: () => 'id'
+      }),
+      flush: () => {}
+    },
+    DriveApp: { getFoldersByName: () => ({ hasNext: () => false }), createFolder: () => ({}), getFileById: () => ({ makeCopy: () => {} }) },
+    MailApp: { sendEmail: () => {} },
+    Logger: { log: () => {} },
+    CacheService: { getScriptCache: () => ({ get: () => null, put: () => {} }) },
+    UrlFetchApp: { fetch: () => ({ getResponseCode: () => 500, getContentText: () => '{}' }) },
+    ContentService: { createTextOutput: (t) => ({ setMimeType: () => t }), MimeType: { JSON: 'json' } },
+    Utilities: {
+      formatDate: (d) => {
+        const p = n => String(n).padStart(2, '0');
+        return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() +
+               ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+      },
+      base64Encode: x => String(x), computeDigest: (a, b) => b,
+      DigestAlgorithm: { SHA_256: 's' }, newBlob: () => ({})
+    }
+  };
+
+  let codigo = fs.readFileSync(RUTA, 'utf8');
+  const patron = /^const MODO_LOGIN = '[a-z]+';$/m;
+  if (!patron.test(codigo)) throw new Error('No se pudo fijar MODO_LOGIN en las pruebas.');
+  codigo = codigo.replace(patron, "const MODO_LOGIN = '" + (modoLogin || 'off') + "';");
+
+  vm.createContext(ctx);
+  vm.runInContext(codigo, ctx);
+  return ctx;
+}
+
+const saldoDe = (r, clave) => r.cuentas.filter(c => c.clave === clave)[0];
+
+console.log('\n=== A qué bolsa va cada pago ===');
+{
+  const g = montar([], []);
+  chk('proveedor de Millennium → banco Millennium', g.cuentaDePago_('pago_proveedor', 'Millennium Co') === 'banco_millennium');
+  chk('compra de AMPAC → banco AMPAC',              g.cuentaDePago_('compra', 'AMPAC SAS') === 'banco_ampac');
+  chk('impuestos → banco de la empresa',            g.cuentaDePago_('impuestos', 'AMPAC SAS') === 'banco_ampac');
+  chk('nómina → banco de la empresa',               g.cuentaDePago_('nomina', 'Millennium Co') === 'banco_millennium');
+  chk('seguridad social → banco de la empresa',     g.cuentaDePago_('seguridad_social', 'AMPAC SAS') === 'banco_ampac');
+  chk('viáticos → fondo de viáticos',               g.cuentaDePago_('viaticos', 'AMPAC SAS') === 'viaticos');
+  chk('caja menor → fondo de caja menor',           g.cuentaDePago_('caja_menor', 'Millennium Co') === 'caja_menor');
+  chk('VENTA no toca ningún saldo',                 g.cuentaDePago_('venta', 'AMPAC SAS') === null);
+  chk('empresa desconocida no se adivina',          g.cuentaDePago_('compra', 'Otra SAS') === null);
+  chk('empresa vacía no se adivina',                g.cuentaDePago_('compra', '') === null);
+}
+
+console.log('\n=== El saldo base sólo cuenta hacia adelante ===');
+{
+  // Base cargada el 10/09 a las 12:00 con 10.000.000
+  const g = montar([
+    ['05/09/2026 09:00', 'Millennium Co', 'compra', 1000000],   // ANTES: no debe restar
+    ['10/09/2026 11:59', 'Millennium Co', 'compra', 500000],    // ANTES: no debe restar
+    ['10/09/2026 12:00', 'Millennium Co', 'compra', 700000],    // MISMO minuto: no resta
+    ['10/09/2026 12:01', 'Millennium Co', 'compra', 300000],    // DESPUÉS: resta
+    ['12/09/2026 08:00', 'Millennium Co', 'nomina', 200000]     // DESPUÉS: resta
+  ], [['10/09/2026 12:00', 'banco_millennium', 10000000]]);
+
+  const r = g.consultarSaldos_({ rol: 'admin', secciones: [] });
+  const b = saldoDe(r, 'banco_millennium');
+  chk('no descuenta los pagos anteriores a la base', b.gastado === 500000,
+      'gastado=' + b.gastado + ' (esperado 500000: solo 300000+200000)');
+  chk('el saldo resultante es correcto', b.saldo === 9500000, 'saldo=' + b.saldo);
+  chk('cuenta la cantidad de pagos aplicados', b.pagos === 2, 'pagos=' + b.pagos);
+}
+
+console.log('\n=== Cada bolsa descuenta solo lo suyo ===');
+{
+  const g = montar([
+    ['02/01/2026 10:00', 'Millennium Co', 'compra',     100000],
+    ['02/01/2026 10:00', 'AMPAC SAS',     'compra',     200000],
+    ['02/01/2026 10:00', 'AMPAC SAS',     'viaticos',    50000],
+    ['02/01/2026 10:00', 'Millennium Co', 'viaticos',    30000],
+    ['02/01/2026 10:00', 'Millennium Co', 'caja_menor',  20000],
+    ['02/01/2026 10:00', 'AMPAC SAS',     'venta',     9999999]
+  ], [
+    ['01/01/2026 00:00', 'banco_millennium', 1000000],
+    ['01/01/2026 00:00', 'banco_ampac',      1000000],
+    ['01/01/2026 00:00', 'viaticos',          500000],
+    ['01/01/2026 00:00', 'caja_menor',        300000]
+  ]);
+
+  const r = g.consultarSaldos_({ rol: 'admin' });
+  chk('banco Millennium: 1.000.000 − 100.000', saldoDe(r, 'banco_millennium').saldo === 900000, saldoDe(r,'banco_millennium').saldo);
+  chk('banco AMPAC: 1.000.000 − 200.000',      saldoDe(r, 'banco_ampac').saldo === 800000,      saldoDe(r,'banco_ampac').saldo);
+  chk('viáticos junta las dos empresas: 500.000 − 80.000', saldoDe(r, 'viaticos').saldo === 420000, saldoDe(r,'viaticos').saldo);
+  chk('caja menor: 300.000 − 20.000',          saldoDe(r, 'caja_menor').saldo === 280000,       saldoDe(r,'caja_menor').saldo);
+  chk('la venta no movió ningún saldo',        saldoDe(r, 'banco_ampac').saldo === 800000);
+  chk('las ventas se reportan aparte',         r.sinCuenta === 1, 'sinCuenta=' + r.sinCuenta);
+}
+
+console.log('\n=== Sin saldo base cargado ===');
+{
+  const g = montar([['02/01/2026 10:00', 'AMPAC SAS', 'compra', 200000]], []);
+  const r = g.consultarSaldos_({ rol: 'admin' });
+  const b = saldoDe(r, 'banco_ampac');
+  chk('la cuenta se marca como no configurada', b.configurado === false);
+  chk('no inventa un saldo negativo',           b.saldo === 0, 'saldo=' + b.saldo);
+  chk('no acumula gastos sin base',             b.gastado === 0, 'gastado=' + b.gastado);
+}
+
+console.log('\n=== Corregir el saldo: vale el último ajuste ===');
+{
+  const g = montar([
+    ['05/01/2026 10:00', 'AMPAC SAS', 'compra', 100000],
+    ['15/01/2026 10:00', 'AMPAC SAS', 'compra', 300000]
+  ], [
+    ['01/01/2026 00:00', 'banco_ampac', 1000000],
+    ['10/01/2026 00:00', 'banco_ampac', 5000000]   // corrección posterior
+  ]);
+  const r = g.consultarSaldos_({ rol: 'admin' });
+  const b = saldoDe(r, 'banco_ampac');
+  chk('toma la base más reciente', b.base === 5000000, 'base=' + b.base);
+  chk('descuenta solo lo posterior a esa base', b.saldo === 4700000, 'saldo=' + b.saldo);
+}
+
+console.log('\n=== Montos escritos de distintas formas ===');
+{
+  const g = montar([], []);
+  chk('número puro',            g.montoANumero_(1234567) === 1234567);
+  chk('texto con puntos',       g.montoANumero_('1.234.567') === 1234567);
+  chk('texto con $ y espacios', g.montoANumero_(' $ 1.234.567 ') === 1234567);
+  chk('con decimales por coma', g.montoANumero_('1.234,50') === 1234.5);
+  chk('vacío es cero',          g.montoANumero_('') === 0);
+  chk('texto inválido es cero', g.montoANumero_('abc') === 0);
+  chk('nulo es cero',           g.montoANumero_(null) === 0);
+}
+
+console.log('\n=== Ajustar el saldo: permisos y validación ===');
+{
+  const g = montar([], [], 'estricto');
+  let bloqueado = false;
+  try { g.ajustarSaldo_({ cuenta: 'banco_ampac', monto: 100 }); } catch (e) { bloqueado = true; }
+  chk('sin sesión válida no se puede ajustar', bloqueado);
+
+  const g2 = montar([], [], 'off');
+  chk('cuenta inexistente se rechaza', g2.ajustarSaldo_({ cuenta: 'inventada', monto: 100 }).status === 'error');
+  chk('monto negativo se rechaza',     g2.ajustarSaldo_({ cuenta: 'banco_ampac', monto: -5 }).status === 'error');
+  chk('ajuste válido se acepta',       g2.ajustarSaldo_({ cuenta: 'banco_ampac', monto: 250000 }).status === 'success');
+
+  // El ajuste tiene que quedar registrado como fila nueva, sin pisar nada
+  const filas = g2.SpreadsheetApp.getActiveSpreadsheet().getSheetByName('SALDOS')._datos;
+  chk('el ajuste queda como fila nueva en el historial', filas.length === 2, 'filas=' + filas.length);
+}
+
+console.log('\n=== La hoja SALDOS no se cuenta como pagos ===');
+{
+  const g = montar([], [['01/01/2026 00:00', 'banco_ampac', 1000000]]);
+  const nombres = g.hojasDePagos_().map(h => h.getName());
+  chk('SALDOS queda fuera de las hojas de pagos', nombres.indexOf('SALDOS') === -1, JSON.stringify(nombres));
+  chk('USUARIOS queda fuera',                     nombres.indexOf('USUARIOS') === -1, JSON.stringify(nombres));
+}
+
+console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
+process.exit(fallos ? 1 : 0);

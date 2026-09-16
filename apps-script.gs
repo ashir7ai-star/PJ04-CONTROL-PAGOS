@@ -158,7 +158,7 @@ const SECCIONES = {
 // ("Cannot access ... before initialization"). Dentro de una función se evalúa
 // recién al llamarla, cuando todo el archivo ya está cargado.
 function hojasNoPagos_() {
-  return [NOMBRE_HOJA_SOLICITUDES, 'USUARIOS'];
+  return [NOMBRE_HOJA_SOLICITUDES, 'USUARIOS', 'SALDOS'];
 }
 
 function hojaPrincipal_() {
@@ -502,6 +502,8 @@ function doPost(e) {
     if (body.action === 'registrar_usuario')    return respuestaJson_(registrarUsuario_(body));
     if (body.action === 'listar_usuarios')      return respuestaJson_(listarUsuarios_(body));
     if (body.action === 'guardar_usuario')      return respuestaJson_(guardarUsuario_(body));
+    if (body.action === 'consultar_saldos')     return respuestaJson_(consultarSaldos_(contextoDe_(body)));
+    if (body.action === 'ajustar_saldo')        return respuestaJson_(ajustarSaldo_(body));
     return respuestaJson_({ status: 'error', message: 'Acción no reconocida: ' + body.action });
   } catch (err) {
     return errorJson_(err);
@@ -1217,4 +1219,224 @@ function precargarUsuarios() {
   const resumen = 'Precarga terminada.\n' + resultados.join('\n');
   Logger.log(resumen);
   return resumen;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// E) SALDOS DISPONIBLES
+//
+// DECISIÓN DE DISEÑO IMPORTANTE: el saldo NO se guarda como un número que se
+// va pisando con cada pago. Se CALCULA:
+//
+//     saldo = saldo base cargado por un admin − pagos registrados después
+//
+// Guardar un número y restarle cada pago parece más simple, pero se rompe de
+// dos formas que en dinero son inaceptables:
+//   1. Dos personas registrando un pago a la vez leen el mismo saldo y una
+//      pisa a la otra: un pago desaparece del saldo.
+//   2. Un reintento de red (exactamente lo que provocaba el Service Worker
+//      viejo) descuenta dos veces el mismo pago, sin que nadie se entere.
+//
+// Calculándolo, el saldo siempre coincide con las filas que están en las hojas:
+// no se puede descontar dos veces, no hay condición de carrera, y si alguien
+// corrige el valor de un pago viejo el saldo se corrige solo.
+//
+// El precio es leer las hojas de pagos para responder, que es lo mismo que ya
+// hace "Consultar Pagos".
+// ══════════════════════════════════════════════════════════════════════════
+
+const NOMBRE_HOJA_SALDOS = 'SALDOS';
+const ENCABEZADOS_SALDOS = [
+  'FECHA', 'CUENTA', 'SALDO BASE', 'CONCEPTO', 'REGISTRADO POR'
+];
+
+// Las cuatro bolsas de dinero. Caja Menor y Viáticos son compartidas entre las
+// dos empresas (decisión del usuario).
+const CUENTAS = {
+  banco_millennium: { etiqueta: 'Millennium Co',  detalle: 'Cuenta bancaria', empresa: 'millennium', grupo: 'banco' },
+  banco_ampac:      { etiqueta: 'AMPAC SAS',      detalle: 'Cuenta bancaria', empresa: 'ampac',      grupo: 'banco' },
+  caja_menor:       { etiqueta: 'Caja Menor',     detalle: 'Fondo compartido', empresa: null,        grupo: 'fondo' },
+  viaticos:         { etiqueta: 'Viáticos',       detalle: 'Fondo compartido', empresa: null,        grupo: 'fondo' }
+};
+
+// De qué bolsa sale un pago. Devuelve null si no debe tocar ningún saldo.
+function cuentaDePago_(tipoFactura, empresa) {
+  const t = String(tipoFactura || '').toLowerCase();
+
+  // Una venta es dinero que ENTRA, no que sale: no mueve estos saldos
+  // (decisión del usuario).
+  if (t === 'venta') return null;
+
+  if (t === 'viaticos')   return 'viaticos';
+  if (t === 'caja_menor') return 'caja_menor';
+
+  // El resto (proveedor, compra, impuestos, seguridad social, nómina) sale del
+  // banco de la empresa que figure en el registro.
+  const e = String(empresa || '').toLowerCase();
+  if (e.indexOf('ampac') !== -1)      return 'banco_ampac';
+  if (e.indexOf('millennium') !== -1) return 'banco_millennium';
+
+  // Empresa desconocida: no se adivina. Se reporta aparte para que se vea.
+  return null;
+}
+
+function hojaSaldos_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let hoja = ss.getSheetByName(NOMBRE_HOJA_SALDOS);
+  if (!hoja) {
+    hoja = ss.insertSheet(NOMBRE_HOJA_SALDOS, ss.getNumSheets());
+    hoja.getRange(1, 1, 1, ENCABEZADOS_SALDOS.length)
+        .setValues([ENCABEZADOS_SALDOS]).setFontWeight('bold');
+    hoja.setFrozenRows(1);
+  }
+  return hoja;
+}
+
+// 'dd/MM/yyyy HH:mm' → Date. Es el formato con el que se escribe FECHA REGISTRO.
+function fechaHoraDeRegistro_(valor) {
+  if (!valor) return null;
+  if (valor instanceof Date) return valor;
+
+  const texto  = String(valor).trim();
+  const partes = texto.split(' ');
+  const fecha  = partes[0].split('/');
+  if (fecha.length !== 3) return null;
+
+  const d = Number(fecha[0]), m = Number(fecha[1]), y = Number(fecha[2]);
+  if (!d || !m || !y) return null;
+
+  let hh = 0, mm = 0;
+  if (partes[1]) {
+    const hora = partes[1].split(':');
+    hh = Number(hora[0]) || 0;
+    mm = Number(hora[1]) || 0;
+  }
+  return new Date(y, m - 1, d, hh, mm, 0, 0);
+}
+
+// Convierte a número lo que haya en VALOR FACTURA, que puede venir como número
+// o como texto con separadores de miles.
+function montoANumero_(valor) {
+  if (typeof valor === 'number') return valor;
+  const limpio = String(valor || '').replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(/,/g, '.');
+  const n = parseFloat(limpio);
+  return isNaN(n) ? 0 : n;
+}
+
+// Último saldo base cargado para cada cuenta.
+function basesDeSaldo_() {
+  const valores = hojaSaldos_().getDataRange().getValues();
+  const bases   = {};
+  if (valores.length < 2) return bases;
+
+  const enc     = valores[0];
+  const cFecha  = enc.indexOf('FECHA');
+  const cCuenta = enc.indexOf('CUENTA');
+  const cMonto  = enc.indexOf('SALDO BASE');
+  const cConc   = enc.indexOf('CONCEPTO');
+  const cQuien  = enc.indexOf('REGISTRADO POR');
+
+  // Se recorre en orden: la última fila de cada cuenta es la que vale.
+  valores.slice(1).forEach(fila => {
+    const cuenta = String(fila[cCuenta] || '').trim();
+    if (!cuenta || !CUENTAS[cuenta]) return;
+    const fecha = fechaHoraDeRegistro_(fila[cFecha]);
+    if (!fecha) return;
+    bases[cuenta] = {
+      fecha:    fecha,
+      monto:    montoANumero_(fila[cMonto]),
+      concepto: String(fila[cConc] || ''),
+      quien:    String(fila[cQuien] || '')
+    };
+  });
+
+  return bases;
+}
+
+// Saldo actual de cada cuenta = base − pagos registrados DESPUÉS de esa base.
+function consultarSaldos_(ctx) {
+  const contexto = ctx || contextoDe_(null);
+  const bases    = basesDeSaldo_();
+
+  const acumulado = {};
+  Object.keys(CUENTAS).forEach(c => { acumulado[c] = { gastado: 0, pagos: 0 }; });
+  let sinCuenta = 0;
+
+  hojasDePagos_().forEach(hoja => {
+    const valores = hoja.getDataRange().getValues();
+    if (valores.length < 2) return;
+    const enc      = valores[0];
+    const cFecha   = enc.indexOf('FECHA REGISTRO');
+    const cTipo    = enc.indexOf('TIPO FACTURA');
+    const cEmpresa = enc.indexOf('EMPRESA');
+    const cValor   = enc.indexOf('VALOR FACTURA');
+    if (cFecha === -1 || cTipo === -1 || cValor === -1) return;
+
+    valores.slice(1).forEach(fila => {
+      if (!fila.some(v => v !== '')) return;
+
+      const cuenta = cuentaDePago_(fila[cTipo], cEmpresa === -1 ? '' : fila[cEmpresa]);
+      if (!cuenta) { sinCuenta++; return; }
+
+      const base = bases[cuenta];
+      if (!base) return;   // sin saldo base cargado, no hay nada de qué descontar
+
+      const fecha = fechaHoraDeRegistro_(fila[cFecha]);
+      // Estrictamente posterior: el saldo base que carga el admin ya refleja
+      // todo lo anterior, así que volver a restarlo sería contarlo dos veces.
+      if (!fecha || fecha.getTime() <= base.fecha.getTime()) return;
+
+      acumulado[cuenta].gastado += montoANumero_(fila[cValor]);
+      acumulado[cuenta].pagos   += 1;
+    });
+  });
+
+  const cuentas = Object.keys(CUENTAS).map(clave => {
+    const cfg  = CUENTAS[clave];
+    const base = bases[clave] || null;
+    return {
+      clave:       clave,
+      etiqueta:    cfg.etiqueta,
+      detalle:     cfg.detalle,
+      grupo:       cfg.grupo,
+      configurado: !!base,
+      base:        base ? base.monto : 0,
+      desde:       base ? Utilities.formatDate(base.fecha, ZONA_HORARIA, 'dd/MM/yyyy HH:mm') : '',
+      concepto:    base ? base.concepto : '',
+      gastado:     acumulado[clave].gastado,
+      pagos:       acumulado[clave].pagos,
+      saldo:       base ? base.monto - acumulado[clave].gastado : 0
+    };
+  });
+
+  return {
+    status:      'success',
+    puedeEditar: MODO_LOGIN === 'off' || esAdmin_(contexto),
+    sinCuenta:   sinCuenta,   // pagos que no descuentan de ninguna bolsa (ventas, empresa desconocida)
+    cuentas:     cuentas
+  };
+}
+
+// Cargar / corregir el saldo base de una cuenta. Solo administradores.
+function ajustarSaldo_(body) {
+  const ctx = contextoDe_(body);
+  if (MODO_LOGIN !== 'off' && !esAdmin_(ctx)) throw new Error('SOLO_ADMIN');
+
+  const cuenta = String(body.cuenta || '').trim();
+  if (!CUENTAS[cuenta]) return { status: 'error', message: 'Cuenta desconocida: ' + cuenta };
+
+  const monto = montoANumero_(body.monto);
+  if (!isFinite(monto)) return { status: 'error', message: 'El monto no es un número válido.' };
+  if (monto < 0)        return { status: 'error', message: 'El saldo no puede ser negativo.' };
+
+  // Cada ajuste se agrega como una fila nueva: queda el historial completo de
+  // quién puso qué saldo y cuándo. Nunca se pisa una fila anterior.
+  hojaSaldos_().appendRow([
+    Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'),
+    cuenta,
+    monto,
+    String(body.concepto || ''),
+    ctx.nombre || ctx.correo || String(body.registrado_por || '')
+  ]);
+
+  return { status: 'success' };
 }

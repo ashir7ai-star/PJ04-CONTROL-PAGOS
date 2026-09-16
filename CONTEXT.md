@@ -331,7 +331,39 @@ Aprobaciones **no** tiene carpeta propia a propósito: es un visto bueno visual 
 - ⚠️ **No duplicar nombres.** Si existieran dos carpetas llamadas igual, `getFoldersByName` toma la primera que encuentre y no hay garantía de cuál es.
 - Ojo: en la tabla de secciones "PJ04 FACTURAS" aparece tres veces porque **tres tipos de pago** (Proveedor, Compra, Venta) comparten la sección `pagos`. Es una sola carpeta, no tres.
 
+## 💰 Saldos disponibles (2026-09-16)
+Cuatro bolsas de dinero: **Banco Millennium**, **Banco AMPAC**, **Caja Menor** y **Viáticos** (estas dos últimas compartidas entre las dos empresas, por decisión del usuario).
+
+### La decisión de diseño que hace que cuadre
+**El saldo NO se guarda como un número que se pisa con cada pago. Se CALCULA:**
+
+```
+saldo = saldo base que cargó un admin − pagos registrados DESPUÉS de esa base
+```
+
+Guardar un número y restarle cada pago parece más simple, pero se rompe de dos formas inaceptables cuando hay dinero de por medio:
+1. **Condición de carrera**: dos personas registrando un pago a la vez leen el mismo saldo y una pisa a la otra — un pago desaparece del saldo.
+2. **Reintentos**: un reintento de red (exactamente lo que provocaba el Service Worker viejo) descuenta **dos veces** el mismo pago, en silencio.
+
+Calculándolo, el saldo siempre coincide con las filas que están en las hojas: no se puede descontar dos veces, no hay carrera, y si alguien corrige el valor de un pago viejo el saldo se corrige solo. El precio es leer las hojas de pagos para responder — lo mismo que ya hace "Consultar Pagos".
+
+### Reglas
+| Tipo de pago | De dónde descuenta |
+|---|---|
+| Pago a Proveedor, Compra, Impuestos, Seguridad Social, Nómina | Banco de la **empresa** del registro |
+| Viáticos | Fondo de Viáticos (compartido) |
+| Caja Menor | Fondo de Caja Menor (compartido) |
+| **Venta** | **Ninguno** — es dinero que entra (decisión del usuario) |
+| Empresa no reconocida | Ninguno — **no se adivina**; se reporta aparte en el panel |
+
+- Los pagos **anteriores o del mismo minuto** que la base **no se descuentan**: el saldo que carga el admin ya los refleja, volver a restarlos sería contarlos dos veces.
+- La hoja `SALDOS` es **historial**: cada ajuste es una fila nueva, nunca se pisa una anterior. Vale la última de cada cuenta.
+- `SALDOS` está en `hojasNoPagos_()` — si no, se contaría a sí misma como pagos.
+- Solo **administradores** pueden cargar o corregir un saldo (validado en el servidor, no solo ocultando el botón).
+- **Banco de pruebas: [prueba-saldos.js](prueba-saldos.js)** — 35 comprobaciones de la lógica de dinero contra hojas simuladas. Correr con `node prueba-saldos.js apps-script.gs`. **Re-correrlo ante cualquier cambio en el bloque E.**
+
 ## Historial de cambios recientes
+- **2026-09-16**: 💰 **Saldos disponibles** (bloque E de [apps-script.gs](apps-script.gs) + panel en "Nuevo Pago"). Cuatro cuentas, saldo **calculado** en vez de almacenado (ver sección "💰 Saldos disponibles" arriba para el porqué — es lo que evita descuentos dobles y condiciones de carrera). Solo admins cargan el saldo base; el panel se refresca solo al registrar un pago. Tarjetas con franja de color por tipo de cuenta, cifras en rojo si el saldo queda negativo y números tabulares para poder comparar de un vistazo. Acciones nuevas: `consultar_saldos`, `ajustar_saldo`. **35 comprobaciones** en [prueba-saldos.js](prueba-saldos.js). `sw.js` → `control-pagos-v42`.
 - **2026-09-16**: ✅ Login funcionando en web y PWA (confirmado por el usuario). Logo del encabezado **+50%** (36 → 54px), con el encabezado más alto para alojarlo. **`--header-h` es ahora una variable CSS**: el alto del encabezado y el `top` del menú fijo salen de la misma fuente, porque si se separan el menú se superpone o deja un hueco al hacer scroll. Valores: 74px escritorio / 66px celular / 60px angosto, con logo 54/48/44. La prueba dejó de comparar números fijos y ahora verifica el **invariante real** (misma variable + el logo entra en el encabezado en todos los cortes); verificada reintroduciendo los dos defectos. `sw.js` → `control-pagos-v41`.
 - **2026-09-15**: 🔴 **Segunda causa raíz: la actualización del Service Worker nunca llegaba al celular.** El fix del SW estaba publicado pero el teléfono seguía fallando mientras la web andaba bien.
   - **Qué pasaba:** el `install` usaba `caches.open(CACHE).then(c => c.addAll(ASSETS))`. **`addAll` es todo-o-nada**: si falla UNO solo de los assets —y hay cinco CDN externos en la lista— la instalación entera falla, el Service Worker nuevo **nunca se activa** y el viejo se queda indefinidamente. En redes móviles inestables pasa seguido y **el usuario deja de recibir actualizaciones sin ningún aviso**. Explica también quejas anteriores de "la PWA no se actualiza".
