@@ -13,7 +13,10 @@ const html = fs.readFileSync(RUTA, 'utf8');
 
 let fallos = 0;
 function chk(nombre, cond, detalle) {
-  console.log((cond ? '  ok   ' : '  FALLA') + '  ' + nombre + (cond ? '' : '  → ' + detalle));
+  // Los objetos se serializan: concatenarlos daba "[object Object]", que no
+  // dice nada justo cuando más falta hace saber qué pasó.
+  const texto = (detalle && typeof detalle === 'object') ? JSON.stringify(detalle) : detalle;
+  console.log((cond ? '  ok   ' : '  FALLA') + '  ' + nombre + (cond ? '' : '  → ' + texto));
   if (!cond) fallos++;
 }
 
@@ -168,6 +171,42 @@ chk('sin anchos fijos escritos en línea (no se adaptan)', enLinea.length === 0,
 // Debe haber reglas para celular y para celular angosto
 chk('hay reglas para celular (<=640px)',  /@media\s*\(max-width:\s*6[0-4]\d px?\)|@media\s*\(max-width:\s*640px\)/.test(css));
 chk('hay reglas para pantallas angostas (<=400px)', /@media\s*\(max-width:\s*4[0-2]\dpx\)/.test(css));
+
+console.log('\n=== Orden de las capas en pantalla ===');
+{
+  // Un z-index mal puesto no da error: el elemento simplemente queda tapado.
+  // Pasó de verdad — el mensaje de error se dibujaba DETRÁS del modal, así que
+  // al guardar un usuario la operación fallaba y el usuario no veía nada. Desde
+  // su lado se sentía como "el botón no hace nada".
+  const cssCapas = ((html.match(/<style>([\s\S]*?)<\/style>/) || [])[1] || '')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+
+  const zDe = (selector) => {
+    const re = new RegExp('\\' + selector + '\\s*\\{[^}]*z-index:\\s*(\\d+)');
+    const m = cssCapas.match(re);
+    return m ? Number(m[1]) : null;
+  };
+
+  const zToast  = zDe('.toast');
+  const zLogin  = zDe('.login-overlay');
+  const zModal  = zDe('.modal-fondo');
+
+  chk('las tres capas declaran z-index',
+      zToast !== null && zLogin !== null && zModal !== null,
+      { toast: zToast, login: zLogin, modal: zModal });
+
+  chk('el mensaje (toast) va por encima de los modales',
+      zToast > zModal, { toast: zToast, modal: zModal });
+  chk('el mensaje va por encima de la pantalla de acceso',
+      zToast > zLogin, { toast: zToast, login: zLogin });
+  chk('la pantalla de acceso va por encima de los modales',
+      zLogin > zModal, { login: zLogin, modal: zModal });
+
+  // Y que al pedir sesión se cierren los modales abiertos
+  chk('mostrarLogin cierra los modales abiertos',
+      /function mostrarLogin[\s\S]{0,400}modalUsuario/.test(js),
+      'mostrarLogin no cierra los modales');
+}
 
 console.log('\n=== Toda clase usada en el HTML existe en el CSS ===');
 {

@@ -442,6 +442,12 @@ Enviar dinero del banco al fondo de viáticos **NO es un gasto**: la plata no sa
 La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta tiene su propio saldo base, así que un traslado se descuenta del origen solo si es posterior a la base *del origen*, y se suma al destino solo si es posterior a la base *del destino*.
 
 ## Historial de cambios recientes
+- **2026-09-16**: 🔴 **"Guardar usuario no hace nada" — el error se dibujaba detrás del modal.** Reportado en la PWA (en la web funcionaba).
+  - **Causa:** el orden de capas estaba invertido. `.toast` tenía `z-index: 999` y `.modal-fondo` **9500**, así que **todo mensaje de error quedaba tapado por el modal**. Peor: `.login-overlay` estaba en 9000, también por debajo — o sea que si la sesión vencía, la app pedía iniciar sesión **detrás** del formulario abierto. Desde el lado del usuario, apretar Guardar no producía nada.
+  - **Orden correcto, ahora fijado:** encabezado/menú 100 · calendario 1000 · **modales 9000** · **pantalla de acceso 9500** (bloquea todo lo demás) · **mensajes 10000** (siempre visibles).
+  - `mostrarLogin()` además **cierra los modales abiertos**: pedir sesión con un formulario flotando confunde, y se seguiría escribiendo en algo que ya no se puede guardar.
+  - ⚠️ **Un z-index mal puesto no da ningún error**: el elemento queda tapado y el síntoma es "el botón no funciona". Hay 5 comprobaciones en [prueba-frontend.js](prueba-frontend.js) que vigilan el orden, verificadas reintroduciendo el bug. `sw.js` → `control-pagos-v62`.
+
 - **2026-09-16**: 🐛 **Zona de carga de Traslados con un ícono gigante.** Escribí `.upload-icon`, `.upload-text` y `.upload-hint`, pero las clases reales son **`.upload-icon-wrap`**, **`.upload-title`** y **`.upload-sub`**. Una clase inexistente **no da ningún error**: el elemento simplemente queda sin estilo, y el SVG creció hasta ocupar media pantalla.
   - **Estructura correcta de una zona de carga** (copiar de `#uploadZone`): el `<input type="file">` va **dentro** de `.upload-zone`, seguido de `.upload-icon-wrap` > `svg`, `.upload-title` y `.upload-sub`.
   - ⚠️ **Es la segunda vez que inventé una clase** (la primera fue `.btn-secundario`). Ahora [prueba-frontend.js](prueba-frontend.js) **verifica que toda clase usada en el HTML exista en el CSS**. Verificada reintroduciendo el error exacto: lo detecta. `sw.js` → `control-pagos-v61`.

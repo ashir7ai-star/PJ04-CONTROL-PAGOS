@@ -685,7 +685,14 @@
       min-width: 300px;
       max-width: 92vw;
       transition: transform 0.32s cubic-bezier(0.34,1.56,0.64,1);
-      z-index: 999;
+      /* ORDEN DE CAPAS (de atrás hacia adelante):
+           encabezado/menú 100 · calendario 1000 · modales 9000 ·
+           pantalla de acceso 9500 · mensajes 10000
+         El mensaje va SIEMPRE arriba de todo: si queda por debajo de un modal,
+         el usuario aprieta Guardar, la operación falla y no ve el error — lo
+         que se siente como "no pasa nada". Y la pantalla de acceso va por
+         encima de los modales porque es un estado que bloquea todo lo demás. */
+      z-index: 10000;
     }
 
     .toast.show { transform: translateX(-50%) translateY(0); }
@@ -1678,7 +1685,7 @@
     .login-overlay {
       position: fixed;
       inset: 0;
-      z-index: 9000;
+      z-index: 9500;        /* por encima de los modales: bloquea todo lo demás */
       background: var(--bg);
       display: flex;
       align-items: center;
@@ -1929,7 +1936,7 @@
     .secciones-picker input { width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }
 
     .modal-fondo {
-      position: fixed; inset: 0; z-index: 9500;
+      position: fixed; inset: 0; z-index: 9000;   /* debajo de la pantalla de acceso */
       background: rgba(0,0,0,0.45);
       display: flex; align-items: center; justify-content: center;
       padding: 20px; overflow-y: auto;
@@ -4457,6 +4464,14 @@
     }
 
     function mostrarLogin(tipo, mensaje) {
+      // Si había un modal abierto, se cierra: pedir que inicie sesión mientras
+      // un formulario sigue flotando confunde, y el usuario podría seguir
+      // escribiendo en algo que ya no se va a poder guardar.
+      ['modalUsuario', 'modalSaldo'].forEach(id => {
+        const m = document.getElementById(id);
+        if (m) m.style.display = 'none';
+      });
+
       loginOverlay.style.display = 'flex';
       // Ahora que la tarjeta es visible se puede medir su ancho real.
       setTimeout(redibujarBotonGoogle, 0);
