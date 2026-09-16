@@ -855,8 +855,16 @@ function usuarioPorCorreo_(correo) {
 
 // ─── Verificación del ID token contra Google ──────────────────────────────
 
+// Guarda por qué falló la última verificación. Sirve para diagnosticar: sin
+// esto, cualquier problema (token de otra app, correo sin verificar, Google
+// caído) se ve igual desde afuera — "no pudimos validar tu sesión" — y no hay
+// forma de saber cuál de todos es sin redesplegar a ciegas.
+// Se declara con `var` porque se lee desde funciones definidas más arriba.
+var motivoUltimoToken = '';
+
 function verificarIdToken_(idToken) {
-  if (!idToken) return null;
+  motivoUltimoToken = '';
+  if (!idToken) { motivoUltimoToken = 'no llegó ningún token'; return null; }
 
   // Verificar es una llamada de red por petición. Se cachea unos minutos para
   // que el login no le sume latencia a cada consulta (la lentitud de
@@ -872,18 +880,32 @@ function verificarIdToken_(idToken) {
     'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken),
     { muteHttpExceptions: true }
   );
-  if (respuesta.getResponseCode() !== 200) return null;
+  if (respuesta.getResponseCode() !== 200) {
+    motivoUltimoToken = 'Google respondió ' + respuesta.getResponseCode() +
+      ' al validar el token: ' + String(respuesta.getContentText()).slice(0, 180);
+    return null;
+  }
 
   let datos;
   try { datos = JSON.parse(respuesta.getContentText()); }
-  catch (err) { return null; }
+  catch (err) { motivoUltimoToken = 'Google devolvió algo que no es JSON'; return null; }
 
   // Que el token sea válido no alcanza: tiene que ser un token emitido PARA
   // ESTA aplicación. Sin este chequeo, un token sacado de cualquier otra app
   // de Google serviría para entrar acá.
-  if (String(datos.aud) !== String(CLIENT_ID_GOOGLE)) return null;
-  if (String(datos.email_verified) !== 'true')        return null;
-  if (Number(datos.exp) * 1000 < Date.now())          return null;
+  if (String(datos.aud) !== String(CLIENT_ID_GOOGLE)) {
+    motivoUltimoToken = 'el token fue emitido para otro Client ID. Esperado: ' +
+      String(CLIENT_ID_GOOGLE).slice(0, 24) + '… / Recibido: ' + String(datos.aud).slice(0, 24) + '…';
+    return null;
+  }
+  if (String(datos.email_verified) !== 'true') {
+    motivoUltimoToken = 'Google no da por verificado el correo ' + String(datos.email || '(sin correo)');
+    return null;
+  }
+  if (Number(datos.exp) * 1000 < Date.now()) {
+    motivoUltimoToken = 'el token ya había expirado al llegar al servidor';
+    return null;
+  }
 
   const perfil = {
     correo: String(datos.email || '').toLowerCase(),
@@ -979,7 +1001,13 @@ function iniciarSesion_(body) {
   }
 
   const perfil = verificarIdToken_(body.idToken);
-  if (!perfil) return { status: 'error', codigo: 'SESION_INVALIDA', message: 'No pudimos validar tu sesión de Google. Volvé a entrar.' };
+  if (!perfil) {
+    return {
+      status: 'error', codigo: 'SESION_INVALIDA',
+      message: 'No pudimos validar tu sesión de Google.',
+      detalle: motivoUltimoToken    // para poder diagnosticar sin adivinar
+    };
+  }
 
   const usuario = usuarioPorCorreo_(perfil.correo);
   if (!usuario) {

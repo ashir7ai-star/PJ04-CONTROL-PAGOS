@@ -1462,9 +1462,17 @@
       header { padding: 0 14px; }
       main   { padding-left: 14px; padding-right: 14px; }
 
-      .brand-logo { width: 30px; height: 30px; }
-      .brand-text h1 { font-size: 0.86rem; }
-      .brand-text p  { font-size: 0.68rem; }
+      /* El nombre de la empresa es la identidad del producto: tiene prioridad
+         sobre los controles. Se recupera espacio dejando "Salir" y el tema
+         como iconos, no achicando la marca. */
+      .brand-logo { width: 34px; height: 34px; }
+      .brand-text h1 { font-size: 0.84rem; }
+      .brand-text p  { font-size: 0.66rem; }
+
+      .btn-salir-texto { display: none; }
+      .btn-salir { padding: 7px 9px; }
+      .header-sesion { gap: 8px; }
+      .header-sesion img { width: 27px; height: 27px; }
 
       .app-nav { padding: 0 8px; gap: 0; }
       .nav-tab { padding: 13px 12px; font-size: 0.82rem; gap: 6px; }
@@ -1493,6 +1501,8 @@
       main   { padding-left: 12px; padding-right: 12px; }
 
       .brand-text p { display: none; }     /* se conserva el nombre de la empresa */
+      .brand-logo { width: 30px; height: 30px; }
+      .brand-text h1 { font-size: 0.8rem; }
       .nav-tab { padding: 12px 10px; font-size: 0.78rem; }
 
       .page-title { font-size: 1.32rem; }
@@ -1612,6 +1622,8 @@
       line-height: 1.5;
       text-align: left;
       margin-bottom: 18px;
+      white-space: pre-line;   /* respeta los saltos del detalle técnico */
+      word-break: break-word;
     }
     .login-aviso.info    { background: var(--primary-light); color: var(--text-2); border: 1px solid rgba(0,113,227,0.25); }
     .login-aviso.espera  { background: var(--warning-light); color: var(--text-2); border: 1px solid rgba(255,159,10,0.3); }
@@ -1670,6 +1682,9 @@
       color: var(--text-muted);
     }
     .btn-salir {
+      display: flex;
+      align-items: center;
+      gap: 6px;
       background: none;
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
@@ -1679,7 +1694,9 @@
       color: var(--text-2);
       cursor: pointer;
       transition: all 0.15s ease;
+      flex-shrink: 0;
     }
+    .btn-salir svg { width: 15px; height: 15px; flex-shrink: 0; }
     .btn-salir:hover { background: var(--surface-3); border-color: var(--border-strong); }
 
     /* ─── Configuración de usuarios ──────────────────────────────── */
@@ -1856,7 +1873,14 @@
           <span class="nombre" id="sesionNombre"></span>
           <span class="rol" id="sesionRol"></span>
         </div>
-        <button type="button" class="btn-salir" id="btnSalir">Salir</button>
+        <button type="button" class="btn-salir" id="btnSalir" title="Cerrar sesión" aria-label="Cerrar sesión">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          <span class="btn-salir-texto">Salir</span>
+        </button>
       </div>
 
       <button class="theme-toggle" id="themeToggle" title="Cambiar tema">
@@ -3994,13 +4018,23 @@
 
     async function onCredencialGoogle(respuesta) {
       sesion.idToken = respuesta.credential;
-      loginAviso.style.display = 'none';
+
+      // Apps Script puede tardar bastante en despertar, y la primera vez además
+      // crea la hoja USUARIOS. Sin una señal visible, el usuario ve el botón
+      // "rebotar" y cree que no pasó nada.
+      loginPaso1.style.display = 'none';
+      loginAviso.className     = 'login-aviso info';
+      loginAviso.textContent   = 'Verificando tu acceso…';
+      loginAviso.style.display = '';
 
       let datos;
       try {
-        datos = await postAppsScript({ action: 'iniciar_sesion' }, 30000);
+        datos = await postAppsScript({ action: 'iniciar_sesion' }, 90000);
       } catch (err) {
-        mostrarLogin('error', 'No pudimos conectarnos con el sistema. Revisá tu conexión e intentá de nuevo.');
+        const agotado = err && err.name === 'AbortError';
+        mostrarLogin('error', agotado
+          ? 'El servidor tardó demasiado en responder. Volvé a intentar en un momento.'
+          : 'No pudimos conectarnos con el sistema. Revisá tu conexión e intentá de nuevo.');
         return;
       }
 
@@ -4029,7 +4063,10 @@
       }
 
       sesion.idToken = null;
-      mostrarLogin('error', datos.message || 'No pudimos validar tu acceso.');
+      // El detalle dice QUÉ falló exactamente. Sin él, cualquier causa se ve
+      // igual desde la pantalla y no hay forma de diagnosticar.
+      mostrarLogin('error', (datos.message || 'No pudimos validar tu acceso.') +
+        (datos.detalle ? '\n\nDetalle técnico: ' + datos.detalle : ''));
       loginPie.style.display = '';
     }
 
