@@ -3437,7 +3437,9 @@
 
     // ─── Service Worker + banner de actualización ─────────────────
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/PJ04-CONTROL-PAGOS/sw.js').then(reg => {
+      // Ruta relativa: se resuelve contra la página, así funciona tanto en
+      // /PJ04-CONTROL-PAGOS/ como en la raíz de un dominio propio.
+      navigator.serviceWorker.register('sw.js').then(reg => {
         // Forzar chequeo de actualización cada vez que se abre la app
         reg.update();
 

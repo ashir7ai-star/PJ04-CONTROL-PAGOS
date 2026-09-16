@@ -1,7 +1,11 @@
-const CACHE = 'control-pagos-v43';
+const CACHE = 'control-pagos-v44';
+// Rutas RELATIVAS a propósito: así la app funciona igual en
+// ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/ que en un dominio propio, sin
+// tener que cambiar código el día que se mude. En un Service Worker, './'
+// se resuelve contra la ubicación del propio sw.js.
 const ASSETS = [
-  '/PJ04-CONTROL-PAGOS/',
-  '/PJ04-CONTROL-PAGOS/index.html',
+  './',
+  './index.html',
   'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
   'https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css',
   'https://cdn.jsdelivr.net/npm/flatpickr',
