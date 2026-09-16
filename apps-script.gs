@@ -163,7 +163,7 @@ function hojasNoPagos_() {
   // gasto. Si se contara como pago, el reporte sumaría dos veces el mismo
   // dinero — una al enviarlo a viáticos y otra cuando la persona en campo lo
   // gaste y cargue su recibo.
-  return [NOMBRE_HOJA_SOLICITUDES, 'USUARIOS', 'SALDOS', 'TRASLADOS'];
+  return [NOMBRE_HOJA_SOLICITUDES, 'USUARIOS', 'SALDOS', 'TRASLADOS', 'SESIONES'];
 }
 
 function hojaPrincipal_() {
@@ -662,6 +662,7 @@ function doPost(e) {
     if (body.action === 'consultar_pagos')      return respuestaJson_(consultarPagos_(contextoDe_(body)));
     if (body.action === 'consultar_solicitudes')return respuestaJson_(consultarSolicitudes_(body));
     if (body.action === 'arranque')             return respuestaJson_(arranque_(body));
+    if (body.action === 'cerrar_sesion')        { cerrarSesionPropia_(body.sesionToken); return respuestaJson_({ status: 'success' }); }
     if (body.action === 'iniciar_sesion')       return respuestaJson_(iniciarSesion_(body));
     if (body.action === 'registrar_usuario')    return respuestaJson_(registrarUsuario_(body));
     if (body.action === 'listar_usuarios')      return respuestaJson_(listarUsuarios_(body));
@@ -1122,6 +1123,131 @@ function verificarIdToken_(idToken) {
   return perfil;
 }
 
+// ─── Sesiones propias del sistema ─────────────────────────────────────────
+//
+// POR QUÉ EXISTEN: el token de Google dura ~1 hora y no se puede alargar.
+// Renovarlo en silencio depende de One Tap, que Google restringe cada vez más
+// y que falla seguido —sobre todo dentro de una PWA—, así que la gente terminaba
+// teniendo que entrar de nuevo todo el tiempo.
+//
+// Con esto, el token de Google se usa UNA sola vez: para probar quién sos. A
+// partir de ahí el sistema emite su propia sesión, con la duración que nosotros
+// decidimos. Un dispositivo donde ya se entró sigue adentro.
+//
+// Además es más rápido: validar una sesión propia es leer una hoja, mientras
+// que validar el token de Google era una llamada de red a Google en cada
+// petición.
+//
+// Seguridad: se guarda el HASH del token, no el token. Si alguien viera la
+// hoja, no podría usar esas sesiones. Y cada petición vuelve a comprobar que
+// el usuario siga activo, así que desactivarlo lo saca de inmediato.
+
+const NOMBRE_HOJA_SESIONES = 'SESIONES';
+const ENCABEZADOS_SESIONES = ['HASH', 'CORREO', 'CREADA', 'ULTIMO USO', 'VENCE'];
+const DIAS_SESION = 30;
+
+function hojaSesiones_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let hoja = ss.getSheetByName(NOMBRE_HOJA_SESIONES);
+  if (!hoja) {
+    hoja = ss.insertSheet(NOMBRE_HOJA_SESIONES, ss.getNumSheets());
+    hoja.getRange(1, 1, 1, ENCABEZADOS_SESIONES.length)
+        .setValues([ENCABEZADOS_SESIONES]).setFontWeight('bold');
+    hoja.setFrozenRows(1);
+  }
+  return hoja;
+}
+
+function hashDeToken_(token) {
+  return Utilities.base64Encode(
+    Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(token))
+  );
+}
+
+function crearSesionPropia_(correo) {
+  // Dos UUID: espacio de búsqueda enorme, imposible de adivinar.
+  const token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
+  const ahora = new Date();
+  const vence = new Date(ahora.getTime() + DIAS_SESION * 86400000);
+
+  const hoja = hojaSesiones_();
+  hoja.appendRow([
+    hashDeToken_(token),
+    String(correo).toLowerCase(),
+    ahora.toISOString(),
+    ahora.toISOString(),
+    vence.toISOString()
+  ]);
+  limpiarSesionesVencidas_(hoja);
+  return token;
+}
+
+// Devuelve el correo si la sesión vale, o null.
+function correoDeSesion_(token) {
+  if (!token) return null;
+
+  const clave = 'ses_' + hashDeToken_(token);
+  const cache = CacheService.getScriptCache();
+  const enCache = cache.get(clave);
+  if (enCache) return enCache === '-' ? null : enCache;
+
+  const hoja    = hojaSesiones_();
+  const valores = hoja.getDataRange().getValues();
+  const hash    = hashDeToken_(token);
+  const ahora   = new Date();
+
+  for (let i = 1; i < valores.length; i++) {
+    if (String(valores[i][0]) !== hash) continue;
+
+    const vence = new Date(valores[i][4]);
+    if (!(vence.getTime() > ahora.getTime())) {
+      cache.put(clave, '-', 60);
+      return null;
+    }
+
+    const correo = String(valores[i][1]).toLowerCase();
+
+    // Vencimiento deslizante: usar el sistema renueva la sesión. Solo se
+    // escribe si pasó más de un día, porque escribir en la hoja cuesta tiempo
+    // y hacerlo en cada petición la haría notablemente más lenta.
+    const ultimoUso = new Date(valores[i][3]);
+    if (ahora.getTime() - ultimoUso.getTime() > 86400000) {
+      const nuevoVence = new Date(ahora.getTime() + DIAS_SESION * 86400000);
+      hoja.getRange(i + 1, 4, 1, 2).setValues([[ahora.toISOString(), nuevoVence.toISOString()]]);
+    }
+
+    cache.put(clave, correo, 300);
+    return correo;
+  }
+
+  cache.put(clave, '-', 60);
+  return null;
+}
+
+function cerrarSesionPropia_(token) {
+  if (!token) return;
+  const hoja    = hojaSesiones_();
+  const valores = hoja.getDataRange().getValues();
+  const hash    = hashDeToken_(token);
+  for (let i = valores.length - 1; i >= 1; i--) {
+    if (String(valores[i][0]) === hash) hoja.deleteRow(i + 1);
+  }
+  try { CacheService.getScriptCache().remove('ses_' + hash); } catch (err) {}
+}
+
+// Las sesiones vencidas no sirven para nada y harían crecer la hoja sin fin.
+function limpiarSesionesVencidas_(hoja) {
+  try {
+    const valores = hoja.getDataRange().getValues();
+    if (valores.length < 200) return;   // no vale la pena hasta que crezca
+    const ahora = Date.now();
+    for (let i = valores.length - 1; i >= 1; i--) {
+      const vence = new Date(valores[i][4]).getTime();
+      if (!vence || vence < ahora) hoja.deleteRow(i + 1);
+    }
+  } catch (err) { /* la limpieza nunca debe romper un ingreso */ }
+}
+
 // ─── Contexto de la petición: quién llama y qué puede ver ─────────────────
 // Toda acción del Web App pasa por acá. Devuelve el "contexto" que después
 // usan consultarPagos_ y registrarPago_ para decidir qué mostrar y qué dejar
@@ -1135,13 +1261,23 @@ function contextoDe_(body) {
 
   if (MODO_LOGIN === 'off') return sinLogin;
 
-  const perfil = verificarIdToken_(body && body.idToken);
-  if (!perfil) {
-    if (MODO_LOGIN === 'suave') return sinLogin;
-    throw new Error('SESION_INVALIDA');
+  // Primero la sesión propia del sistema: es la vía normal, dura 30 días y no
+  // necesita hablar con Google. El token de Google solo se usa en el ingreso
+  // inicial, cuando todavía no hay sesión propia.
+  let correo = correoDeSesion_(body && body.sesionToken);
+  let nombreGoogle = '';
+
+  if (!correo) {
+    const perfil = verificarIdToken_(body && body.idToken);
+    if (!perfil) {
+      if (MODO_LOGIN === 'suave') return sinLogin;
+      throw new Error('SESION_INVALIDA');
+    }
+    correo = perfil.correo;
+    nombreGoogle = perfil.nombre;
   }
 
-  const usuario = usuarioPorCorreo_(perfil.correo);
+  const usuario = usuarioPorCorreo_(correo);
   if (!usuario) {
     if (MODO_LOGIN === 'suave') return sinLogin;
     throw new Error('NO_REGISTRADO');        // el frontend le ofrece registrarse
@@ -1155,8 +1291,8 @@ function contextoDe_(body) {
 
   return {
     autenticado: true,
-    correo:      perfil.correo,
-    nombre:      String(usuario['NOMBRE'] || perfil.nombre),
+    correo:      correo,
+    nombre:      String(usuario['NOMBRE'] || nombreGoogle),
     rol:         String(usuario['ROL'] || 'usuario').toLowerCase(),
     secciones:   seccionesDeUsuario_(usuario),
     estado:      estado,
@@ -1283,15 +1419,24 @@ function arranque_(body) {
     return base;
   }
 
-  const perfil = verificarIdToken_(body && body.idToken);
-  if (!perfil) { base.sesion = null; base.codigo = 'SESION_INVALIDA'; return base; }
+  // Vía normal: la sesión propia del sistema, que dura 30 días. El token de
+  // Google solo aparece en el ingreso inicial.
+  let correo = correoDeSesion_(body && body.sesionToken);
+  let perfilGoogle = null;
+  let tokenNuevo = null;
 
-  const usuario = usuarioPorCorreo_(perfil.correo);
+  if (!correo) {
+    perfilGoogle = verificarIdToken_(body && body.idToken);
+    if (!perfilGoogle) { base.sesion = null; base.codigo = 'SESION_INVALIDA'; return base; }
+    correo = perfilGoogle.correo;
+  }
+
+  const usuario = usuarioPorCorreo_(correo);
   if (!usuario) {
     base.sesion = null;
     base.codigo = 'NO_REGISTRADO';
-    base.correo = perfil.correo;
-    base.nombre = perfil.nombre;
+    base.correo = correo;
+    base.nombre = perfilGoogle ? perfilGoogle.nombre : '';
     return base;
   }
 
@@ -1299,14 +1444,19 @@ function arranque_(body) {
   if (estado !== 'activo') {
     base.sesion = null;
     base.codigo = estado === 'pendiente' ? 'PENDIENTE_APROBACION' : 'USUARIO_INACTIVO';
-    base.correo = perfil.correo;
+    base.correo = correo;
     return base;
   }
 
+  // Recién acá, con el usuario confirmado como activo, se emite la sesión
+  // propia. Se hace solo en el ingreso inicial: si ya vino con una válida, se
+  // sigue usando esa.
+  if (perfilGoogle) tokenNuevo = crearSesionPropia_(correo);
+
   const ctx = {
     autenticado: true,
-    correo:      perfil.correo,
-    nombre:      String(usuario['NOMBRE'] || perfil.nombre),
+    correo:      correo,
+    nombre:      String(usuario['NOMBRE'] || (perfilGoogle ? perfilGoogle.nombre : '')),
     rol:         String(usuario['ROL'] || 'usuario').toLowerCase(),
     secciones:   seccionesDeUsuario_(usuario),
     estado:      estado,
@@ -1316,10 +1466,13 @@ function arranque_(body) {
   base.sesion = {
     correo:    ctx.correo,
     nombre:    ctx.nombre,
-    foto:      perfil.foto,
+    foto:      perfilGoogle ? perfilGoogle.foto : '',
     rol:       ctx.rol,
     secciones: ctx.secciones
   };
+  // El token solo viaja una vez, cuando se crea. Después el navegador lo
+  // guarda y lo manda en cada petición.
+  if (tokenNuevo) base.sesionToken = tokenNuevo;
   base.saldos = consultarSaldos_(ctx);
 
   // Marca de último acceso. Escribir en la hoja cuesta tiempo, así que se hace

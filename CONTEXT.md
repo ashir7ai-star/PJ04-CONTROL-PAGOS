@@ -441,7 +441,26 @@ Enviar dinero del banco al fondo de viáticos **NO es un gasto**: la plata no sa
 
 La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta tiene su propio saldo base, así que un traslado se descuenta del origen solo si es posterior a la base *del origen*, y se suma al destino solo si es posterior a la base *del destino*.
 
+## 🔑 Sesiones propias del sistema (2026-09-16)
+**El problema:** el token de Google dura ~1 hora y **no se puede alargar**. Renovarlo en silencio depende de One Tap, que Google restringe cada vez más y que falla seguido —sobre todo dentro de una PWA—, así que el usuario tenía que volver a entrar constantemente. Se intentó arreglar dos veces sin éxito, porque el enfoque era el equivocado.
+
+**La solución:** el token de Google se usa **una sola vez**, para probar la identidad en el ingreso inicial. A partir de ahí **el sistema emite su propia sesión**, con la duración que nosotros decidimos.
+
+| Aspecto | Cómo quedó |
+|---|---|
+| Duración | **30 días**, deslizante (usar el sistema la renueva) |
+| Dónde vive | hoja `SESIONES` — se guarda el **hash** del token, nunca el token |
+| Validación | una lectura de hoja, cacheada 5 min — **sin llamada de red a Google** |
+| Cerrar sesión | borra la fila en el servidor, no solo en el navegador |
+| Revocación | cada petición revalida al usuario: **desactivarlo lo saca de inmediato** |
+
+**Beneficio secundario: es más rápido.** Antes cada petición validaba el token contra Google por red; ahora lee una hoja y usa caché.
+
+⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
+
 ## Historial de cambios recientes
+- **2026-09-16**: 🔑 **Sesiones propias: se acabó tener que entrar de nuevo cada hora.** Ver la sección "🔑 Sesiones propias" arriba para el porqué y el diseño. **11 comprobaciones nuevas** en [prueba-permisos.js](prueba-permisos.js), incluida que desactivar a un usuario corta su acceso aunque su sesión siga vigente. `sw.js` → `control-pagos-v63`.
+
 - **2026-09-16**: 🔴 **"Guardar usuario no hace nada" — el error se dibujaba detrás del modal.** Reportado en la PWA (en la web funcionaba).
   - **Causa:** el orden de capas estaba invertido. `.toast` tenía `z-index: 999` y `.modal-fondo` **9500**, así que **todo mensaje de error quedaba tapado por el modal**. Peor: `.login-overlay` estaba en 9000, también por debajo — o sea que si la sesión vencía, la app pedía iniciar sesión **detrás** del formulario abierto. Desde el lado del usuario, apretar Guardar no producía nada.
   - **Orden correcto, ahora fijado:** encabezado/menú 100 · calendario 1000 · **modales 9000** · **pantalla de acceso 9500** (bloquea todo lo demás) · **mensajes 10000** (siempre visibles).

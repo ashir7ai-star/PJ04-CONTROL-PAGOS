@@ -3001,7 +3001,10 @@
     // login se enciende y se apaga desde el Apps Script sin tocar el frontend.
     const sesion = {
       modo:      'off',     // off | suave | estricto
-      idToken:   null,
+      idToken:   null,      // token de Google: solo para el ingreso inicial
+      // Sesión propia del sistema. Dura 30 días y es la que mantiene al usuario
+      // adentro: el token de Google vence en 1 hora y no se puede alargar.
+      sesionToken: null,
       correo:    '',
       nombre:    '',
       foto:      '',
@@ -3038,7 +3041,11 @@
     async function enviarAppsScript(payload, timeoutMs) {
       const control = new AbortController();
       const alarma  = setTimeout(() => control.abort(), timeoutMs);
-      const cuerpo  = sesion.idToken ? Object.assign({}, payload, { idToken: sesion.idToken }) : payload;
+      // Se mandan ambos: la sesión propia es la que vale, y el token de Google
+      // solo sirve en el ingreso inicial, cuando todavía no hay sesión propia.
+      const cuerpo = Object.assign({}, payload);
+      if (sesion.sesionToken) cuerpo.sesionToken = sesion.sesionToken;
+      if (sesion.idToken)     cuerpo.idToken     = sesion.idToken;
       try {
         const response = await fetch(APPS_SCRIPT_URL, {
           method:  'POST',
@@ -4411,7 +4418,8 @@
     function guardarSesion() {
       try {
         localStorage.setItem(CLAVE_SESION, JSON.stringify({
-          idToken:   sesion.idToken,
+          idToken:     sesion.idToken,
+          sesionToken: sesion.sesionToken,
           correo:    sesion.correo,
           nombre:    sesion.nombre,
           foto:      sesion.foto,
@@ -4443,14 +4451,21 @@
     // separan queda una sesión fantasma: el token en memoria muere pero el
     // guardado sobrevive, y la próxima recarga intenta entrar con él.
     function descartarSesion() {
-      sesion.idToken = null;
+      sesion.idToken     = null;
+      sesion.sesionToken = null;
       olvidarSesion();
     }
 
-    // Se descarta con un minuto de margen: un token a punto de vencer llegaría
-    // vencido al servidor y el usuario vería un error en vez de la app.
     function sesionGuardadaSirve(s) {
-      return !!s && s.vence > Date.now() + 60000;
+      if (!s) return false;
+      // Con sesión propia del sistema alcanza: dura 30 días y la valida el
+      // servidor en cada petición. El vencimiento del token de Google dejó de
+      // importar — era justamente lo que obligaba a entrar de nuevo cada hora.
+      if (s.sesionToken) return true;
+      // Sesiones viejas, guardadas cuando solo existía el token de Google.
+      // Se descartan con un minuto de margen: uno a punto de vencer llegaría
+      // vencido al servidor y el usuario vería un error en vez de la app.
+      return s.vence > Date.now() + 60000;
     }
 
     function aplicarSesion(datos) {
@@ -4527,8 +4542,11 @@
         ocultarLogin();
 
         if (sesionGuardadaSirve(guardada)) {
-          sesion.idToken = guardada.idToken;
-          programarRenovacion(guardada.vence);
+          sesion.sesionToken = guardada.sesionToken || null;
+          sesion.idToken     = guardada.idToken || null;
+          // La renovación silenciosa solo hace falta para sesiones viejas sin
+          // token propio. Con sesión propia no hay nada que renovar.
+          if (!sesion.sesionToken) programarRenovacion(guardada.vence);
           // Un solo viaje: confirma la sesión, refresca permisos y trae los
           // saldos. Antes eran tres peticiones separadas, y cada viaje a Apps
           // Script cuesta varios segundos.
@@ -4565,6 +4583,7 @@
 
         if (r.sesion) {
           // Confirma la sesión y refresca permisos por si un admin los cambió.
+          if (r.sesionToken) sesion.sesionToken = r.sesionToken;
           aplicarSesion(r.sesion);
           correoRecordado = sesion.correo;
           guardarSesion();
@@ -4752,6 +4771,7 @@
       if (datos.modo) { sesion.modo = datos.modo; guardarModoRecordado(datos.modo); }
 
       if (datos.sesion) {
+        if (datos.sesionToken) sesion.sesionToken = datos.sesionToken;
         aplicarSesion(datos.sesion);
         correoRecordado = sesion.correo;
         guardarSesion();   // para no tener que entrar de nuevo en cada recarga
@@ -4843,7 +4863,16 @@
 
     document.getElementById('btnSalir').addEventListener('click', () => {
       try { google.accounts.id.disableAutoSelect(); } catch (err) {}
-      sesion.idToken   = null;
+
+      // Se borra también del servidor: si solo se borrara del navegador, la
+      // sesión seguiría siendo válida durante 30 días para quien tuviera el
+      // token. Se lanza sin esperar — cerrar sesión debe sentirse inmediato.
+      if (sesion.sesionToken) {
+        postAppsScript({ action: 'cerrar_sesion' }, 30000).catch(() => {});
+      }
+
+      sesion.sesionToken = null;
+      sesion.idToken     = null;
       sesion.correo    = '';
       sesion.nombre    = '';
       sesion.foto      = '';

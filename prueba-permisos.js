@@ -30,6 +30,7 @@ function hojaFalsa(nombre, filas) {
       setValue: (v) => { datos[f - 1][c - 1] = v; }
     }),
     appendRow: (fila) => datos.push(fila.slice()),
+    deleteRow: (n) => { datos.splice(n - 1, 1); },
     setFrozenRows: () => {},
     _datos: datos
   };
@@ -93,6 +94,9 @@ function montar(modoLogin, usuarios, solicitudes) {
       formatDate: () => '01/01/2026 00:00',
       base64Encode: (x) => String(x),
       computeDigest: (a, b) => b,
+      // Cada llamada devuelve un valor distinto, como el real: si repitiera,
+      // dos sesiones tendrían el mismo token y la prueba no valdría nada.
+      getUuid: (() => { let n = 0; return () => 'uuid-' + (++n) + '-' + Math.random().toString(36).slice(2); })(),
       DigestAlgorithm: { SHA_256: 'sha256' },
       newBlob: () => ({})
     }
@@ -250,6 +254,61 @@ console.log('\n=== verificación del token: qué rechaza ===');
     });
     return g2.verificarIdToken_('x@y.com') === null;
   })());
+}
+
+console.log('\n=== Sesiones propias del sistema (duran 30 días) ===');
+{
+  // Existen porque el token de Google dura 1 hora y renovarlo en silencio
+  // depende de One Tap, que falla seguido — sobre todo en la PWA. El usuario
+  // terminaba teniendo que entrar de nuevo todo el tiempo.
+  const g = montar('estricto', [
+    ['laura@x.com',  'Laura',  '300', 'usuario', 'viaticos', 'activo', '', ''],
+    ['nathan@y.com', 'Nathan', '',    'admin',   'todas',    'activo', '', '']
+  ]);
+
+  // Ingreso inicial con el token de Google
+  const primero = g.arranque_({ idToken: 'laura@x.com' });
+  chk('el ingreso inicial devuelve una sesión propia',
+      !!primero.sesionToken, primero.codigo || 'sin token');
+  chk('y la sesión queda activa', !!primero.sesion);
+
+  const token = primero.sesionToken;
+
+  // A partir de acá, SIN token de Google
+  const despues = g.arranque_({ sesionToken: token });
+  chk('se puede entrar solo con la sesión propia, sin Google',
+      !!despues.sesion && despues.sesion.correo === 'laura@x.com',
+      despues.codigo || JSON.stringify(despues.sesion));
+  chk('no emite un token nuevo si ya hay uno válido', !despues.sesionToken);
+
+  // El contexto de cualquier acción también la acepta
+  const ctx = g.contextoDe_({ sesionToken: token });
+  chk('contextoDe_ reconoce la sesión propia', ctx.correo === 'laura@x.com', ctx.correo);
+  chk('y respeta sus permisos', JSON.stringify(ctx.secciones) === JSON.stringify(['viaticos']), ctx.secciones);
+
+  // Tokens inválidos
+  chk('un token inventado no sirve', g.correoDeSesion_('cualquier-cosa') === null);
+  chk('token vacío no sirve',        g.correoDeSesion_('') === null);
+
+  // Cerrar sesión la invalida de verdad
+  g.cerrarSesionPropia_(token);
+  chk('cerrar sesión invalida el token en el servidor',
+      g.correoDeSesion_(token) === null);
+
+  // Desactivar al usuario corta el acceso aunque su sesión siga vigente
+  const g2 = montar('estricto', [
+    ['pedro@x.com', 'Pedro', '300', 'usuario', 'viaticos', 'activo', '', '']
+  ]);
+  const t2 = g2.arranque_({ idToken: 'pedro@x.com' }).sesionToken;
+  chk('la sesión funciona mientras el usuario está activo',
+      !!g2.arranque_({ sesionToken: t2 }).sesion);
+
+  // Se lo marca inactivo en la hoja
+  const hojaU = g2.SpreadsheetApp.getActiveSpreadsheet().getSheetByName('USUARIOS');
+  hojaU._datos[1][5] = 'inactivo';
+  const tras = g2.arranque_({ sesionToken: t2 });
+  chk('desactivar al usuario corta el acceso aunque la sesión siga vigente',
+      !tras.sesion && tras.codigo === 'USUARIO_INACTIVO', tras.codigo);
 }
 
 console.log('\n=== Privacidad de las solicitudes de aprobación ===');
