@@ -461,6 +461,10 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-16**: 🔧 **`APPS_SCRIPT_URL` → `AKfycbwngWbZFP9c…`** (el tercer despliegue). El anterior dejó de tomar código nuevo: respondía bien pero **sin la marca de revisión**, o sea con una versión vieja. La causa de fondo era que había **varios despliegues** y se estaba actualizando uno distinto al que usaba la app.
+  - **Cómo se detectó en segundos:** `REVISION_BACKEND` en `estado_login`. Antes esto habría costado otra ronda de pruebas a ciegas.
+  - ⚠️ **Al redesplegar, confirmar que el Deployment ID coincide con el de `APPS_SCRIPT_URL`.** Tener varios despliegues del mismo script es la fuente de confusión más cara de este proyecto.
+
 - **2026-09-16**: 🔎 **`REVISION_BACKEND`: marca de versión del código desplegado.** Viaja en `estado_login`, así que se puede verificar **desde afuera** qué código está realmente publicado con un solo `curl`, en vez de deducirlo por síntomas. No saber esto costó varias rondas de despliegues a ciegas.
   - **Al cambiar el backend, subir también esta marca.** Es la forma de confirmar que un despliegue tomó.
   - 📌 Los identificadores de despliegue tienen caracteres fáciles de confundir (`I` mayúscula, `l` minúscula, `1`, `O`/`0`): **no transcribirlos desde una captura**, pedir la URL copiada.
