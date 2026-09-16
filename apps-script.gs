@@ -858,6 +858,18 @@ function doGet(e) {
         secciones: Object.keys(SECCIONES)
       });
     }
+    // Diagnóstico de fechas. No toca ni revela datos: recibe un texto y
+    // devuelve cómo lo interpreta el servidor. Sirve para comprobar desde
+    // afuera si el arreglo de fechas está realmente activo en este despliegue.
+    if (accion === 'probar_fecha') {
+      const v = e.parameter.valor || '';
+      return respuestaJson_({
+        status: 'success',
+        revision: REVISION_BACKEND,
+        recibido: v,
+        interpretado: formatearValorDeCelda_('FECHA REGISTRO', v)
+      });
+    }
     if (accion === 'consultar_solicitudes') return respuestaJson_(consultarSolicitudes_(e.parameter));
     if (accion === 'consultar_pagos')       return respuestaJson_(consultarPagos_(contextoDe_(e.parameter)));
     return respuestaJson_({ status: 'error', message: 'Acción no reconocida: ' + accion });
@@ -1635,6 +1647,7 @@ function arranque_(body) {
   const base = {
     status:    'success',
     modo:      MODO_LOGIN,
+    revision:  REVISION_BACKEND,
     clientId:  CLIENT_ID_GOOGLE,
     secciones: Object.keys(SECCIONES)
   };

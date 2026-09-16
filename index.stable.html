@@ -3118,6 +3118,7 @@
       nombre:    '',
       foto:      '',
       rol:       'admin',
+      revision:  '',       // versión del backend, para detectar desfases
       secciones: ['pagos', 'viaticos', 'caja_menor', 'impuestos', 'seguridad_social', 'nomina', 'compra_materiales']
     };
 
@@ -4730,6 +4731,7 @@
         const r = await postAppsScript({ action: 'arranque' }, 60000);
         if (!r || r.status !== 'success') return;
 
+        if (r.revision) sesion.revision = r.revision;
         if (r.modo && r.modo !== sesion.modo) {
           guardarModoRecordado(r.modo);
           sesion.modo = r.modo;
@@ -4926,6 +4928,7 @@
       }
 
       if (datos.modo) { sesion.modo = datos.modo; guardarModoRecordado(datos.modo); }
+      if (datos.revision) sesion.revision = datos.revision;
 
       if (datos.sesion) {
         if (datos.sesionToken) sesion.sesionToken = datos.sesionToken;
@@ -5145,13 +5148,21 @@
     function pintarEstadoAcceso(modo) {
       const caja = document.getElementById('configEstadoLogin');
 
+      // La versión del backend, visible: si la app y el Apps Script quedan
+      // desfasados, los síntomas son confusos y difíciles de atribuir. Verlo
+      // acá convierte ese problema en algo obvio de un vistazo.
+      const pie = sesion.revision
+        ? '<div style="margin-top:8px;font-size:0.72rem;color:var(--text-muted);">Servidor: ' +
+          escapeHtml(sesion.revision) + '</div>'
+        : '';
+
       if (modo === 'estricto') {
         caja.innerHTML =
           '<span class="chip-acceso ok">' +
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
             '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' +
             'Acceso restringido · solo los usuarios de esta lista' +
-          '</span>';
+          '</span>' + pie;
         return;
       }
 
@@ -5159,7 +5170,7 @@
         ? '<strong>El control de acceso está apagado.</strong> Cualquiera con el enlace entra y ve todo. Los permisos de esta lista no se aplican hasta activarlo.'
         : '<strong>Control de acceso en modo suave.</strong> Quien inicia sesión ve solo lo suyo, pero quien no inicia sesión todavía entra.';
 
-      caja.innerHTML = '<div class="saldo-aviso" style="grid-column:auto;">' + texto + '</div>';
+      caja.innerHTML = '<div class="saldo-aviso" style="grid-column:auto;">' + texto + '</div>' + pie;
     }
 
     function pintarUsuarios(usuarios) {

@@ -26,7 +26,7 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 ## Última actualización
 **2026-09-16** — ✅ **VERSIÓN ESTABLE** (tag `v1.4-sesiones`). Acceso restringido con **sesiones propias de 30 días** (el token de Google ya no limita la sesión a 1 hora). Incluye la sección **Traslados** entre cuentas propias, la sección **Compra Materiales**, los **saldos por cuenta** con visibilidad por rol, **privacidad de solicitudes** por usuario, el **arranque en una sola petición** y la lista de usuarios rediseñada.
 
-`APPS_SCRIPT_URL` → despliegue **`AKfycbxDRCP3efj…`**. `sw.js` → `control-pagos-v64`. `MODO_LOGIN` = `'estricto'`.
+`APPS_SCRIPT_URL` → despliegue **`AKfycbxDRCP3efj…`**. `sw.js` → `control-pagos-v70`. `MODO_LOGIN` = `'estricto'`.
 
 **Pendientes:** cargar los cuatro saldos (después de registrar los comprobantes atrasados), mudar el dominio a `pagos.energy-millennium.com` (bloqueado por acceso a Wix), y el botón "Agregar factura" de Consultar Pagos, que nunca se construyó.
 
@@ -461,6 +461,11 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-16**: 🔬 **Dos diagnosticos para cerrar el problema de fechas.** El sintoma ("sigue mal") no distinguia entre *el backend no convierte* y *el navegador corre una copia vieja*, asi que se hizo visible cada uno por separado:
+  - **Endpoint `probar_fecha`** (sin autenticar, solo lectura): `?action=probar_fecha&valor=09/12/2026 14:31` devuelve `recibido`, `interpretado` y `revision`. Prueba la conversion **aislada**: sin Sheet, sin sesion y sin app de por medio. Si `interpretado` sale bien, el backend no es el culpable.
+  - **Linea "Servidor: <revision>" en Configuracion.** `arranque` ahora devuelve `revision` y la app la muestra. Asi el desfase app<->backend se ve **sin abrir la consola**, que es donde se perdieron varias rondas.
+  - **Regla:** cuando un fix "no funciona", antes de tocar la logica hay que poder *demostrar* que version corre cada lado. `sw.js` -> `control-pagos-v70`.
+
 - **2026-09-16**: 🔧 **`APPS_SCRIPT_URL` → `AKfycbwngWbZFP9c…`** (el tercer despliegue). El anterior dejó de tomar código nuevo: respondía bien pero **sin la marca de revisión**, o sea con una versión vieja. La causa de fondo era que había **varios despliegues** y se estaba actualizando uno distinto al que usaba la app.
   - **Cómo se detectó en segundos:** `REVISION_BACKEND` en `estado_login`. Antes esto habría costado otra ronda de pruebas a ciegas.
   - ⚠️ **Al redesplegar, confirmar que el Deployment ID coincide con el de `APPS_SCRIPT_URL`.** Tener varios despliegues del mismo script es la fuente de confusión más cara de este proyecto.
