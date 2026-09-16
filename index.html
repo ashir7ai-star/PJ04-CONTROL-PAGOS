@@ -1313,10 +1313,25 @@
       width: 100% !important;
     }
 
+    /* La fila de nombres (LUN…DOM) y la de números tienen que usar EXACTAMENTE
+       la misma geometría de columnas, si no los números quedan corridos respecto
+       a su encabezado. Por defecto flatpickr las arma distinto: los nombres con
+       flex:1 (1/7 del ancho cada uno) y los días con justify-content:space-around
+       sobre celdas de ancho tope. Las dos van a la misma grilla de 7 columnas
+       iguales, y la pastilla de 34px se centra dentro de su celda. */
+    .flatpickr-weekdaycontainer,
     .dayContainer {
-      min-width: unset !important;
-      max-width: unset !important;
+      display: grid !important;
+      grid-template-columns: repeat(7, 1fr) !important;
+      justify-items: center !important;
       width: 100% !important;
+      min-width: 0 !important;
+      max-width: none !important;
+    }
+
+    span.flatpickr-weekday {
+      width: 100% !important;
+      text-align: center !important;
     }
 
     .flatpickr-day {
@@ -1327,7 +1342,9 @@
       border-radius: 8px !important;
       height: 34px !important;
       line-height: 34px !important;
+      width: 34px !important;
       max-width: 34px !important;
+      margin: 1px 0 !important;
       border: none !important;
       transition: all 0.15s ease !important;
     }
