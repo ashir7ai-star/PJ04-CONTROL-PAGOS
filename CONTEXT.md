@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-09-15** — ✅ Marcada como **versión estable**. Módulo **"Aprobaciones"** desplegado y funcionando. 🚫 **Decisión de arquitectura: este módulo y todo desarrollo futuro NO usan n8n** — el backend es un **Google Apps Script Web App** ya en producción (código en [apps-script.gs](apps-script.gs)). Ver sección "✅ Módulo de Aprobaciones" abajo. `sw.js` → `control-pagos-v31`.
+**2026-09-15** — 🔄 **Fase 1 de la actualización grande: n8n queda fuera del sistema por completo.** "Nuevo Pago" y "Consultar Pagos" ahora hablan con el mismo **Google Apps Script Web App** que ya usaba Aprobaciones. Cada tipo de pago pasa a tener **su propia hoja en el Sheet y su propia carpeta en Drive**, y se agregan dos tipos nuevos: **Seguridad Social** y **Pago Nómina**. ⚠️ **Falta que el usuario despliegue el Apps Script y corra la migración** — ver "🚧 Fase 1: pasos pendientes del usuario" abajo. `sw.js` → `control-pagos-v32`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -28,12 +28,13 @@ Todo vive en un único [index.html](index.html) (HTML + CSS + JS inline).
 |---|---|
 | Frontend | `index.html` — una sola página, sin dependencias de build |
 | Backup estable | `index.stable.html` — copia de respaldo de la última versión considerada estable |
-| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v31`) |
-| Backend | **n8n** (self-hosted en `ashir-n8n.nr6aco.easypanel.host`), vía dos webhooks: |
-| — Registrar pago | `POST /webhook/81926c9e-22aa-4aef-bb4d-fe4ee520748c` (`N8N_WEBHOOK_URL`) — workflow: Webhook → **Upload file** (Google Drive) → **Append row in sheet** (Google Sheets) → Respond to Webhook |
-| — Consultar pagos | `GET /webhook/c6d11abd-61bc-439c-9dd9-550ed5008ee3` (`N8N_QUERY_URL`) — probablemente lee del mismo Google Sheet |
-| Almacenamiento real | Google Drive (carpeta "PJ04 FACTURAS", credencial n8n "PJ04 DRIVE") + Google Sheet "CONTROL DE PAGOS" (credencial n8n "PJ04 SHEET") — ⚠️ el nombre exacto de la pestaña/tab **no está confirmado** tras la migración de cuenta (se asumía "Millennium", pero un script de Apps Script confirmó que `getSheetByName('Millennium')` devuelve `null` en el Sheet actual — probablemente ahora se llama "Sheet1" u otro nombre por defecto). Si algo necesita el nombre exacto de la pestaña, verificarlo primero en el Sheet en vez de asumir "Millennium". |
-| Reporte diario | Google Apps Script (bound al Sheet, independiente de n8n) — ver sección "📧 Reporte diario automático" |
+| PWA | `manifest.json` (scope `/PJ04-CONTROL-PAGOS/`) + `sw.js` (Service Worker, cache-first, versión de caché actual: `control-pagos-v32`) |
+| Backend | **Google Apps Script Web App** (`APPS_SCRIPT_URL`), una sola URL para todo el sistema, ruteada por el parámetro `action`. **n8n ya no se usa en ninguna parte** (2026-09-15). |
+| — Registrar pago | `POST` `{action:'registrar_pago'}` → `registrarPago_()` — sube los adjuntos a la carpeta de la sección y escribe la fila en la hoja de la sección |
+| — Consultar pagos | `GET ?action=consultar_pagos` → `consultarPagos_()` — consolida **todas** las hojas de pagos |
+| — Aprobaciones | `solicitar_aprobacion`, `consultar_solicitudes`, `decidir_solicitud` |
+| Almacenamiento real | Google Sheet "CONTROL DE PAGOS" (una hoja por sección) + Google Drive (una carpeta por sección) — ver "🗂️ Una hoja y una carpeta por sección". La hoja principal se resuelve por **posición** (`getSheets()[0]`, vía `hojaPrincipal_()`), no por nombre, porque el nombre real de la pestaña cambió tras la migración de cuenta y no es confiable. |
+| Reporte diario | Mismo proyecto de Apps Script — ver sección "📧 Reporte diario automático" |
 | Hosting | GitHub Pages (por el `scope`/`start_url` del manifest) |
 | Repo | https://github.com/ashir7ai-star/PJ04-CONTROL-PAGOS |
 
@@ -46,7 +47,7 @@ Desplegado como Web app · Execute as: Me · Who has access: Anyone. Verificado 
 ### 🚫 Decisión de arquitectura: NO usar n8n (2026-09-15)
 El usuario pidió explícitamente **no depender de n8n en este módulo ni en desarrollos futuros**. Por eso el backend de Aprobaciones se implementó como un **Google Apps Script Web App**, en el MISMO proyecto de Apps Script que ya existe en el Sheet (el de los reportes diario/mensual). Ventajas: ya está en la cuenta correcta, tiene acceso nativo a Sheets/Drive/Gmail, y el código lo escribe Claude completo (a diferencia de n8n, que requería armar nodos a mano en su GUI).
 
-**Los módulos VIEJOS siguen en n8n** (Nuevo Pago, Consultar Pagos, Agregar Factura) — no se migraron porque ya funcionan y migrarlos es un riesgo innecesario. Si en el futuro se quiere consolidar todo en Apps Script, sería un proyecto aparte, a decidir con el usuario.
+**Actualización 2026-09-15:** los módulos viejos (Nuevo Pago, Consultar Pagos) **ya se migraron también** a Apps Script como parte de la Fase 1. n8n quedó fuera del sistema por completo. El único resto es `N8N_ADDFILE_URL`, un webhook de "Agregar factura" que **nunca llegó a construirse**; el botón sigue mostrando el aviso de "función no disponible" y está pendiente de rehacerse sobre Apps Script.
 
 ### Qué es
 Tercera pestaña del menú (`Nuevo Pago · Consultar Pagos · Aprobaciones`). Le da a la empresa un flujo de **solicitud → revisión → decisión** para pagos/compras, en vez de registrarlos directo. Decisiones de diseño confirmadas por el usuario:
@@ -291,7 +292,34 @@ El usuario reportó que al enviar aparecía **"No se pudo conectar con el sistem
 
 **Si se necesita más velocidad en el futuro:** lo más pesado es el correo dentro del request. Se podría diferir con un trigger `.after()` de Apps Script guardando el payload en `CacheService`, a costa de más complejidad y de que el correo llegue ~1 minuto después.
 
+## 🚧 Fase 1: pasos pendientes del usuario
+El código ya está listo de los dos lados, pero **el frontend nuevo no funciona hasta que el Apps Script desplegado tenga las funciones nuevas**. Orden exacto:
+
+1. **Pegar [apps-script.gs](apps-script.gs) completo** en el editor de Apps Script del Sheet (reemplazando todo lo que haya).
+2. **Redesplegar** — `Deploy → Manage deployments → ✏️ (editar) → Version: "New version" → Deploy`. **NO** "New deployment": eso genera una URL distinta y habría que cambiar `APPS_SCRIPT_URL` en `index.html` otra vez.
+3. Probar registrar un pago y consultar. En este punto todo sigue funcionando con los datos donde están (la consulta lee **todas** las hojas de pagos, así que da igual si ya se migró o no).
+4. **Correr `migrarPagosAHojasPorSeccion()` una sola vez** desde el editor (selector de función → Run). Hace un **respaldo completo del Sheet** antes de tocar nada, y luego mueve cada registro histórico de Viáticos / Caja Menor / Impuestos / Seguridad Social / Nómina a su hoja. Proveedor, Compra y Venta se quedan en la hoja principal.
+
+Mientras el paso 2 no esté hecho, "Nuevo Pago" y "Consultar Pagos" van a fallar — el n8n viejo ya no está cableado.
+
+## 🗂️ Una hoja y una carpeta por sección
+Definido en `SECCIONES` dentro de [apps-script.gs](apps-script.gs). `hojaDeSeccion_()` crea la hoja si no existe (copiando los encabezados de la principal) y `carpetaDeSeccion_()` hace lo mismo con la carpeta de Drive.
+
+| Sección | Tipos que agrupa | Hoja del Sheet | Carpeta de Drive |
+|---|---|---|---|
+| `pagos` | Pago a Proveedor, Compra, Venta | hoja principal (índice 0) | `PJ04 FACTURAS` |
+| `viaticos` | Viáticos | `Viaticos` | `PJ04 VIATICOS` |
+| `caja_menor` | Caja Menor | `Caja Menor` | `PJ04 CAJA MENOR` |
+| `impuestos` | Pago Impuestos | `Pago Impuestos` | `PJ04 IMPUESTOS` |
+| `seguridad_social` | Seguridad Social *(nuevo)* | `Seguridad Social` | `PJ04 SEGURIDAD SOCIAL` |
+| `nomina` | Pago Nómina *(nuevo)* | `Pago Nomina` | `PJ04 NOMINA` |
+
+**Los reportes diarios/mensuales consolidan todas las hojas en uno solo.** `leerDatos_()` se reescribió para recorrer `hojasDePagos_()` en vez de solo `getSheets()[0]` — sin ese cambio los reportes habrían quedado incompletos en silencio apenas se migraran los datos. `HOJAS_NO_PAGOS` (`SOLICITUDES`, `USUARIOS`) excluye las hojas que no son de pagos.
+
+Aprobaciones **no** tiene carpeta propia a propósito: es un visto bueno visual temporal, no un registro contable.
+
 ## Historial de cambios recientes
+- **2026-09-15**: 🔄 **Fase 1 de la actualización grande.** (a) "Nuevo Pago" ahora envía a `postAppsScript({action:'registrar_pago'})` con los archivos en base64, y "Consultar Pagos" lee de `?action=consultar_pagos`; **se eliminaron `N8N_WEBHOOK_URL` y `N8N_QUERY_URL`** — n8n ya no participa en ninguna parte del sistema. (b) Backend: `SECCIONES`, `hojaDeSeccion_()`, `carpetaDeSeccion_()`, `subirArchivosASeccion_()`, `registrarPago_()`, `consultarPagos_()` y `migrarPagosAHojasPorSeccion()` (con respaldo automático del Sheet). (c) `leerDatos_()` reescrito para consolidar **todas** las hojas de pagos, si no los reportes se habrían roto en silencio tras migrar. (d) Dos tipos nuevos, **Seguridad Social** (teal `#0d9488`) y **Pago Nómina** (naranja `#ea580c`), en los dos selectores, en el filtro y en `tipoInfo()` — con su CSS `.tipo-btn.active[data-value=...]` puesto **antes** que los botones, porque olvidarlo ya fue un bug en Viáticos/Caja Menor. `sw.js` → `control-pagos-v32`.
 - **2026-09-15**: ✅ Marcada como **versión estable** — `index.stable.html` = `index.html`. Incluye el módulo de Aprobaciones completo y operativo (Apps Script v3), correos HTML y las mitigaciones de rendimiento.
 - **2026-09-15**: Mitigaciones de lentitud en Aprobaciones tras prueba real del usuario (falso "No se pudo conectar" pese a que la solicitud sí se guardaba). Se descartó CORS con `curl`; era latencia. Cambios: un solo envío de correo a ambos admins, verificación post-fallo (`solicitudExiste()`), timeout de 120s con `AbortController`, caché local de la lista con pintado instantáneo, filtros de estado sin ir al servidor, y actualización optimista al aprobar/rechazar. Ver sección "⚡ Rendimiento de Aprobaciones" arriba. `sw.js` → `control-pagos-v31`.
 - **2026-09-15**: Correos de Aprobaciones rediseñados en **HTML corporativo** (`plantillaCorreo_()` + helpers `filaDetalle_`, `enlacesArchivos_`, `etiquetaTipo_` en el Apps Script): encabezado azul con la marca, badge de estado con color según el caso (ámbar pendiente / verde aprobada / rojo rechazada), monto destacado, tabla de detalles y botón a la app. Se mandan con `htmlBody` + fallback de texto plano. En "Revisar Solicitudes" se agregó botón **Actualizar**, estado de carga y anti-caché (`&_=Date.now()`) en la consulta, porque las solicitudes recién creadas tardaban en aparecer. `sw.js` → `control-pagos-v31`.

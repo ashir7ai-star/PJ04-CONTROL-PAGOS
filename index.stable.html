@@ -314,6 +314,24 @@
     .tipo-btn.active[data-value="caja_menor"] .tipo-icon svg { color: #db2777; }
     .tipo-btn.active[data-value="caja_menor"] .tipo-label { color: #db2777; }
 
+    .tipo-btn.active[data-value="seguridad_social"] {
+      border-color: #0d9488;
+      background: rgba(13,148,136,0.08);
+      box-shadow: 0 0 0 3px rgba(13,148,136,0.12);
+    }
+    .tipo-btn.active[data-value="seguridad_social"] .tipo-icon { background: rgba(13,148,136,0.12); }
+    .tipo-btn.active[data-value="seguridad_social"] .tipo-icon svg { color: #0d9488; }
+    .tipo-btn.active[data-value="seguridad_social"] .tipo-label { color: #0d9488; }
+
+    .tipo-btn.active[data-value="nomina"] {
+      border-color: #ea580c;
+      background: rgba(234,88,12,0.08);
+      box-shadow: 0 0 0 3px rgba(234,88,12,0.12);
+    }
+    .tipo-btn.active[data-value="nomina"] .tipo-icon { background: rgba(234,88,12,0.12); }
+    .tipo-btn.active[data-value="nomina"] .tipo-icon svg { color: #ea580c; }
+    .tipo-btn.active[data-value="nomina"] .tipo-label { color: #ea580c; }
+
     .badge-impuestos { background: rgba(124,58,237,0.1); color: #7c3aed; }
 
     /* ─── Card ───────────────────────────────────────────────────── */
@@ -912,6 +930,8 @@
     .badge-venta   { background: var(--warning-light); color: var(--warning); }
     .badge-viaticos { background: rgba(8,145,178,0.1); color: #0891b2; }
     .badge-caja     { background: rgba(219,39,119,0.1); color: #db2777; }
+    .badge-seguridad { background: rgba(13,148,136,0.1); color: #0d9488; }
+    .badge-nomina    { background: rgba(234,88,12,0.1);  color: #ea580c; }
 
     .badge-estado-pendiente  { background: var(--warning-light); color: var(--warning); }
     .badge-estado-aprobado   { background: var(--success-light); color: var(--success); }
@@ -1481,6 +1501,29 @@
           <span class="tipo-label">Caja Menor</span>
         </button>
 
+        <button type="button" class="tipo-btn" data-value="seguridad_social">
+          <div class="tipo-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <path d="M12 8v6"/>
+              <path d="M9 11h6"/>
+            </svg>
+          </div>
+          <span class="tipo-label">Seguridad Social</span>
+        </button>
+
+        <button type="button" class="tipo-btn" data-value="nomina">
+          <div class="tipo-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <line x1="19" y1="8" x2="19" y2="14"/>
+              <line x1="22" y1="11" x2="16" y2="11"/>
+            </svg>
+          </div>
+          <span class="tipo-label">Pago Nómina</span>
+        </button>
+
       </div>
       <input type="hidden" id="tipoFactura" name="tipo_factura" />
 
@@ -1602,6 +1645,8 @@
             <option value="impuestos">Pago Impuestos</option>
             <option value="viaticos">Viáticos</option>
             <option value="caja_menor">Caja Menor</option>
+            <option value="seguridad_social">Seguridad Social</option>
+            <option value="nomina">Pago Nómina</option>
           </select>
         </div>
         <div class="field">
@@ -1768,6 +1813,29 @@
               </svg>
             </div>
             <span class="tipo-label">Caja Menor</span>
+          </button>
+
+          <button type="button" class="tipo-btn" data-value="seguridad_social">
+            <div class="tipo-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                <path d="M12 8v6"/>
+                <path d="M9 11h6"/>
+              </svg>
+            </div>
+            <span class="tipo-label">Seguridad Social</span>
+          </button>
+
+          <button type="button" class="tipo-btn" data-value="nomina">
+            <div class="tipo-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <line x1="19" y1="8" x2="19" y2="14"/>
+                <line x1="22" y1="11" x2="16" y2="11"/>
+              </svg>
+            </div>
+            <span class="tipo-label">Pago Nómina</span>
           </button>
 
         </div>
@@ -1973,17 +2041,16 @@
   </div>
 
   <script>
-    const N8N_WEBHOOK_URL = 'https://ashir-n8n.nr6aco.easypanel.host/webhook/81926c9e-22aa-4aef-bb4d-fe4ee520748c';
-
-    // ─── URL del webhook de consulta (configura en n8n) ───────────
-    const N8N_QUERY_URL = 'https://ashir-n8n.nr6aco.easypanel.host/webhook/c6d11abd-61bc-439c-9dd9-550ed5008ee3';
-
-    // ─── URL del webhook "Agregar factura" (PENDIENTE: crear en n8n y pegar aquí) ───
+    // ─── URL del webhook "Agregar factura" (nunca se construyó en n8n) ───
+    // Pendiente de rehacer sobre Apps Script. Mientras valga este texto, el botón
+    // avisa que la función no está disponible en vez de fallar contra un 404.
     const N8N_ADDFILE_URL = 'PENDIENTE_CONFIGURAR_EN_N8N';
 
-    // ─── Backend del módulo de Aprobaciones: Google Apps Script Web App ───
+    // ─── Backend del sistema: Google Apps Script Web App ───
     // NO usa n8n. Es el mismo Apps Script del Sheet (el de los reportes), desplegado
-    // como Web App. Una sola URL atiende las 3 operaciones vía el parámetro "action".
+    // como Web App. Una sola URL atiende todas las operaciones vía el parámetro "action":
+    // registrar_pago, consultar_pagos, solicitar_aprobacion, decidir_solicitud,
+    // consultar_solicitudes.
     const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyDHauDZGvZ1CSH3WOY9h-JLnxoKYcRBdV4v7hpPjDW86kK27o3ieFk01ggpBOmHA4-nA/exec';
 
     // Apps Script no responde bien al preflight CORS, así que se envía como
@@ -2116,11 +2183,12 @@
     async function buscarPagos() {
       setSearchLoading(true);
       try {
-        const res  = await fetch(N8N_QUERY_URL);
+        const res  = await fetch(APPS_SCRIPT_URL + '?action=consultar_pagos&t=' + Date.now());
         const raw  = await res.json();
         // Manejar tanto array directo como string JSON
         let rows = raw;
         if (typeof raw === 'string') rows = JSON.parse(raw);
+        if (rows && rows.status === 'error') throw new Error(rows.message || 'Error del servidor');
         if (!Array.isArray(rows)) rows = Object.values(rows);
         // Filtrar filas vacías
         rows = rows.filter(r => r['PROVEEDOR'] || r['NUMERO DE FACTURA'] || r['NOMBRE DE PAGO']);
@@ -2162,6 +2230,8 @@
       if (tipo.includes('impuesto')) return { badgeClass: 'badge-impuestos', label: 'Pago Impuestos' };
       if (tipo.includes('viatic'))   return { badgeClass: 'badge-viaticos',  label: 'Viáticos' };
       if (tipo.includes('caja'))     return { badgeClass: 'badge-caja',      label: 'Caja Menor' };
+      if (tipo.includes('seguridad')) return { badgeClass: 'badge-seguridad', label: 'Seguridad Social' };
+      if (tipo.includes('nomina') || tipo.includes('nómina')) return { badgeClass: 'badge-nomina', label: 'Pago Nómina' };
       if (tipo.includes('pago'))     return { badgeClass: 'badge-pago',      label: 'Pago Proveedor' };
       if (tipo === 'compra')         return { badgeClass: 'badge-compra',    label: 'Compra' };
       return { badgeClass: 'badge-venta', label: 'Venta' };
@@ -2741,28 +2811,36 @@
       setLoading(true);
 
       try {
-        const formData = new FormData();
-        formData.append('tipo_factura',   tipoHidden.value);
-        formData.append('empresa',        document.getElementById('empresa').value);
-        formData.append('registrado_por', document.getElementById('registradoPor').value.trim());
-        formData.append('nombre_pago',    document.getElementById('nombrePago').value.trim());
-        formData.append('proveedor',      document.getElementById('proveedor').value.trim());
-        formData.append('fecha_pago',     fechaPicker.selectedDates[0]
-          ? fechaPicker.formatDate(fechaPicker.selectedDates[0], 'Y-m-d')
-          : document.getElementById('fechaPago').value);
-        formData.append('monto',          document.getElementById('monto').value.replace(/\./g, ''));
-        formData.append('notas',          document.getElementById('notas').value.trim());
-        formData.append('fecha_envio',    new Date().toISOString());
-        uploadNuevoPago.getFiles().forEach(file => formData.append('archivo', file));
+        const archivos = [];
+        for (const file of uploadNuevoPago.getFiles()) {
+          archivos.push({
+            nombre: file.name,
+            tipo:   file.type || 'application/octet-stream',
+            datos:  await fileToBase64(file)
+          });
+        }
 
-        const response = await fetch(N8N_WEBHOOK_URL, { method: 'POST', body: formData });
-        const result   = await response.json().catch(() => ({}));
+        const result = await postAppsScript({
+          action:         'registrar_pago',
+          tipo_factura:   tipoHidden.value,
+          empresa:        document.getElementById('empresa').value,
+          registrado_por: document.getElementById('registradoPor').value.trim(),
+          nombre_pago:    document.getElementById('nombrePago').value.trim(),
+          proveedor:      document.getElementById('proveedor').value.trim(),
+          fecha_pago:     fechaPicker.selectedDates[0]
+            ? fechaPicker.formatDate(fechaPicker.selectedDates[0], 'Y-m-d')
+            : document.getElementById('fechaPago').value,
+          monto:          document.getElementById('monto').value.replace(/\./g, ''),
+          notas:          document.getElementById('notas').value.trim(),
+          fecha_envio:    new Date().toISOString(),
+          archivos:       archivos
+        });
 
-        if (response.ok && result.status === 'success') {
+        if (result.status === 'success') {
           showToast('success', '¡Pago registrado!', 'Los archivos fueron guardados y los datos registrados correctamente.');
           resetForm();
         } else {
-          throw new Error(result.message || 'HTTP ' + response.status);
+          throw new Error(result.message || 'Respuesta inesperada del servidor');
         }
       } catch (err) {
         console.error(err);

@@ -20,15 +20,26 @@
 const DESTINATARIOS = ['nathan@ylevigroup.com', 'joseph@ylevigroup.com', 'contabilidad@energy-millennium.com'];
 const ZONA = 'America/Bogota';
 
+// Lee TODAS las hojas de pagos y las consolida en un solo listado.
+// Los pagos están repartidos por sección (Viáticos, Caja Menor, etc.), así que
+// leer solo la primera hoja dejaría los reportes incompletos sin avisar.
 function leerDatos_() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
-  const values = sheet.getDataRange().getValues();
-  const headers = values[0];
-  const rows = values.slice(1).map(row => {
-    const obj = {};
-    headers.forEach((h, i) => obj[h] = row[i]);
-    return obj;
+  const hojas = hojasDePagos_();
+  const headers = hojas[0].getRange(1, 1, 1, hojas[0].getLastColumn()).getValues()[0];
+
+  const rows = [];
+  hojas.forEach(hoja => {
+    const values = hoja.getDataRange().getValues();
+    if (values.length < 2) return;
+    const encHoja = values[0];
+    values.slice(1).forEach(fila => {
+      if (!fila.some(v => v !== '')) return;
+      const obj = {};
+      encHoja.forEach((h, i) => obj[h] = fila[i]);
+      rows.push(obj);
+    });
   });
+
   return { headers, rows };
 }
 
@@ -125,6 +136,183 @@ function enviarReporteMensual() {
 
 
 // ══════════════════════════════════════════════════════════════════════════
+// C) SECCIONES: cada tipo de pago tiene su propia hoja y su propia carpeta
+//
+// Regla: sección = hoja = carpeta = (a futuro) permiso.
+// La hoja principal (índice 0) guarda Pago a Proveedor, Compra y Venta.
+// Las demás se crean solas la primera vez, copiando los encabezados de la principal.
+// ══════════════════════════════════════════════════════════════════════════
+
+const SECCIONES = {
+  pagos:            { hoja: null,               carpeta: 'PJ04 FACTURAS',         tipos: ['pago_proveedor', 'compra', 'venta'] },
+  viaticos:         { hoja: 'Viaticos',         carpeta: 'PJ04 VIATICOS',         tipos: ['viaticos'] },
+  caja_menor:       { hoja: 'Caja Menor',       carpeta: 'PJ04 CAJA MENOR',       tipos: ['caja_menor'] },
+  impuestos:        { hoja: 'Pago Impuestos',   carpeta: 'PJ04 IMPUESTOS',        tipos: ['impuestos'] },
+  seguridad_social: { hoja: 'Seguridad Social', carpeta: 'PJ04 SEGURIDAD SOCIAL', tipos: ['seguridad_social'] },
+  nomina:           { hoja: 'Pago Nomina',      carpeta: 'PJ04 NOMINA',           tipos: ['nomina'] }
+};
+
+// Hojas que NO son de pagos (no entran en consultas ni reportes)
+const HOJAS_NO_PAGOS = [NOMBRE_HOJA_SOLICITUDES, 'USUARIOS'];
+
+function hojaPrincipal_() {
+  return SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+}
+
+// Devuelve la hoja de una sección; la crea con los encabezados de la principal si falta.
+function hojaDeSeccion_(seccion) {
+  const cfg = SECCIONES[seccion];
+  if (!cfg || !cfg.hoja) return hojaPrincipal_();
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let hoja = ss.getSheetByName(cfg.hoja);
+  if (!hoja) {
+    // Se inserta al final para que la principal siga siendo el índice 0.
+    hoja = ss.insertSheet(cfg.hoja, ss.getNumSheets());
+    const principal = hojaPrincipal_();
+    const encabezados = principal.getRange(1, 1, 1, principal.getLastColumn()).getValues();
+    hoja.getRange(1, 1, 1, encabezados[0].length).setValues(encabezados).setFontWeight('bold');
+    hoja.setFrozenRows(1);
+  }
+  return hoja;
+}
+
+// Todas las hojas que contienen pagos (la principal + las de sección que existan).
+function hojasDePagos_() {
+  return SpreadsheetApp.getActiveSpreadsheet().getSheets()
+    .filter(h => HOJAS_NO_PAGOS.indexOf(h.getName()) === -1);
+}
+
+function seccionDeTipo_(tipo) {
+  const t = String(tipo || '').toLowerCase();
+  for (const clave in SECCIONES) {
+    if (SECCIONES[clave].tipos.indexOf(t) !== -1) return clave;
+  }
+  return 'pagos';
+}
+
+function carpetaDeSeccion_(seccion) {
+  const cfg = SECCIONES[seccion] || SECCIONES.pagos;
+  const carpetas = DriveApp.getFoldersByName(cfg.carpeta);
+  return carpetas.hasNext() ? carpetas.next() : DriveApp.createFolder(cfg.carpeta);
+}
+
+// Sube archivos a la carpeta de la sección indicada.
+function subirArchivosASeccion_(archivos, seccion) {
+  if (!archivos || archivos.length === 0) return '';
+  const carpeta = carpetaDeSeccion_(seccion);
+  return archivos.map(a => {
+    const blob = Utilities.newBlob(
+      Utilities.base64Decode(a.datos),
+      a.tipo || 'application/octet-stream',
+      a.nombre || 'archivo'
+    );
+    const archivo = carpeta.createFile(blob);
+    archivo.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return archivo.getUrl();
+  }).join('\n');
+}
+
+// ─── Registrar un pago (reemplaza el webhook de n8n) ──────────────────────
+
+function registrarPago_(body) {
+  const seccion = seccionDeTipo_(body.tipo_factura);
+  const hoja    = hojaDeSeccion_(seccion);
+
+  agregarFilaPorEncabezados_(hoja, {
+    'FECHA REGISTRO': Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'),
+    'EMPRESA':        body.empresa || '',
+    'TIPO FACTURA':   body.tipo_factura || '',
+    'REGISTRADO POR': body.registrado_por || '',
+    'NOMBRE DE PAGO': body.nombre_pago || '',
+    'PROVEEDOR':      body.proveedor || '',
+    'FECHA DE PAGO':  body.fecha_pago || '',
+    'VALOR FACTURA':  body.monto || '',
+    'NOTAS':          body.notas || '',
+    'URL ARCHIVO':    subirArchivosASeccion_(body.archivos, seccion),
+    'ID REGISTRO':    body.fecha_envio || new Date().toISOString()
+  });
+
+  return { status: 'success', seccion: seccion };
+}
+
+// ─── Consultar pagos (reemplaza el webhook GET de n8n) ────────────────────
+// Lee todas las hojas de pagos. Cuando exista el login, aquí se filtrará por
+// las secciones que tenga permitidas el usuario.
+
+function consultarPagos_() {
+  const resultado = [];
+  hojasDePagos_().forEach(hoja => {
+    const valores = hoja.getDataRange().getValues();
+    if (valores.length < 2) return;
+    const encabezados = valores[0];
+    valores.slice(1).forEach(fila => {
+      if (!fila.some(v => v !== '')) return;
+      const obj = {};
+      encabezados.forEach((h, i) => {
+        const v = fila[i];
+        obj[h] = (v instanceof Date) ? Utilities.formatDate(v, ZONA_HORARIA, 'yyyy-MM-dd') : v;
+      });
+      resultado.push(obj);
+    });
+  });
+  return resultado;
+}
+
+// ─── Migración: repartir los pagos de la hoja principal por sección ───────
+// Se ejecuta UNA sola vez, a mano, desde el editor de Apps Script.
+// Hace un respaldo completo del Sheet antes de tocar nada.
+
+function migrarPagosAHojasPorSeccion() {
+  const ss        = SpreadsheetApp.getActiveSpreadsheet();
+  const principal = hojaPrincipal_();
+
+  // 1) Respaldo completo antes de mover nada
+  const nombreRespaldo = 'RESPALDO ' + ss.getName() + ' ' +
+    Utilities.formatDate(new Date(), ZONA_HORARIA, 'yyyy-MM-dd HH.mm');
+  DriveApp.getFileById(ss.getId()).makeCopy(nombreRespaldo);
+
+  // 2) Leer la hoja principal
+  const valores     = principal.getDataRange().getValues();
+  const encabezados = valores[0];
+  const colTipo     = encabezados.indexOf('TIPO FACTURA');
+  if (colTipo === -1) throw new Error('No se encontró la columna "TIPO FACTURA" en la hoja principal.');
+
+  // 3) Separar las filas que deben mudarse
+  const porSeccion = {};
+  const filasAEliminar = [];   // índices de fila reales (1-based)
+
+  for (let i = 1; i < valores.length; i++) {
+    const fila = valores[i];
+    if (!fila.some(v => v !== '')) continue;
+
+    const seccion = seccionDeTipo_(fila[colTipo]);
+    if (seccion === 'pagos') continue;         // Proveedor/Compra/Venta se quedan
+
+    if (!porSeccion[seccion]) porSeccion[seccion] = [];
+    porSeccion[seccion].push(fila);
+    filasAEliminar.push(i + 1);
+  }
+
+  // 4) Escribir en las hojas destino (en bloque, mucho más rápido que fila por fila)
+  let movidas = 0;
+  Object.keys(porSeccion).forEach(seccion => {
+    const destino = hojaDeSeccion_(seccion);
+    const filas   = porSeccion[seccion];
+    destino.getRange(destino.getLastRow() + 1, 1, filas.length, filas[0].length).setValues(filas);
+    movidas += filas.length;
+  });
+
+  // 5) Borrar de la principal, de abajo hacia arriba para no descuadrar los índices
+  filasAEliminar.reverse().forEach(n => principal.deleteRow(n));
+
+  const resumen = 'Respaldo: "' + nombreRespaldo + '". Filas movidas: ' + movidas +
+    '. Detalle: ' + Object.keys(porSeccion).map(s => s + '=' + porSeccion[s].length).join(', ');
+  Logger.log(resumen);
+  return resumen;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // B) MÓDULO DE APROBACIONES (Web App)
 //
 // Despliegue: Deploy → New deployment → Web app
@@ -133,7 +321,6 @@ function enviarReporteMensual() {
 // ══════════════════════════════════════════════════════════════════════════
 
 const NOMBRE_HOJA_SOLICITUDES = 'SOLICITUDES DE APROBACION';
-const NOMBRE_CARPETA_DRIVE    = 'PJ04 FACTURAS';
 const CORREOS_ADMIN           = ['nathan@ylevigroup.com', 'joseph@ylevigroup.com'];
 const ZONA_HORARIA            = 'America/Bogota';
 const URL_APP                 = 'https://ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/';
@@ -148,8 +335,13 @@ const ENCABEZADOS_SOLICITUDES = [
 
 function doGet(e) {
   const accion = e.parameter.action;
-  if (accion === 'consultar_solicitudes') return respuestaJson_(consultarSolicitudes_());
-  return respuestaJson_({ status: 'error', message: 'Acción no reconocida: ' + accion });
+  try {
+    if (accion === 'consultar_solicitudes') return respuestaJson_(consultarSolicitudes_());
+    if (accion === 'consultar_pagos')       return respuestaJson_(consultarPagos_());
+    return respuestaJson_({ status: 'error', message: 'Acción no reconocida: ' + accion });
+  } catch (err) {
+    return respuestaJson_({ status: 'error', message: String(err) });
+  }
 }
 
 function doPost(e) {
@@ -163,6 +355,7 @@ function doPost(e) {
   try {
     if (body.action === 'solicitar_aprobacion') return respuestaJson_(crearSolicitud_(body));
     if (body.action === 'decidir_solicitud')    return respuestaJson_(decidirSolicitud_(body));
+    if (body.action === 'registrar_pago')       return respuestaJson_(registrarPago_(body));
     return respuestaJson_({ status: 'error', message: 'Acción no reconocida: ' + body.action });
   } catch (err) {
     return respuestaJson_({ status: 'error', message: String(err) });
@@ -190,33 +383,12 @@ function hojaSolicitudes_() {
   return hoja;
 }
 
-function carpetaFacturas_() {
-  const carpetas = DriveApp.getFoldersByName(NOMBRE_CARPETA_DRIVE);
-  return carpetas.hasNext() ? carpetas.next() : DriveApp.createFolder(NOMBRE_CARPETA_DRIVE);
-}
-
 // Escribe una fila usando los encabezados reales de la hoja, así el orden de
 // las columnas puede cambiar sin romper nada.
 function agregarFilaPorEncabezados_(hoja, datos) {
   const encabezados = hoja.getRange(1, 1, 1, hoja.getLastColumn()).getValues()[0];
   const fila = encabezados.map(h => (datos[h] !== undefined ? datos[h] : ''));
   hoja.appendRow(fila);
-}
-
-function subirArchivos_(archivos) {
-  if (!archivos || archivos.length === 0) return '';
-  const carpeta = carpetaFacturas_();
-  const links = archivos.map(a => {
-    const blob = Utilities.newBlob(
-      Utilities.base64Decode(a.datos),
-      a.tipo || 'application/octet-stream',
-      a.nombre || 'archivo'
-    );
-    const archivo = carpeta.createFile(blob);
-    archivo.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    return archivo.getUrl();
-  });
-  return links.join('\n');
 }
 
 function formatoMoneda_(valor) {
@@ -306,7 +478,8 @@ function crearSolicitud_(body) {
     'SOLICITADO POR':  body.solicitado_por || '',
     'CORREO':          body.correo || '',
     'NOTAS':           body.notas || '',
-    'URL ARCHIVO':     subirArchivos_(body.archivos),
+    // Las solicitudes no tienen carpeta propia (son temporales): van a PJ04 FACTURAS.
+    'URL ARCHIVO':     subirArchivosASeccion_(body.archivos, 'pagos'),
     'ESTADO':          'Pendiente',
     'REVISADO POR':    '',
     'FECHA DECISION':  '',
