@@ -169,6 +169,30 @@ chk('sin anchos fijos escritos en línea (no se adaptan)', enLinea.length === 0,
 chk('hay reglas para celular (<=640px)',  /@media\s*\(max-width:\s*6[0-4]\d px?\)|@media\s*\(max-width:\s*640px\)/.test(css));
 chk('hay reglas para pantallas angostas (<=400px)', /@media\s*\(max-width:\s*4[0-2]\dpx\)/.test(css));
 
+console.log('\n=== Toda petición al backend lleva la sesión ===');
+{
+  // Encontrado en producción el 2026-09-16: "Consultar Pagos" pedía los datos
+  // por GET sin token. Con el control de acceso activo el servidor la rechaza
+  // y al usuario no le aparecía ningún pago.
+  //
+  // El token se adjunta SOLO dentro de postAppsScript. Cualquier acción pedida
+  // por GET en la URL viaja sin sesión.
+  const PUBLICAS_POR_GET = ['estado_login'];   // no revela datos y hace falta antes de tener sesión
+
+  const porGet = [...new Set([...js.matchAll(/\?action=([a-z_]+)/g)].map(m => m[1]))];
+  const sinSesion = porGet.filter(a => PUBLICAS_POR_GET.indexOf(a) === -1);
+  chk('ninguna acción con datos se pide por GET (viajaría sin token)',
+      sinSesion.length === 0, JSON.stringify(sinSesion));
+
+  // Y que no haya fetch sueltos al backend armando la URL a mano.
+  // `fetch(APPS_SCRIPT_URL, {...})` es el de postAppsScript y es el correcto;
+  // `fetch(APPS_SCRIPT_URL + '?...')` construye un GET que viaja sin sesión.
+  const conUrlArmada = [...js.matchAll(/fetch\(APPS_SCRIPT_URL\s*\+\s*'([^']*)'/g)].map(m => m[1]);
+  const fuera = conUrlArmada.filter(u => !/estado_login/.test(u));
+  chk('no hay GET al backend armados a mano fuera de postAppsScript',
+      fuera.length === 0, JSON.stringify(fuera));
+}
+
 console.log('\n=== Service Worker ===');
 let sw = null;
 try { sw = fs.readFileSync('sw.js', 'utf8'); } catch (e) { /* puede no estar al lado */ }

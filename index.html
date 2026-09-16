@@ -3059,8 +3059,12 @@
     async function buscarPagos() {
       setSearchLoading(true);
       try {
-        const res  = await fetch(APPS_SCRIPT_URL + '?action=consultar_pagos&t=' + Date.now());
-        const raw  = await res.json();
+        // Por POST y no por GET: con el control de acceso activo el servidor
+        // exige sesión, y el token se adjunta solo en postAppsScript. Además,
+        // el servidor devuelve ÚNICAMENTE las hojas que esta persona puede ver
+        // (Viáticos, Caja Menor, la principal…), así que lo que llega acá ya
+        // viene filtrado por permisos.
+        const raw = await postAppsScript({ action: 'consultar_pagos' }, 90000);
         // Manejar tanto array directo como string JSON
         let rows = raw;
         if (typeof raw === 'string') rows = JSON.parse(raw);
