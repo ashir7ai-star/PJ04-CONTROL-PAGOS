@@ -1428,6 +1428,132 @@
       background: var(--surface) !important;
       border-color: var(--border) !important;
     }
+    /* ─── Saldos disponibles ─────────────────────────────────────── */
+    .saldos { margin-bottom: 28px; }
+    .btn-refrescar svg { width: 14px; height: 14px; }
+
+    .saldos-encabezado {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .saldos-titulo {
+      font-size: 0.74rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-muted);
+    }
+
+    .saldos-nota {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+
+    .saldos-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 12px;
+    }
+
+    .saldo-card {
+      position: relative;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px 14px;
+      overflow: hidden;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .saldo-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+
+    /* Franja de color a la izquierda: distingue banco de fondo de un vistazo */
+    .saldo-card::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 3px;
+      background: var(--primary);
+    }
+    .saldo-card.es-fondo::before      { background: #db2777; }
+    .saldo-card.sin-config::before    { background: var(--border-strong); }
+    .saldo-card.en-rojo::before       { background: var(--error); }
+
+    .saldo-etiqueta {
+      font-size: 0.86rem;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+
+    .saldo-detalle {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+
+    .saldo-monto {
+      font-size: 1.55rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.03em;
+      margin: 12px 0 2px;
+      /* Los números alineados hacen que las cifras se puedan comparar de un
+         vistazo entre tarjetas, que es justo para lo que sirve este panel. */
+      font-variant-numeric: tabular-nums;
+      line-height: 1.15;
+    }
+    .saldo-card.en-rojo    .saldo-monto { color: var(--error); }
+    .saldo-card.sin-config .saldo-monto { color: var(--text-muted); font-size: 1.05rem; font-weight: 600; }
+
+    .saldo-pie {
+      font-size: 0.71rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+      margin-top: 6px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+
+    .saldo-editar {
+      position: absolute;
+      top: 12px; right: 12px;
+      background: none;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      padding: 5px;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      transition: all 0.15s ease;
+    }
+    .saldo-editar:hover { background: var(--surface-3); border-color: var(--border); color: var(--text-2); }
+    .saldo-editar svg { width: 14px; height: 14px; }
+
+    .saldo-aviso {
+      grid-column: 1 / -1;
+      background: var(--warning-light);
+      border: 1px solid rgba(255,159,10,0.3);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      font-size: 0.79rem;
+      color: var(--text-2);
+      line-height: 1.5;
+    }
+
+    @media (max-width: 480px) {
+      .saldos-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+      .saldo-card  { padding: 13px 13px 11px; }
+      .saldo-monto { font-size: 1.18rem; }
+      .saldo-pie   { display: none; }   /* el detalle se ve al editar */
+      .saldo-etiqueta { font-size: 0.79rem; }
+    }
+
     /* ═══ Adaptación a celular y tablet ═══════════════════════════
        Regla de fondo: la página NUNCA debe deslizarse en horizontal. Solo
        pueden hacerlo contenedores concretos que lo necesiten (la tabla de
@@ -1939,6 +2065,24 @@
       <p class="page-title" id="formTitle">Nuevo Pago</p>
       <p class="page-subtitle" id="formSubtitle">Completa los datos y envía el pago al sistema.</p>
     </div>
+
+    <!-- Saldos disponibles -->
+    <section class="saldos" id="seccionSaldos">
+      <div class="saldos-encabezado">
+        <div>
+          <p class="saldos-titulo">Dinero disponible</p>
+          <p class="saldos-nota" id="saldosNota">Cargando saldos…</p>
+        </div>
+        <button type="button" class="btn-refrescar" id="btnRefrescarSaldos" title="Actualizar saldos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          Actualizar
+        </button>
+      </div>
+      <div class="saldos-grid" id="saldosGrid"></div>
+    </section>
 
     <form id="paymentForm" novalidate>
 
@@ -2567,6 +2711,39 @@
     </div>
   </div>
 
+  <!-- Cargar / corregir el saldo de una cuenta (solo administradores) -->
+  <div class="modal-fondo" id="modalSaldo" style="display:none;">
+    <div class="modal-caja">
+      <h3 id="modalSaldoTitulo">Saldo disponible</h3>
+      <p class="modal-sub" id="modalSaldoSub"></p>
+
+      <div class="field-group">
+        <div class="field">
+          <label for="mSaldoMonto">Saldo real de la cuenta <span class="req">*</span></label>
+          <input type="text" id="mSaldoMonto" placeholder="$ 0" autocomplete="off" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="mSaldoConcepto">Nota (opcional)</label>
+          <input type="text" id="mSaldoConcepto" placeholder="Ej: saldo del extracto del 15/09" />
+        </div>
+      </div>
+
+      <div class="login-aviso info" style="margin:18px 0 0;">
+        Escribí el saldo que tiene la cuenta <strong>en este momento</strong>. A partir de
+        ahora se le van a descontar los pagos que se registren. Los pagos anteriores
+        no se vuelven a restar, porque el banco ya los descontó.
+      </div>
+
+      <div class="modal-acciones">
+        <button type="button" class="btn-clear" id="btnCancelarSaldo">Cancelar</button>
+        <button type="button" class="btn-submit" id="btnGuardarSaldo" style="width:auto;padding:12px 24px;">
+          <span id="btnGuardarSaldoTexto">Guardar saldo</span>
+          <div class="spinner" id="spinnerGuardarSaldo" style="display:none;"></div>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <footer>
     <p class="footer-text">Desarrollado por: <strong>JND AI SYSTEMS</strong> · J. Nathan De Lima, Full Stack AI Developer</p>
   </footer>
@@ -2710,6 +2887,9 @@
       if (!datos || datos.status !== 'error' || !datos.codigo) return;
       if (['SESION_INVALIDA', 'NO_REGISTRADO', 'PENDIENTE_APROBACION', 'USUARIO_INACTIVO'].indexOf(datos.codigo) === -1) return;
       sesion.idToken = null;
+      // La sesión guardada ya no sirve: hay que borrarla o el próximo arranque
+      // intentaría entrar con ella otra vez y fallaría igual.
+      olvidarSesion();
       mostrarLogin(datos.codigo === 'SESION_INVALIDA' ? 'info' : 'error', datos.message);
     }
 
@@ -3524,6 +3704,10 @@
         if (result.status === 'success') {
           showToast('success', '¡Pago registrado!', 'Los archivos fueron guardados y los datos registrados correctamente.');
           resetForm();
+          // El saldo lo calcula el servidor a partir de las hojas, así que
+          // alcanza con volver a pedirlo: no hay un contador local que pueda
+          // quedar desincronizado si algo falla en el medio.
+          cargarSaldos(true);
         } else {
           throw new Error(result.message || 'Respuesta inesperada del servidor');
         }
@@ -3909,6 +4093,85 @@
       nomina:           'Pago Nómina'
     };
 
+    // ─── Sesión recordada ──────────────────────────────────────────
+    // El token de Google dura ~1 hora. Se guarda junto con el perfil para que
+    // al refrescar la página el usuario siga adentro sin volver a entrar, en
+    // vez de perder la sesión en cada recarga.
+    //
+    // Nota: el token es una credencial temporal. Se guarda en este navegador
+    // únicamente, nunca sale de acá salvo hacia nuestro propio backend, y se
+    // borra al cerrar sesión. Cuando vence, el servidor lo rechaza y la app
+    // vuelve a pedir el ingreso; no hay forma de estirar su validez desde acá.
+    const CLAVE_SESION = 'pj04_sesion';
+
+    // Lee la fecha de vencimiento que viene DENTRO del token. No es una
+    // validación de seguridad (esa la hace el servidor contra Google): sirve
+    // para no mandar un token que ya sabemos vencido.
+    function vencimientoDeToken(idToken) {
+      try {
+        const carga = idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+        const datos = JSON.parse(decodeURIComponent(escape(atob(carga))));
+        return Number(datos.exp) * 1000 || 0;
+      } catch (err) {
+        return 0;
+      }
+    }
+
+    function guardarSesion() {
+      try {
+        localStorage.setItem(CLAVE_SESION, JSON.stringify({
+          idToken:   sesion.idToken,
+          correo:    sesion.correo,
+          nombre:    sesion.nombre,
+          foto:      sesion.foto,
+          rol:       sesion.rol,
+          secciones: sesion.secciones,
+          modo:      sesion.modo,
+          vence:     vencimientoDeToken(sesion.idToken)
+        }));
+      } catch (err) { /* modo incógnito o almacenamiento lleno: no es crítico */ }
+    }
+
+    function leerSesionGuardada() {
+      try {
+        const crudo = localStorage.getItem(CLAVE_SESION);
+        if (!crudo) return null;
+        const s = JSON.parse(crudo);
+        if (!s || !s.idToken) return null;
+        return s;
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function olvidarSesion() {
+      try { localStorage.removeItem(CLAVE_SESION); } catch (err) {}
+    }
+
+    // Invalidar la sesión en memoria y la guardada van SIEMPRE juntas. Si se
+    // separan queda una sesión fantasma: el token en memoria muere pero el
+    // guardado sobrevive, y la próxima recarga intenta entrar con él.
+    function descartarSesion() {
+      sesion.idToken = null;
+      olvidarSesion();
+    }
+
+    // Se descarta con un minuto de margen: un token a punto de vencer llegaría
+    // vencido al servidor y el usuario vería un error en vez de la app.
+    function sesionGuardadaSirve(s) {
+      return !!s && s.vence > Date.now() + 60000;
+    }
+
+    function aplicarSesion(datos) {
+      sesion.correo    = datos.correo    || '';
+      sesion.nombre    = datos.nombre    || '';
+      sesion.foto      = datos.foto      || '';
+      sesion.rol       = datos.rol       || 'usuario';
+      sesion.secciones = datos.secciones || [];
+      pintarSesionEnHeader();
+      aplicarPermisos();
+    }
+
     function mostrarLogin(tipo, mensaje) {
       loginOverlay.style.display = 'flex';
       // Ahora que la tarjeta es visible se puede medir su ancho real.
@@ -3970,14 +4233,56 @@
       if (sesion.modo === 'off') {
         ocultarLogin();
         aplicarPermisos();
+        cargarSaldos(false);
         return;
       }
+
+      // Si hay una sesión guardada y todavía vale, se entra directo. La app
+      // queda usable al instante y la validación contra el servidor corre
+      // detrás: si resulta que ya no sirve, ahí se pide el ingreso.
+      const guardada = leerSesionGuardada();
+      if (sesionGuardadaSirve(guardada)) {
+        sesion.idToken = guardada.idToken;
+        aplicarSesion(guardada);
+        ocultarLogin();
+        cargarSaldos(false);
+        revalidarSesion();
+        return;
+      }
+
+      // Hay una sesión vencida: se recuerda la cuenta para que volver a entrar
+      // sea un solo toque, en vez de elegir de cero.
+      if (guardada && guardada.correo) correoRecordado = guardada.correo;
+      olvidarSesion();
 
       mostrarLogin();
       iniciarGoogle();
     }
 
+    // Confirma contra el servidor que la sesión restaurada sigue siendo válida
+    // y que los permisos no cambiaron (un admin pudo haberlos modificado).
+    async function revalidarSesion() {
+      try {
+        const datos = await postAppsScript({ action: 'iniciar_sesion' }, 60000);
+        if (datos.status === 'success') {
+          aplicarSesion(datos);
+          guardarSesion();
+          return;
+        }
+        // Cualquier otra respuesta significa que esta sesión ya no sirve.
+        sesion.idToken = null;
+        olvidarSesion();
+        mostrarLogin('info', datos.message || 'Tu sesión venció. Volvé a entrar.');
+        iniciarGoogle();
+      } catch (err) {
+        // Sin conexión no se expulsa al usuario: el servidor rechaza igual
+        // cualquier operación real si la sesión no vale.
+        console.warn('No se pudo revalidar la sesión:', err);
+      }
+    }
+
     let googleInicializado = false;
+    let correoRecordado    = '';
 
     function iniciarGoogle() {
       if (!window.google || !google.accounts || !google.accounts.id) {
@@ -3986,14 +4291,21 @@
         return;
       }
       if (!googleInicializado) {
-        google.accounts.id.initialize({
-          client_id:   CLIENT_ID_GOOGLE,
-          callback:    onCredencialGoogle,
-          // Sin selección automática: en un sistema con permisos por persona,
-          // entrar solo con la cuenta que el navegador tenga a mano es un
-          // problema, no una comodidad. El usuario elige con cuál entra.
-          auto_select: false
-        });
+        const opciones = {
+          client_id: CLIENT_ID_GOOGLE,
+          callback:  onCredencialGoogle,
+          // La selección automática se activa SOLO si esta persona ya entró
+          // antes en este navegador. Para alguien nuevo sigue apagada: en un
+          // sistema con permisos por persona, entrar con la cuenta que el
+          // navegador tenga a mano sería un problema, no una comodidad. Pero
+          // renovar la sesión de quien ya venía usando el sistema es otra cosa,
+          // y es justo lo que evita tener que entrar en cada recarga.
+          auto_select: !!correoRecordado
+        };
+        // Le dice a Google con qué cuenta reanudar, para que no ofrezca otra.
+        if (correoRecordado) opciones.login_hint = correoRecordado;
+
+        google.accounts.id.initialize(opciones);
         googleInicializado = true;
       }
       redibujarBotonGoogle();
@@ -4061,14 +4373,13 @@
       }
 
       if (datos.status === 'success') {
-        sesion.correo    = datos.correo || '';
-        sesion.nombre    = datos.nombre || '';
-        sesion.foto      = datos.foto || '';
-        sesion.rol       = datos.rol || 'usuario';
-        sesion.secciones = datos.secciones || [];
-        pintarSesionEnHeader();
-        aplicarPermisos();
+        aplicarSesion(datos);
+        correoRecordado = sesion.correo;
+        guardarSesion();   // para no tener que entrar de nuevo en cada recarga
         ocultarLogin();
+        // Recién acá se piden los saldos: antes de tener sesión, el servidor
+        // rechazaría la consulta y mostraría un error en la pantalla de login.
+        cargarSaldos(false);
         return;
       }
 
@@ -4078,13 +4389,13 @@
       }
 
       if (datos.status === 'pendiente') {
-        sesion.idToken = null;
+        descartarSesion();
         mostrarLogin('espera', datos.message);
         loginPie.style.display = '';
         return;
       }
 
-      sesion.idToken = null;
+      descartarSesion();
       // El detalle dice QUÉ falló exactamente. Sin él, cualquier causa se ve
       // igual desde la pantalla y no hay forma de diagnosticar.
       mostrarLogin('error', (datos.message || 'No pudimos validar tu acceso.') +
@@ -4120,7 +4431,7 @@
       try {
         const r = await postAppsScript({ action: 'registrar_usuario', nombre: nombre, telefono: telefono }, 45000);
         if (r.status === 'success') {
-          sesion.idToken = null;
+          descartarSesion();
           mostrarLogin('espera', 'Listo. Un administrador tiene que activar tu acceso; te avisamos por correo.');
           loginPie.style.display = '';
         } else {
@@ -4138,7 +4449,9 @@
       // Google: solo evita que entre sola la próxima vez. Para elegir otra hay
       // que pasar por el selector de cuentas de Google y volver acá.
       try { google.accounts.id.disableAutoSelect(); } catch (err) {}
-      sesion.idToken = null;
+      sesion.idToken  = null;
+      correoRecordado = '';
+      olvidarSesion();   // si no, al volver entraría sola con la cuenta vieja
       location.href = 'https://accounts.google.com/AccountChooser?continue=' +
         encodeURIComponent(location.href.split('#')[0]);
     });
@@ -4151,6 +4464,10 @@
       sesion.foto      = '';
       sesion.rol       = 'usuario';
       sesion.secciones = [];
+      // Cerrar sesión tiene que borrar de verdad lo guardado: si no, la próxima
+      // recarga volvería a entrar sola con la misma cuenta.
+      correoRecordado = '';
+      olvidarSesion();
       mostrarLogin('info', 'Cerraste sesión.');
       iniciarGoogle();
     });
@@ -4361,6 +4678,152 @@
         showToast('error', 'Error de conexión', 'No pudimos guardar los cambios.');
       } finally {
         btn.disabled = false; spinner.style.display = 'none'; texto.textContent = 'Guardar';
+      }
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    // SALDOS DISPONIBLES
+    //
+    // El servidor NO guarda un número que se va pisando: guarda el saldo base
+    // que carga un administrador y le resta los pagos posteriores. Por eso acá
+    // alcanza con volver a pedirlo después de registrar un pago; no hay ningún
+    // contador local que pueda quedar desincronizado.
+    // ═══════════════════════════════════════════════════════════════
+
+    const saldosGrid  = document.getElementById('saldosGrid');
+    const saldosNota  = document.getElementById('saldosNota');
+    const modalSaldo  = document.getElementById('modalSaldo');
+    let cuentaEditando = null;
+    let saldosPuedeEditar = false;
+
+    function formatoPesos(n) {
+      const valor = Math.round(Number(n) || 0);
+      return '$' + valor.toLocaleString('es-CO');
+    }
+
+    async function cargarSaldos(silencioso) {
+      if (!silencioso) {
+        saldosNota.textContent = 'Cargando saldos…';
+        saldosGrid.innerHTML   = '';
+      }
+      try {
+        const r = await postAppsScript({ action: 'consultar_saldos' }, 60000);
+        if (r.status !== 'success') {
+          saldosNota.textContent = 'No se pudieron cargar los saldos.';
+          return;
+        }
+        saldosPuedeEditar = !!r.puedeEditar;
+        pintarSaldos(r);
+      } catch (err) {
+        saldosNota.textContent = 'No se pudieron cargar los saldos. Revisá tu conexión.';
+      }
+    }
+
+    function pintarSaldos(r) {
+      const sinConfigurar = r.cuentas.filter(c => !c.configurado).length;
+
+      saldosNota.textContent = sinConfigurar === 0
+        ? 'Se descuenta automáticamente con cada pago registrado.'
+        : (saldosPuedeEditar
+            ? 'Faltan ' + sinConfigurar + ' cuenta(s) por configurar. Tocá el lápiz para cargar el saldo.'
+            : 'Hay ' + sinConfigurar + ' cuenta(s) sin configurar por un administrador.');
+
+      const lapiz = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+
+      saldosGrid.innerHTML = r.cuentas.map(c => {
+        const enRojo  = c.configurado && c.saldo < 0;
+        const clases  = ['saldo-card'];
+        if (c.grupo === 'fondo') clases.push('es-fondo');
+        if (!c.configurado)      clases.push('sin-config');
+        if (enRojo)              clases.push('en-rojo');
+
+        const pie = c.configurado
+          ? 'Base ' + formatoPesos(c.base) + ' · desde ' + escapeHtml(c.desde) +
+            '<br>' + c.pagos + ' pago(s) descontado(s) · ' + formatoPesos(c.gastado)
+          : 'Un administrador tiene que cargar el saldo inicial.';
+
+        return '<div class="' + clases.join(' ') + '">' +
+          (saldosPuedeEditar
+            ? '<button type="button" class="saldo-editar" data-cuenta="' + escapeHtml(c.clave) + '" title="Editar saldo">' + lapiz + '</button>'
+            : '') +
+          '<div class="saldo-etiqueta">' + escapeHtml(c.etiqueta) + '</div>' +
+          '<div class="saldo-detalle">' + escapeHtml(c.detalle) + '</div>' +
+          '<div class="saldo-monto">' + (c.configurado ? formatoPesos(c.saldo) : 'Sin configurar') + '</div>' +
+          '<div class="saldo-pie">' + pie + '</div>' +
+        '</div>';
+      }).join('');
+
+      // Las ventas y los registros sin empresa reconocida no descuentan de
+      // ninguna bolsa. Se avisa para que nadie lo lea como un error de cuadre.
+      if (r.sinCuenta > 0) {
+        saldosGrid.insertAdjacentHTML('beforeend',
+          '<div class="saldo-aviso"><strong>' + r.sinCuenta + ' registro(s)</strong> no descuentan de ninguna cuenta: ' +
+          'las ventas son dinero que entra, y los registros sin una empresa reconocida no se asignan solos.</div>');
+      }
+
+      saldosGrid.querySelectorAll('[data-cuenta]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const c = r.cuentas.filter(x => x.clave === btn.dataset.cuenta)[0];
+          if (c) abrirModalSaldo(c);
+        });
+      });
+    }
+
+    function abrirModalSaldo(c) {
+      cuentaEditando = c.clave;
+      document.getElementById('modalSaldoTitulo').textContent = c.etiqueta;
+      document.getElementById('modalSaldoSub').textContent =
+        c.configurado
+          ? 'Saldo actual calculado: ' + formatoPesos(c.saldo) + '. Al guardar un saldo nuevo, el conteo arranca otra vez desde ahora.'
+          : 'Todavía no tiene un saldo cargado.';
+      document.getElementById('mSaldoMonto').value    = '';
+      document.getElementById('mSaldoConcepto').value = '';
+      modalSaldo.style.display = 'flex';
+      document.getElementById('mSaldoMonto').focus();
+    }
+
+    function cerrarModalSaldo() {
+      modalSaldo.style.display = 'none';
+      cuentaEditando = null;
+    }
+
+    document.getElementById('btnCancelarSaldo').addEventListener('click', cerrarModalSaldo);
+    modalSaldo.addEventListener('click', e => { if (e.target === modalSaldo) cerrarModalSaldo(); });
+    document.getElementById('btnRefrescarSaldos').addEventListener('click', () => cargarSaldos(false));
+    initFormateadorValor('mSaldoMonto');
+
+    document.getElementById('btnGuardarSaldo').addEventListener('click', async () => {
+      const crudo = document.getElementById('mSaldoMonto').value.replace(/\./g, '').trim();
+      if (!crudo || isNaN(Number(crudo))) {
+        showToast('error', 'Monto inválido', 'Escribí el saldo de la cuenta.');
+        return;
+      }
+
+      const btn     = document.getElementById('btnGuardarSaldo');
+      const spinner = document.getElementById('spinnerGuardarSaldo');
+      const texto   = document.getElementById('btnGuardarSaldoTexto');
+      btn.disabled = true; spinner.style.display = 'block'; texto.textContent = 'Guardando…';
+
+      try {
+        const r = await postAppsScript({
+          action:   'ajustar_saldo',
+          cuenta:   cuentaEditando,
+          monto:    crudo,
+          concepto: document.getElementById('mSaldoConcepto').value.trim()
+        }, 60000);
+
+        if (r.status === 'success') {
+          showToast('success', 'Saldo actualizado', 'De acá en adelante se descuenta con cada pago.');
+          cerrarModalSaldo();
+          cargarSaldos(true);
+        } else {
+          showToast('error', 'No se pudo guardar', r.message || 'Intentá de nuevo.');
+        }
+      } catch (err) {
+        showToast('error', 'Error de conexión', 'No pudimos guardar el saldo.');
+      } finally {
+        btn.disabled = false; spinner.style.display = 'none'; texto.textContent = 'Guardar saldo';
       }
     });
 

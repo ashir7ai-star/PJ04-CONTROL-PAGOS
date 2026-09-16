@@ -2887,6 +2887,9 @@
       if (!datos || datos.status !== 'error' || !datos.codigo) return;
       if (['SESION_INVALIDA', 'NO_REGISTRADO', 'PENDIENTE_APROBACION', 'USUARIO_INACTIVO'].indexOf(datos.codigo) === -1) return;
       sesion.idToken = null;
+      // La sesión guardada ya no sirve: hay que borrarla o el próximo arranque
+      // intentaría entrar con ella otra vez y fallaría igual.
+      olvidarSesion();
       mostrarLogin(datos.codigo === 'SESION_INVALIDA' ? 'info' : 'error', datos.message);
     }
 
@@ -4090,6 +4093,85 @@
       nomina:           'Pago Nómina'
     };
 
+    // ─── Sesión recordada ──────────────────────────────────────────
+    // El token de Google dura ~1 hora. Se guarda junto con el perfil para que
+    // al refrescar la página el usuario siga adentro sin volver a entrar, en
+    // vez de perder la sesión en cada recarga.
+    //
+    // Nota: el token es una credencial temporal. Se guarda en este navegador
+    // únicamente, nunca sale de acá salvo hacia nuestro propio backend, y se
+    // borra al cerrar sesión. Cuando vence, el servidor lo rechaza y la app
+    // vuelve a pedir el ingreso; no hay forma de estirar su validez desde acá.
+    const CLAVE_SESION = 'pj04_sesion';
+
+    // Lee la fecha de vencimiento que viene DENTRO del token. No es una
+    // validación de seguridad (esa la hace el servidor contra Google): sirve
+    // para no mandar un token que ya sabemos vencido.
+    function vencimientoDeToken(idToken) {
+      try {
+        const carga = idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+        const datos = JSON.parse(decodeURIComponent(escape(atob(carga))));
+        return Number(datos.exp) * 1000 || 0;
+      } catch (err) {
+        return 0;
+      }
+    }
+
+    function guardarSesion() {
+      try {
+        localStorage.setItem(CLAVE_SESION, JSON.stringify({
+          idToken:   sesion.idToken,
+          correo:    sesion.correo,
+          nombre:    sesion.nombre,
+          foto:      sesion.foto,
+          rol:       sesion.rol,
+          secciones: sesion.secciones,
+          modo:      sesion.modo,
+          vence:     vencimientoDeToken(sesion.idToken)
+        }));
+      } catch (err) { /* modo incógnito o almacenamiento lleno: no es crítico */ }
+    }
+
+    function leerSesionGuardada() {
+      try {
+        const crudo = localStorage.getItem(CLAVE_SESION);
+        if (!crudo) return null;
+        const s = JSON.parse(crudo);
+        if (!s || !s.idToken) return null;
+        return s;
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function olvidarSesion() {
+      try { localStorage.removeItem(CLAVE_SESION); } catch (err) {}
+    }
+
+    // Invalidar la sesión en memoria y la guardada van SIEMPRE juntas. Si se
+    // separan queda una sesión fantasma: el token en memoria muere pero el
+    // guardado sobrevive, y la próxima recarga intenta entrar con él.
+    function descartarSesion() {
+      sesion.idToken = null;
+      olvidarSesion();
+    }
+
+    // Se descarta con un minuto de margen: un token a punto de vencer llegaría
+    // vencido al servidor y el usuario vería un error en vez de la app.
+    function sesionGuardadaSirve(s) {
+      return !!s && s.vence > Date.now() + 60000;
+    }
+
+    function aplicarSesion(datos) {
+      sesion.correo    = datos.correo    || '';
+      sesion.nombre    = datos.nombre    || '';
+      sesion.foto      = datos.foto      || '';
+      sesion.rol       = datos.rol       || 'usuario';
+      sesion.secciones = datos.secciones || [];
+      pintarSesionEnHeader();
+      aplicarPermisos();
+    }
+
     function mostrarLogin(tipo, mensaje) {
       loginOverlay.style.display = 'flex';
       // Ahora que la tarjeta es visible se puede medir su ancho real.
@@ -4155,11 +4237,52 @@
         return;
       }
 
+      // Si hay una sesión guardada y todavía vale, se entra directo. La app
+      // queda usable al instante y la validación contra el servidor corre
+      // detrás: si resulta que ya no sirve, ahí se pide el ingreso.
+      const guardada = leerSesionGuardada();
+      if (sesionGuardadaSirve(guardada)) {
+        sesion.idToken = guardada.idToken;
+        aplicarSesion(guardada);
+        ocultarLogin();
+        cargarSaldos(false);
+        revalidarSesion();
+        return;
+      }
+
+      // Hay una sesión vencida: se recuerda la cuenta para que volver a entrar
+      // sea un solo toque, en vez de elegir de cero.
+      if (guardada && guardada.correo) correoRecordado = guardada.correo;
+      olvidarSesion();
+
       mostrarLogin();
       iniciarGoogle();
     }
 
+    // Confirma contra el servidor que la sesión restaurada sigue siendo válida
+    // y que los permisos no cambiaron (un admin pudo haberlos modificado).
+    async function revalidarSesion() {
+      try {
+        const datos = await postAppsScript({ action: 'iniciar_sesion' }, 60000);
+        if (datos.status === 'success') {
+          aplicarSesion(datos);
+          guardarSesion();
+          return;
+        }
+        // Cualquier otra respuesta significa que esta sesión ya no sirve.
+        sesion.idToken = null;
+        olvidarSesion();
+        mostrarLogin('info', datos.message || 'Tu sesión venció. Volvé a entrar.');
+        iniciarGoogle();
+      } catch (err) {
+        // Sin conexión no se expulsa al usuario: el servidor rechaza igual
+        // cualquier operación real si la sesión no vale.
+        console.warn('No se pudo revalidar la sesión:', err);
+      }
+    }
+
     let googleInicializado = false;
+    let correoRecordado    = '';
 
     function iniciarGoogle() {
       if (!window.google || !google.accounts || !google.accounts.id) {
@@ -4168,14 +4291,21 @@
         return;
       }
       if (!googleInicializado) {
-        google.accounts.id.initialize({
-          client_id:   CLIENT_ID_GOOGLE,
-          callback:    onCredencialGoogle,
-          // Sin selección automática: en un sistema con permisos por persona,
-          // entrar solo con la cuenta que el navegador tenga a mano es un
-          // problema, no una comodidad. El usuario elige con cuál entra.
-          auto_select: false
-        });
+        const opciones = {
+          client_id: CLIENT_ID_GOOGLE,
+          callback:  onCredencialGoogle,
+          // La selección automática se activa SOLO si esta persona ya entró
+          // antes en este navegador. Para alguien nuevo sigue apagada: en un
+          // sistema con permisos por persona, entrar con la cuenta que el
+          // navegador tenga a mano sería un problema, no una comodidad. Pero
+          // renovar la sesión de quien ya venía usando el sistema es otra cosa,
+          // y es justo lo que evita tener que entrar en cada recarga.
+          auto_select: !!correoRecordado
+        };
+        // Le dice a Google con qué cuenta reanudar, para que no ofrezca otra.
+        if (correoRecordado) opciones.login_hint = correoRecordado;
+
+        google.accounts.id.initialize(opciones);
         googleInicializado = true;
       }
       redibujarBotonGoogle();
@@ -4243,13 +4373,9 @@
       }
 
       if (datos.status === 'success') {
-        sesion.correo    = datos.correo || '';
-        sesion.nombre    = datos.nombre || '';
-        sesion.foto      = datos.foto || '';
-        sesion.rol       = datos.rol || 'usuario';
-        sesion.secciones = datos.secciones || [];
-        pintarSesionEnHeader();
-        aplicarPermisos();
+        aplicarSesion(datos);
+        correoRecordado = sesion.correo;
+        guardarSesion();   // para no tener que entrar de nuevo en cada recarga
         ocultarLogin();
         // Recién acá se piden los saldos: antes de tener sesión, el servidor
         // rechazaría la consulta y mostraría un error en la pantalla de login.
@@ -4263,13 +4389,13 @@
       }
 
       if (datos.status === 'pendiente') {
-        sesion.idToken = null;
+        descartarSesion();
         mostrarLogin('espera', datos.message);
         loginPie.style.display = '';
         return;
       }
 
-      sesion.idToken = null;
+      descartarSesion();
       // El detalle dice QUÉ falló exactamente. Sin él, cualquier causa se ve
       // igual desde la pantalla y no hay forma de diagnosticar.
       mostrarLogin('error', (datos.message || 'No pudimos validar tu acceso.') +
@@ -4305,7 +4431,7 @@
       try {
         const r = await postAppsScript({ action: 'registrar_usuario', nombre: nombre, telefono: telefono }, 45000);
         if (r.status === 'success') {
-          sesion.idToken = null;
+          descartarSesion();
           mostrarLogin('espera', 'Listo. Un administrador tiene que activar tu acceso; te avisamos por correo.');
           loginPie.style.display = '';
         } else {
@@ -4323,7 +4449,9 @@
       // Google: solo evita que entre sola la próxima vez. Para elegir otra hay
       // que pasar por el selector de cuentas de Google y volver acá.
       try { google.accounts.id.disableAutoSelect(); } catch (err) {}
-      sesion.idToken = null;
+      sesion.idToken  = null;
+      correoRecordado = '';
+      olvidarSesion();   // si no, al volver entraría sola con la cuenta vieja
       location.href = 'https://accounts.google.com/AccountChooser?continue=' +
         encodeURIComponent(location.href.split('#')[0]);
     });
@@ -4336,6 +4464,10 @@
       sesion.foto      = '';
       sesion.rol       = 'usuario';
       sesion.secciones = [];
+      // Cerrar sesión tiene que borrar de verdad lo guardado: si no, la próxima
+      // recarga volvería a entrar sola con la misma cuenta.
+      correoRecordado = '';
+      olvidarSesion();
       mostrarLogin('info', 'Cerraste sesión.');
       iniciarGoogle();
     });
