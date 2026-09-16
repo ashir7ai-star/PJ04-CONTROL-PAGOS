@@ -190,6 +190,21 @@ function hojasDePagos_() {
     .filter(h => hojasNoPagos_().indexOf(h.getName()) === -1);
 }
 
+// ¿Este tipo de pago existe en la configuración de secciones?
+//
+// Importa porque `seccionDeTipo_` devuelve 'pagos' ante cualquier tipo que no
+// reconozca. Ese valor por defecto es correcto para Proveedor/Compra/Venta,
+// pero si la app ofrece un tipo que este script todavía no conoce (porque no se
+// redesplegó), el pago se archiva EN SILENCIO en la hoja y la carpeta
+// equivocadas. Ya pasó con "Compra Materiales". Mejor fallar visiblemente.
+function tipoConocido_(tipo) {
+  const t = String(tipo || '').toLowerCase();
+  for (const clave in SECCIONES) {
+    if (SECCIONES[clave].tipos.indexOf(t) !== -1) return true;
+  }
+  return false;
+}
+
 function seccionDeTipo_(tipo) {
   const t = String(tipo || '').toLowerCase();
   for (const clave in SECCIONES) {
@@ -223,6 +238,17 @@ function subirArchivosASeccion_(archivos, seccion) {
 // ─── Registrar un pago (reemplaza el webhook de n8n) ──────────────────────
 
 function registrarPago_(body) {
+  // Se rechaza antes de escribir nada: es preferible que el usuario vea un
+  // error claro a que el pago quede archivado donde no corresponde.
+  if (!tipoConocido_(body.tipo_factura)) {
+    return {
+      status: 'error',
+      message: 'Este servidor no conoce el tipo de pago "' + body.tipo_factura +
+               '". Hay que volver a desplegar el Apps Script (Deploy → Manage ' +
+               'deployments → ✏️ → New version). No se registró nada.'
+    };
+  }
+
   const seccion = seccionDeTipo_(body.tipo_factura);
 
   // Un usuario solo puede registrar en las secciones que tiene asignadas.
