@@ -5,7 +5,7 @@
 ## 🚫 Regla de arquitectura: no usar n8n en desarrollos nuevos
 El usuario pidió explícitamente (2026-09-15) **no depender más de n8n**. Para cualquier funcionalidad nueva que necesite backend (guardar datos, subir archivos, enviar correos), usar el **Google Apps Script** que ya está vinculado al Sheet "CONTROL DE PAGOS", desplegado como Web App. Ventaja adicional: el código lo podemos escribir completo nosotros (ver [apps-script.gs](apps-script.gs) como referencia), en vez de guiar al usuario paso a paso por la GUI de n8n.
 
-Los módulos viejos (Nuevo Pago, Consultar Pagos, Agregar Factura) **siguen en n8n y no se tocan** — funcionan, y migrarlos sin que el usuario lo pida es riesgo innecesario.
+**Actualización 2026-09-15 (Fase 1): n8n ya no se usa en ninguna parte del sistema.** "Nuevo Pago" y "Consultar Pagos" también se migraron a Apps Script (`registrar_pago` / `consultar_pagos`), y se borraron `N8N_WEBHOOK_URL` y `N8N_QUERY_URL` de `index.html`. El único resto es `N8N_ADDFILE_URL` ("Agregar factura"), un webhook que nunca llegó a construirse: el botón muestra un aviso de "no disponible" y está pendiente de rehacerse sobre Apps Script.
 
 Si se edita el Apps Script, mantener sincronizada la copia versionada en el repo, y recordarle al usuario que debe redesplegar (**Deploy → Manage deployments → ✏️ → New version**) para que el cambio tenga efecto.
 
