@@ -302,16 +302,60 @@ function registrarPago_(body) {
 // texto), formatearla con 'yyyy-MM-dd' DESCARTA LA HORA. En FECHA REGISTRO eso
 // arruina el orden cronológico: todos los registros del mismo día llegaban con
 // 00:00 y quedaban empatados. Las columnas de fecha+hora se formatean con hora.
+const COLUMNAS_CON_HORA = ['FECHA REGISTRO', 'FECHA SOLICITUD', 'FECHA DECISION', 'ULTIMO ACCESO'];
+
 function formatearValorDeCelda_(encabezado, valor) {
-  if (!(valor instanceof Date)) return valor;
+  const esDeHora = COLUMNAS_CON_HORA.indexOf(String(encabezado).trim().toUpperCase()) !== -1;
+
   // Se envía en formato año-mes-día, que NO se puede interpretar de dos
   // maneras. Con dd/MM/yyyy, un "09/12/2026" es 12 de septiembre para unos y
-  // 9 de diciembre para otros — y esa confusión ya rompió el orden cronológico.
+  // 9 de diciembre para otros — y esa confusión rompió el orden cronológico.
   // El navegador lo muestra en dd/MM/yyyy, que es como se lee acá.
-  const conHora = ['FECHA REGISTRO', 'FECHA SOLICITUD', 'FECHA DECISION', 'ULTIMO ACCESO'];
-  return conHora.indexOf(String(encabezado).trim().toUpperCase()) !== -1
-    ? Utilities.formatDate(valor, ZONA_HORARIA, 'yyyy-MM-dd HH:mm')
-    : Utilities.formatDate(valor, ZONA_HORARIA, 'yyyy-MM-dd');
+  if (valor instanceof Date) {
+    return esDeHora
+      ? Utilities.formatDate(valor, ZONA_HORARIA, 'yyyy-MM-dd HH:mm')
+      : Utilities.formatDate(valor, ZONA_HORARIA, 'yyyy-MM-dd');
+  }
+
+  // La celda también puede ser TEXTO, y ahí conviven los dos formatos: las
+  // filas viejas (n8n) quedaron en mes/día y las del sistema en día/mes.
+  // Se desambigua acá, en el servidor, para que el navegador reciba SIEMPRE
+  // algo que no se pueda malinterpretar — sin depender de que alguien haya
+  // normalizado la hoja a mano.
+  if (esDeHora) return textoFechaAIso_(valor);
+
+  return valor;
+}
+
+// Convierte un texto de fecha a 'yyyy-MM-dd HH:mm'. Si el texto no parece una
+// fecha, se devuelve igual: es preferible mostrar el dato crudo a inventarlo.
+function textoFechaAIso_(valor) {
+  const t = String(valor || '').trim();
+  if (!t) return valor;
+
+  // Ya viene en año-mes-día: no hay nada que desambiguar.
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t;
+
+  const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ ,]+(\d{1,2}):(\d{2}))?/);
+  if (!m) return valor;
+
+  const a = Number(m[1]), b = Number(m[2]), anio = Number(m[3]);
+  const hh = Number(m[4] || 0), mm = Number(m[5] || 0);
+  const margen = Date.now() + 86400000;
+
+  // Interpretación normal: día/mes, que es lo que escribe el sistema.
+  let fecha = new Date(anio, b - 1, a, hh, mm);
+
+  // Un registro NO puede ser del futuro. Si día/mes da una fecha futura y
+  // mes/día da una pasada, la fila venía en mes/día. No es una suposición:
+  // es la única lectura posible.
+  if (fecha.getTime() > margen && a <= 12) {
+    const alterna = new Date(anio, a - 1, b, hh, mm);
+    if (alterna.getTime() <= margen) fecha = alterna;
+  }
+
+  if (isNaN(fecha.getTime())) return valor;
+  return Utilities.formatDate(fecha, ZONA_HORARIA, 'yyyy-MM-dd HH:mm');
 }
 
 function consultarPagos_(ctx) {

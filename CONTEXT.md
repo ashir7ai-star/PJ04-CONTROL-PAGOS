@@ -461,6 +461,11 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-16**: 🔴 **El servidor ahora desambigua las fechas, sin depender de normalizar la hoja.** El arreglo anterior solo cubría las celdas guardadas como *fecha real*; las que son **texto** pasaban intactas y seguían llegando mal.
+  - `formatearValorDeCelda_()` ahora también procesa el **texto**: `textoFechaAIso_()` lo convierte a `yyyy-MM-dd HH:mm` aplicando la regla de imposibilidad — **un registro no puede ser del futuro**, así que si día/mes da una fecha futura y mes/día una pasada, la fila venía en mes/día.
+  - Con esto la app queda correcta **con solo redesplegar**; normalizar la hoja (`normalizarFechasRegistro`) pasa a ser opcional y solo limpia los datos de origen.
+  - ⚠️ **Otra prueba que no probaba nada:** el simulador de `Utilities.formatDate` en [prueba-consulta.js](prueba-consulta.js) devolvía una constante, así que las comprobaciones de fecha pasaban sin ejercitar el formateo real. Corregido — y es la tercera vez que aparece este patrón, siempre detectado al verificar que la prueba pudiera fallar.
+
 - **2026-09-16**: 🔴 **DOS formatos de fecha mezclados en FECHA REGISTRO.** El usuario detectó que algunos registros mostraban mes/día y otros día/mes.
   - **El problema:** `09/12/2026` es **12 de septiembre** en un formato y **9 de diciembre** en el otro, y mirando solo el texto no se puede distinguir. Las filas de la época de n8n quedaron en mes/día y las del sistema en día/mes. Leídas todas como día/mes, las de n8n se iban al futuro y quedaban primeras: el orden cronológico era falso **sin que nada fallara**.
   - **Transporte sin ambigüedad:** el servidor ahora envía las fechas con hora en `yyyy-MM-dd HH:mm`, que no se puede leer de dos maneras. El navegador las muestra en `dd/MM/yyyy HH:mm`.

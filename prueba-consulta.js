@@ -69,8 +69,23 @@ function backend() {
     CacheService: { getScriptCache: () => ({ get: () => null, put: () => {} }) },
     UrlFetchApp: { fetch: () => ({ getResponseCode: () => 500, getContentText: () => '{}' }) },
     ContentService: { createTextOutput: t => ({ setMimeType: () => t }), MimeType: { JSON: 'j' } },
-    Utilities: { formatDate: () => '01/01/2026 00:00', base64Encode: String, computeDigest: (a, b) => b,
-                 DigestAlgorithm: { SHA_256: 's' }, newBlob: () => ({}) }
+    // formatDate tiene que formatear DE VERDAD: con una constante, las pruebas
+    // de fechas pasaban sin comprobar nada.
+    Utilities: {
+      formatDate: (d, z, f) => {
+        const p = n => String(n).padStart(2, '0');
+        if (f === 'yyyy-MM-dd HH:mm') {
+          return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+                 ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+        }
+        if (f === 'yyyy-MM-dd') return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+        return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() +
+               ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+      },
+      base64Encode: String, base64Decode: String, computeDigest: (a, b) => b,
+      getUuid: () => 'uuid-' + Math.random().toString(36).slice(2),
+      DigestAlgorithm: { SHA_256: 's' }, newBlob: () => ({})
+    }
   };
 
   let codigo = fs.readFileSync('apps-script.gs', 'utf8')
@@ -230,6 +245,59 @@ console.log('\n=== Orden: del último registrado al primero ===');
   ]).map(r => r['NOMBRE DE PAGO']);
   chk('las filas sin fecha de registro no rompen el orden',
       conHuecos.length === 2 && conHuecos[0] === 'con registro', conHuecos);
+}
+
+// ── Fechas: los dos formatos mezclados en el Sheet ────────────────────────
+console.log('\n=== Fechas: día/mes y mes/día conviven en la misma columna ===');
+{
+  // Caso real: las filas viejas (n8n) quedaron en mes/día y las del sistema en
+  // día/mes. "09/12/2026" es 12 de septiembre en una lectura y 9 de diciembre
+  // en la otra; leído mal, un pago de septiembre se va al futuro y queda
+  // primero, rompiendo el orden sin que nada falle.
+  const f = (v) => g.formatearValorDeCelda_('FECHA REGISTRO', v);
+
+  chk('"09/12/2026 14:31" (mes/día) → 12 de septiembre', f('09/12/2026 14:31') === '2026-09-12 14:31', f('09/12/2026 14:31'));
+  chk('"15/09/2026 18:40" (día/mes) → 15 de septiembre', f('15/09/2026 18:40') === '2026-09-15 18:40', f('15/09/2026 18:40'));
+  chk('"09/11/2026 22:58" → 11 de septiembre',           f('09/11/2026 22:58') === '2026-09-11 22:58', f('09/11/2026 22:58'));
+
+  // No romper lo que ya estaba bien
+  chk('una fecha día/mes ya pasada se respeta', f('11/09/2026 22:58') === '2026-09-11 22:58', f('11/09/2026 22:58'));
+  chk('lo que ya viene en año-mes-día pasa igual', f('2026-09-15 18:40') === '2026-09-15 18:40');
+  chk('FECHA DE PAGO no se toca',
+      g.formatearValorDeCelda_('FECHA DE PAGO', '2026-09-15') === '2026-09-15');
+  chk('un texto que no es fecha no se inventa', f('sin fecha') === 'sin fecha');
+  chk('un número no se toca', g.formatearValorDeCelda_('VALOR FACTURA', 1000) === 1000);
+
+  // Y el orden resultante: el último registrado tiene que quedar primero
+  const filas = [
+    { 'FECHA REGISTRO': f('09/12/2026 14:31'), 'NOMBRE DE PAGO': 'Hidratación Topacio', 'FECHA DE PAGO': '2026-09-12', 'PROVEEDOR': 'x', 'VALOR FACTURA': 1 },
+    { 'FECHA REGISTRO': f('15/09/2026 18:40'), 'NOMBRE DE PAGO': 'HIDRATACIÓN',         'FECHA DE PAGO': '2026-09-15', 'PROVEEDOR': 'x', 'VALOR FACTURA': 1 },
+    { 'FECHA REGISTRO': f('15/09/2026 14:50'), 'NOMBRE DE PAGO': 'DESAYUNO',            'FECHA DE PAGO': '2026-09-15', 'PROVEEDOR': 'x', 'VALOR FACTURA': 1 },
+    { 'FECHA REGISTRO': f('09/11/2026 22:58'), 'NOMBRE DE PAGO': 'peaje',               'FECHA DE PAGO': '2026-09-12', 'PROVEEDOR': 'x', 'VALOR FACTURA': 1 }
+  ];
+
+  const html2 = fs.readFileSync('index.html', 'utf8');
+  const js2   = [...html2.matchAll(/<script>([\s\S]*?)<\/script>/g)].pop()[1];
+  const trozos2 = ['function parseFecha', 'function parseFechaHora', 'function filtrarRows'].map(fn => {
+    const i = js2.indexOf(fn);
+    let prof = 0, j = i, visto = false, c = '';
+    while (j < js2.length) {
+      const ch = js2[j]; c += ch;
+      if (ch === '{') { prof++; visto = true; }
+      if (ch === '}') { prof--; if (visto && prof === 0) break; }
+      j++;
+    }
+    return c;
+  }).join('\n');
+
+  const ctx2 = { document: { getElementById: () => ({ get value() { return ''; }, _flatpickr: { selectedDates: [] } }) },
+                 vistaRestringida: null, TIPOS_GASTOS: [], console, Date };
+  vm.createContext(ctx2);
+  vm.runInContext(trozos2 + '; this.filtrarRows = filtrarRows;', ctx2);
+
+  const orden = ctx2.filtrarRows(filas).map(r => r['NOMBRE DE PAGO']);
+  chk('el último registrado queda primero, como en el Sheet',
+      JSON.stringify(orden) === JSON.stringify(['HIDRATACIÓN', 'DESAYUNO', 'Hidratación Topacio', 'peaje']), orden);
 }
 
 // ── Alta completa de cada tipo de pago ────────────────────────────────────
