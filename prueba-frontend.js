@@ -172,6 +172,31 @@ chk('sin anchos fijos escritos en línea (no se adaptan)', enLinea.length === 0,
 chk('hay reglas para celular (<=640px)',  /@media\s*\(max-width:\s*6[0-4]\d px?\)|@media\s*\(max-width:\s*640px\)/.test(css));
 chk('hay reglas para pantallas angostas (<=400px)', /@media\s*\(max-width:\s*4[0-2]\dpx\)/.test(css));
 
+console.log('\n=== La lista de usuarios está bien armada ===');
+{
+  // El encabezado y cada fila comparten la misma grilla CSS. Si no coinciden
+  // en cantidad de bloques, los títulos quedan corridos respecto de los datos
+  // —sin ningún error, solo desalineado— que es justo lo que se veía mal.
+  const cab = (html.match(/<div class="usuarios-cabecera">([\s\S]*?)<\/div>\s*<div id="cuerpoTablaUsuarios">/) || [])[1] || '';
+  const columnas = (cab.match(/<span>/g) || []).length;
+
+  const fila = (js.match(/return '<div class="usuario-fila[\s\S]*?'<\/div>';/) || [''])[0];
+  const bloques = ['u-identidad', 'u-meta', 'u-secciones', 'u-pie']
+    .filter(c => fila.indexOf('class="' + c + '"') !== -1).length;
+
+  chk('el encabezado declara columnas', columnas > 0, columnas);
+  chk('cada fila genera un bloque por columna', columnas === bloques,
+      { columnas: columnas, bloques: bloques });
+
+  // La grilla tiene que declarar exactamente esa cantidad de columnas
+  const cssGrid = ((html.match(/<style>([\s\S]*?)<\/style>/) || [])[1] || '')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const decl = (cssGrid.match(/\.usuarios-cabecera,\s*\.usuario-fila\s*\{[^}]*grid-template-columns:\s*([^;]+);/) || [])[1] || '';
+  const nCols = (decl.match(/minmax\([^)]*\)|[\d.]+fr|auto/g) || []).length;
+  chk('la grilla CSS declara la misma cantidad de columnas', nCols === columnas,
+      { grilla: nCols, encabezado: columnas, declaracion: decl.trim() });
+}
+
 console.log('\n=== Orden de las capas en pantalla ===');
 {
   // Un z-index mal puesto no da error: el elemento simplemente queda tapado.

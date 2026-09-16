@@ -459,6 +459,11 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-16**: 🎨 **Rediseño de la lista de usuarios en Configuración.** En celular se veía desordenada: era una tabla convertida en pares "ETIQUETA: valor", con los valores alineados a la derecha y cortados (`nathan@ylevigroup.cor`, `Administrado`).
+  - **Ahora es una lista, no una tabla.** El mismo marcado se ve como tabla en pantalla ancha y como **tarjeta con jerarquía propia** en celular: avatar con iniciales, nombre destacado, correo y teléfono debajo, y luego rol, estado, secciones y último acceso en orden de importancia. Los administradores llevan el avatar en color.
+  - **Cuatro columnas, cuatro bloques por fila.** El encabezado y las filas comparten la misma grilla; si no coinciden, los títulos quedan corridos respecto de los datos **sin dar ningún error**. Hay 3 comprobaciones en [prueba-frontend.js](prueba-frontend.js) que vigilan esa correspondencia, verificadas desalineando el encabezado a propósito.
+  - La tabla de Traslados sigue usando `.tabla-usuarios`, que no se tocó. `sw.js` → `control-pagos-v64`.
+
 - **2026-09-16**: 🔑 **Sesiones propias: se acabó tener que entrar de nuevo cada hora.** Ver la sección "🔑 Sesiones propias" arriba para el porqué y el diseño. **11 comprobaciones nuevas** en [prueba-permisos.js](prueba-permisos.js), incluida que desactivar a un usuario corta su acceso aunque su sesión siga vigente. `sw.js` → `control-pagos-v63`.
 
 - **2026-09-16**: 🔴 **"Guardar usuario no hace nada" — el error se dibujaba detrás del modal.** Reportado en la PWA (en la web funcionaba).

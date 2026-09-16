@@ -1888,6 +1888,108 @@
     .chip-estado.pendiente { background: var(--warning-light); color: #a86400; }
     .chip-estado.inactivo  { background: var(--surface-3);     color: var(--text-muted); }
 
+    /* ─── Lista de usuarios ──────────────────────────────────────────
+       Se usa una lista de filas y no una tabla porque en celular una tabla
+       obliga a convertir cada celda en "ETIQUETA: valor", que se lee mal y
+       queda desordenado. Así, en pantalla ancha se ve como una tabla y en
+       celular como una tarjeta con jerarquía propia. */
+    .lista-usuarios { margin-top: 4px; }
+
+    /* Cuatro columnas, una por cada bloque que genera cada fila. Si el
+       encabezado y las filas no declaran la MISMA grilla, los títulos quedan
+       corridos respecto de los datos. */
+    .usuarios-cabecera,
+    .usuario-fila {
+      display: grid;
+      grid-template-columns: minmax(200px, 2.4fr) minmax(150px, 1fr) minmax(150px, 1.8fr) minmax(190px, 1.1fr);
+      gap: 16px;
+      align-items: center;
+    }
+
+    .usuarios-cabecera {
+      padding: 0 4px 10px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+
+    .usuario-fila {
+      padding: 14px 4px;
+      border-bottom: 1px solid var(--border);
+    }
+    .usuario-fila:last-child { border-bottom: none; }
+
+    .u-identidad { display: flex; align-items: center; gap: 11px; min-width: 0; }
+
+    .u-avatar {
+      width: 36px; height: 36px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      background: var(--surface-3);
+      color: var(--text-2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.78rem; font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .usuario-fila.es-admin .u-avatar { background: var(--primary-light); color: var(--primary); }
+
+    .u-datos { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+    .u-nombre {
+      font-size: 0.87rem; font-weight: 600; color: var(--text);
+      letter-spacing: -0.01em;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .u-correo, .u-tel {
+      font-size: 0.76rem; color: var(--text-muted);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .u-tel { display: none; }   /* en escritorio ocupa lugar sin aportar */
+
+    .u-rol { font-size: 0.82rem; color: var(--text-2); }
+    .u-acceso { font-size: 0.78rem; color: var(--text-muted); }
+    .u-secciones { display: flex; flex-wrap: wrap; gap: 4px; }
+    .u-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .u-pie  { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+
+    @media (max-width: 860px) {
+      /* Tarjeta: el nombre manda, lo demás se ordena debajo por importancia. */
+      .usuarios-cabecera { display: none; }
+
+      .usuario-fila {
+        display: block;
+        padding: 16px 0;
+      }
+      .u-identidad { margin-bottom: 12px; }
+      .u-tel { display: block; }
+
+      .u-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .u-rol {
+        font-size: 0.72rem; font-weight: 600;
+        text-transform: uppercase; letter-spacing: 0.04em;
+        color: var(--text-muted);
+      }
+      .u-secciones { margin-bottom: 12px; }
+
+      .u-pie {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 0.74rem;
+        color: var(--text-muted);
+      }
+      .u-acceso { font-size: 0.74rem; }
+    }
+
     .chip-acceso {
       display: inline-flex;
       align-items: center;
@@ -2706,21 +2808,14 @@
         Cargando usuarios…
       </div>
 
-      <div style="overflow-x:auto;">
-        <table class="tabla-usuarios" id="tablaUsuarios">
-          <thead>
-            <tr>
-              <th>Usuario</th>
-              <th>Teléfono</th>
-              <th>Rol</th>
-              <th>Secciones</th>
-              <th>Estado</th>
-              <th>Último acceso</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="cuerpoTablaUsuarios"></tbody>
-        </table>
+      <div class="lista-usuarios" id="listaUsuarios">
+        <div class="usuarios-cabecera">
+          <span>Usuario</span>
+          <span>Rol y estado</span>
+          <span>Secciones</span>
+          <span>Último acceso</span>
+        </div>
+        <div id="cuerpoTablaUsuarios"></div>
       </div>
     </div>
   </main>
@@ -5008,7 +5103,7 @@
     function pintarUsuarios(usuarios) {
       const cuerpo = document.getElementById('cuerpoTablaUsuarios');
       if (!usuarios.length) {
-        cuerpo.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--text-muted);">Todavía no hay usuarios cargados.</td></tr>';
+        cuerpo.innerHTML = '<div style="text-align:center;padding:28px;color:var(--text-muted);font-size:0.86rem;">Todavía no hay usuarios cargados.</div>';
         return;
       }
 
@@ -5016,22 +5111,49 @@
       const orden = { pendiente: 0, activo: 1, inactivo: 2 };
       usuarios.sort((a, b) => (orden[a.estado] ?? 3) - (orden[b.estado] ?? 3));
 
+      // Iniciales para el avatar: da identidad visual sin depender de una foto.
+      const iniciales = (nombre, correo) => {
+        const base = String(nombre || correo || '?').trim();
+        const partes = base.split(/\s+/).filter(Boolean);
+        return ((partes[0] || '?')[0] + (partes[1] ? partes[1][0] : '')).toUpperCase();
+      };
+
       cuerpo.innerHTML = usuarios.map(u => {
+        const esAdmin = u.rol === 'admin';
         const secciones = !u.secciones || u.secciones === 'todas'
           ? '<span class="chip-secciones">Todas</span>'
           : u.secciones.split(',').filter(Boolean)
               .map(s => '<span class="chip-secciones">' + escapeHtml(ETIQUETA_SECCION[s.trim()] || s) + '</span>').join('');
 
-        return '<tr>' +
-          '<td data-etiqueta="Usuario"><div class="correo">' + escapeHtml(u.nombre || '(sin nombre)') + '</div>' +
-            '<div style="font-size:0.78rem;color:var(--text-muted);">' + escapeHtml(u.correo) + '</div></td>' +
-          '<td data-etiqueta="Teléfono">' + escapeHtml(u.telefono || '—') + '</td>' +
-          '<td data-etiqueta="Rol">' + (u.rol === 'admin' ? 'Administrador' : 'Usuario') + '</td>' +
-          '<td data-etiqueta="Secciones">' + secciones + '</td>' +
-          '<td data-etiqueta="Estado"><span class="chip-estado ' + escapeHtml(u.estado) + '">' + escapeHtml(u.estado) + '</span></td>' +
-          '<td data-etiqueta="Último acceso" style="font-size:0.78rem;color:var(--text-muted);">' + escapeHtml(u.acceso || 'nunca') + '</td>' +
-          '<td data-etiqueta=""><button type="button" class="btn-clear" data-editar="' + escapeHtml(u.correo) + '">Editar</button></td>' +
-        '</tr>';
+        const estadoChip = '<span class="chip-estado ' + escapeHtml(u.estado) + '">' + escapeHtml(u.estado) + '</span>';
+        const rolTexto   = esAdmin ? 'Administrador' : 'Usuario';
+        const acceso     = u.acceso ? escapeHtml(u.acceso) : 'Nunca ingresó';
+        const boton      = '<button type="button" class="btn-clear" data-editar="' + escapeHtml(u.correo) + '">Editar</button>';
+
+        return '<div class="usuario-fila' + (esAdmin ? ' es-admin' : '') + '">' +
+          '<div class="u-identidad">' +
+            '<div class="u-avatar">' + escapeHtml(iniciales(u.nombre, u.correo)) + '</div>' +
+            '<div class="u-datos">' +
+              '<span class="u-nombre">' + escapeHtml(u.nombre || '(sin nombre)') + '</span>' +
+              '<span class="u-correo">' + escapeHtml(u.correo) + '</span>' +
+              (u.telefono ? '<span class="u-tel">' + escapeHtml(u.telefono) + '</span>' : '') +
+            '</div>' +
+          '</div>' +
+
+          // En celular estos dos van juntos en una línea; en escritorio, cada
+          // uno en su columna. El mismo marcado sirve para los dos casos.
+          '<div class="u-meta">' +
+            '<span class="u-rol">' + rolTexto + '</span>' +
+            estadoChip +
+          '</div>' +
+
+          '<div class="u-secciones">' + secciones + '</div>' +
+
+          '<div class="u-pie">' +
+            '<span class="u-acceso">' + acceso + '</span>' +
+            boton +
+          '</div>' +
+        '</div>';
       }).join('');
 
       cuerpo.querySelectorAll('[data-editar]').forEach(btn => {
