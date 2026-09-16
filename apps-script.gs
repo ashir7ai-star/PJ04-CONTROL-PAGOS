@@ -329,6 +329,34 @@ function verificarEncabezados_(destino, encabezadosPrincipal) {
   }
 }
 
+// ─── Diagnóstico: ¿qué código está realmente guardado? ────────────────────
+// Correr desde el editor (selector de función → Run) y mirar el registro.
+//
+// Sirve para separar dos problemas que se ven idénticos desde afuera:
+//   · Si acá aparece la sección pero la app no la ve → el código está bien
+//     guardado, lo que falló es el DESPLIEGUE (quedó apuntando a una versión
+//     vieja: en "Manage deployments" hay que elegir Version: "New version").
+//   · Si acá tampoco aparece → lo que se pegó en el editor es una copia vieja.
+function verificarVersion() {
+  const lineas = [
+    'VERSIÓN DEL CÓDIGO GUARDADO EN EL EDITOR',
+    '',
+    'Modo de acceso: ' + MODO_LOGIN,
+    'Secciones (' + Object.keys(SECCIONES).length + '):'
+  ];
+  Object.keys(SECCIONES).forEach(clave => {
+    const cfg = SECCIONES[clave];
+    lineas.push('   · ' + clave + '  →  hoja "' + (cfg.hoja || 'principal') + '"  ·  carpeta "' + cfg.carpeta + '"');
+  });
+  lineas.push('');
+  lineas.push('¿Conoce compra_materiales?  ' + (tipoConocido_('compra_materiales') ? 'SÍ' : 'NO'));
+  lineas.push('¿Tiene la validación de tipo desconocido?  ' + (typeof tipoConocido_ === 'function' ? 'SÍ' : 'NO'));
+
+  const resumen = lineas.join('\n');
+  Logger.log(resumen);
+  return resumen;
+}
+
 // Simulacro de SOLO LECTURA. No escribe, no borra, no hace respaldo.
 // Corrélo primero y revisá el resultado en el registro de ejecución.
 function simularMigracion() {
