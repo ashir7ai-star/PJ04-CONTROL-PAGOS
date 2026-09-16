@@ -2572,15 +2572,12 @@
 
             <div class="field-divider"></div>
 
-            <div class="field-row">
-              <div class="field">
-                <label for="correoSolicitante">Correo <span class="req">*</span></label>
-                <input type="email" id="correoSolicitante" placeholder="tu@correo.com" required />
-              </div>
-              <div class="field">
-                <label for="nombrePagoSolicitud">Nombre del pago <span class="req">*</span></label>
-                <input type="text" id="nombrePagoSolicitud" placeholder="Ej: Pago de servicios" required />
-              </div>
+            <!-- El correo ya no se pide: sale de la sesión con la que entraste.
+                 Además de ahorrar un campo, es lo que hace confiable el filtro
+                 de "ver solo mis solicitudes". -->
+            <div class="field">
+              <label for="nombrePagoSolicitud">Nombre del pago <span class="req">*</span></label>
+              <input type="text" id="nombrePagoSolicitud" placeholder="Ej: Pago de servicios" required />
             </div>
 
             <div class="field-row">
@@ -3924,7 +3921,7 @@
         return;
       }
 
-      const requeridos = ['empresaSolicitud', 'solicitadoPor', 'correoSolicitante', 'nombrePagoSolicitud', 'proveedorSolicitud', 'fechaPagoSolicitud', 'montoSolicitud'];
+      const requeridos = ['empresaSolicitud', 'solicitadoPor', 'nombrePagoSolicitud', 'proveedorSolicitud', 'fechaPagoSolicitud', 'montoSolicitud'];
       for (const id of requeridos) {
         const el = document.getElementById(id);
         if (!el.value.trim()) {
@@ -3958,7 +3955,7 @@
           tipo_factura:   tipoHiddenSolicitud.value,
           empresa:        document.getElementById('empresaSolicitud').value,
           solicitado_por: document.getElementById('solicitadoPor').value.trim(),
-          correo:         document.getElementById('correoSolicitante').value.trim(),
+          // El correo lo pone el servidor desde la sesión verificada.
           nombre_pago:    document.getElementById('nombrePagoSolicitud').value.trim(),
           proveedor:      document.getElementById('proveedorSolicitud').value.trim(),
           fecha_pago:     fechaPickerSolicitud.selectedDates[0]
@@ -4805,6 +4802,13 @@
       });
 
       navConfig.style.display = sesion.rol === 'admin' ? '' : 'none';
+
+      // Se precargan los campos que el sistema ya conoce, para no hacérselos
+      // escribir. Quedan editables: alguien puede registrar en nombre de otro.
+      [['solicitadoPor', sesion.nombre], ['registradoPor', sesion.nombre]].forEach(([id, valor]) => {
+        const campo = document.getElementById(id);
+        if (campo && !campo.value.trim() && valor) campo.value = valor;
+      });
     }
 
     function seccionDeTipoFront(tipo) {

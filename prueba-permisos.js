@@ -35,14 +35,23 @@ function hojaFalsa(nombre, filas) {
   };
 }
 
-function montar(modoLogin, usuarios) {
+// El tercer parámetro permite simular sesiones reales: el "token" es
+// simplemente el correo, y el stub de UrlFetchApp responde como lo haría
+// Google. Sin esto no se puede probar nada en modo 'estricto'.
+const ENC_SOL = ['ID SOLICITUD','FECHA SOLICITUD','EMPRESA','TIPO DE PAGO','NOMBRE DEL PAGO',
+                 'PROVEEDOR','FECHA DE PAGO','VALOR','SOLICITADO POR','CORREO','NOTAS',
+                 'URL ARCHIVO','ESTADO','REVISADO POR','FECHA DECISION','COMENTARIO'];
+
+function montar(modoLogin, usuarios, solicitudes) {
   const ENC = ['CORREO','NOMBRE','TELEFONO','ROL','SECCIONES','ESTADO','FECHA REGISTRO','ULTIMO ACCESO'];
   const hojas = {
     'PAGOS REGISTRADOS': hojaFalsa('PAGOS REGISTRADOS', [['TIPO FACTURA'], ['compra']]),
     'Viaticos':          hojaFalsa('Viaticos',          [['TIPO FACTURA'], ['viaticos']]),
     'Caja Menor':        hojaFalsa('Caja Menor',        [['TIPO FACTURA'], ['caja_menor']]),
     'Pago Nomina':       hojaFalsa('Pago Nomina',       [['TIPO FACTURA'], ['nomina']]),
-    'USUARIOS':          hojaFalsa('USUARIOS',          [ENC].concat(usuarios || []))
+    'USUARIOS':          hojaFalsa('USUARIOS',          [ENC].concat(usuarios || [])),
+    'SOLICITUDES DE APROBACION': hojaFalsa('SOLICITUDES DE APROBACION',
+      [ENC_SOL].concat(solicitudes || []))
   };
   const orden = ['PAGOS REGISTRADOS','SOLICITUDES DE APROBACION','Viaticos','Caja Menor','Pago Nomina','USUARIOS'];
 
@@ -63,7 +72,22 @@ function montar(modoLogin, usuarios) {
     MailApp:    { sendEmail: () => {} },
     Logger:     { log: () => {} },
     CacheService: { getScriptCache: () => ({ get: () => null, put: () => {} }) },
-    UrlFetchApp:  { fetch: () => ({ getResponseCode: () => 500, getContentText: () => '{}' }) },
+    // El "token" es el correo. Se responde como Google: aud correcto, correo
+    // verificado y vigente. Así se pueden probar las rutas con sesión real.
+    UrlFetchApp: { fetch: (url) => {
+      const correo = decodeURIComponent(String(url).split('id_token=')[1] || '');
+      if (!correo || correo === 'invalido') {
+        return { getResponseCode: () => 400, getContentText: () => '{}' };
+      }
+      const aud = (fs.readFileSync(RUTA, 'utf8').match(/const CLIENT_ID_GOOGLE = '([^']+)'/) || [])[1];
+      return {
+        getResponseCode: () => 200,
+        getContentText: () => JSON.stringify({
+          aud: aud, email: correo, email_verified: 'true',
+          name: correo.split('@')[0], exp: Math.floor(Date.now() / 1000) + 3600
+        })
+      };
+    } },
     ContentService: { createTextOutput: (t) => ({ setMimeType: () => t }), MimeType: { JSON: 'json' } },
     Utilities: {
       formatDate: () => '01/01/2026 00:00',
@@ -211,8 +235,67 @@ console.log('\n=== verificación del token: qué rechaza ===');
   const g = montar('estricto', []);
   chk('token vacío = null', g.verificarIdToken_('') === null);
   chk('token nulo = null',  g.verificarIdToken_(null) === null);
-  // respuesta 500 de Google → null (el stub devuelve 500)
-  chk('si Google no responde 200 = null', g.verificarIdToken_('loquesea') === null);
+  // El simulador rechaza el token 'invalido' respondiendo 400, como haría
+  // Google ante uno falso o vencido.
+  chk('si Google no responde 200 = null', g.verificarIdToken_('invalido') === null);
+  // Y un token con "aud" de otra aplicación tampoco pasa.
+  chk('token legítimo pero de OTRA app = null', (function () {
+    const g2 = montar('estricto', []);
+    g2.UrlFetchApp.fetch = () => ({
+      getResponseCode: () => 200,
+      getContentText: () => JSON.stringify({
+        aud: 'otra-app.apps.googleusercontent.com', email: 'x@y.com',
+        email_verified: 'true', exp: Math.floor(Date.now() / 1000) + 3600
+      })
+    });
+    return g2.verificarIdToken_('x@y.com') === null;
+  })());
+}
+
+console.log('\n=== Privacidad de las solicitudes de aprobación ===');
+{
+  const sol = (id, quien, correo) =>
+    [id, id, 'AMPAC SAS', 'compra', 'pago ' + id, 'prov', '2026-01-01', 1000,
+     quien, correo, '', '', 'Pendiente', '', '', ''];
+
+  const g = montar('estricto', [
+    ['laura@x.com',  'Laura',  '300', 'usuario', 'viaticos', 'activo', '', ''],
+    ['pedro@x.com',  'Pedro',  '300', 'usuario', 'viaticos', 'activo', '', ''],
+    ['nathan@y.com', 'Nathan', '',    'admin',   'todas',    'activo', '', '']
+  ], [
+    sol('1', 'Laura', 'laura@x.com'),
+    sol('2', 'Pedro', 'pedro@x.com'),
+    sol('3', 'Laura', 'LAURA@X.COM'),   // mismo correo, otra capitalización
+    sol('4', 'Nathan', 'nathan@y.com')
+  ]);
+
+  const ids = r => r.map(x => String(x['ID SOLICITUD'])).sort();
+
+  const deLaura = g.consultarSolicitudes_({ idToken: 'laura@x.com' });
+  chk('un usuario ve SOLO sus solicitudes',
+      JSON.stringify(ids(deLaura)) === JSON.stringify(['1', '3']), ids(deLaura));
+  chk('no recibe las de otros usuarios ni siquiera en la respuesta',
+      JSON.stringify(deLaura).indexOf('pedro@x.com') === -1, 'se filtró el correo de otro');
+  chk('el correo se compara sin importar mayúsculas', ids(deLaura).indexOf('3') !== -1);
+
+  const dePedro = g.consultarSolicitudes_({ idToken: 'pedro@x.com' });
+  chk('otro usuario ve solo la suya',
+      JSON.stringify(ids(dePedro)) === JSON.stringify(['2']), ids(dePedro));
+
+  const delAdmin = g.consultarSolicitudes_({ idToken: 'nathan@y.com' });
+  chk('el administrador ve TODAS (es quien aprueba)',
+      ids(delAdmin).length === 4, ids(delAdmin));
+
+  // El correo de una solicitud nueva sale de la sesión, no del formulario:
+  // si fuera un campo libre, cualquiera podría escribir el de otro y ver lo ajeno.
+  g.crearSolicitud_({ idToken: 'pedro@x.com', correo: 'laura@x.com',
+                      empresa: 'AMPAC SAS', tipo_factura: 'compra',
+                      nombre_pago: 'intento', monto: '1', fecha_envio: '9' });
+  const trasIntento = g.consultarSolicitudes_({ idToken: 'laura@x.com' });
+  chk('no se puede crear una solicitud a nombre de otro',
+      ids(trasIntento).indexOf('9') === -1, ids(trasIntento));
+  chk('esa solicitud queda a nombre de quien realmente la creó',
+      ids(g.consultarSolicitudes_({ idToken: 'pedro@x.com' })).indexOf('9') !== -1);
 }
 
 console.log('\n=== Ningún endpoint del Web App queda sin validar sesión ===');

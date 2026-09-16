@@ -680,7 +680,7 @@ function plantillaCorreo_(opciones) {
 // ─── 1) Crear solicitud ───────────────────────────────────────────────────
 
 function crearSolicitud_(body) {
-  contextoDe_(body);   // solo usuarios con sesión válida pueden pedir aprobaciones
+  const ctx = contextoDe_(body);   // solo con sesión válida se puede solicitar
 
   const hoja = hojaSolicitudes_();
   const id   = body.fecha_envio || new Date().toISOString();
@@ -695,7 +695,11 @@ function crearSolicitud_(body) {
     'FECHA DE PAGO':   body.fecha_pago || '',
     'VALOR':           body.monto || '',
     'SOLICITADO POR':  body.solicitado_por || '',
-    'CORREO':          body.correo || '',
+    // El correo sale de la SESIÓN VERIFICADA, no de lo que se escriba en el
+    // formulario. Además de evitar errores de tipeo, es lo que hace confiable
+    // el filtro de "ver solo mis solicitudes": si el correo fuera un campo
+    // libre, cualquiera podría escribir el de otro y ver —o generar— lo ajeno.
+    'CORREO':          ctx.correo || body.correo || '',
     'NOTAS':           body.notas || '',
     // Las solicitudes no tienen carpeta propia (son temporales): van a PJ04 FACTURAS.
     'URL ARCHIVO':     subirArchivosASeccion_(body.archivos, 'pagos'),
@@ -758,14 +762,14 @@ function notificarAdmins_(fila) {
 function consultarSolicitudes_(body) {
   // Las solicitudes traen proveedores, montos y correos: no pueden quedar
   // abiertas a cualquiera que conozca la URL.
-  contextoDe_(body);
+  const ctx = contextoDe_(body);
 
   const hoja    = hojaSolicitudes_();
   const valores = hoja.getDataRange().getValues();
   if (valores.length < 2) return [];
 
   const encabezados = valores[0];
-  return valores.slice(1)
+  const todas = valores.slice(1)
     .filter(fila => fila.some(v => v !== ''))
     .map(fila => {
       const obj = {};
@@ -775,6 +779,16 @@ function consultarSolicitudes_(body) {
       });
       return obj;
     });
+
+  // Los administradores ven todas: son quienes aprueban.
+  if (MODO_LOGIN === 'off' || esAdmin_(ctx)) return todas;
+
+  // Un usuario común ve ÚNICAMENTE las suyas. Se filtra acá, en el servidor:
+  // ocultarlas en la pantalla no serviría, porque las solicitudes de los demás
+  // —con sus proveedores, montos y correos— igual viajarían al navegador.
+  const mio = String(ctx.correo || '').trim().toLowerCase();
+  if (!mio) return [];
+  return todas.filter(s => String(s['CORREO'] || '').trim().toLowerCase() === mio);
 }
 
 // ─── 3) Decidir (aprobar / rechazar) ──────────────────────────────────────

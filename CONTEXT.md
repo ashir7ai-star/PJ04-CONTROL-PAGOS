@@ -423,6 +423,12 @@ En [index.html](index.html):
 ¿Necesita saldo propio? Solo si es una bolsa de dinero aparte. Si no, `cuentaDePago_()` lo manda al banco de la empresa automáticamente.
 
 ## Historial de cambios recientes
+- **2026-09-16**: 🔒 **Aprobaciones: el correo sale de la sesión y cada quien ve solo sus solicitudes.**
+  - **Se eliminó el campo "Correo"** del formulario de solicitud: el sistema ya sabe con qué cuenta entraste. Ahora `crearSolicitud_()` lo toma de `ctx.correo` (la sesión verificada contra Google). No es solo comodidad: **es lo que hace confiable el filtro de privacidad**, porque si el correo fuera un campo libre, cualquiera podría escribir el de otro y ver —o generar— solicitudes ajenas.
+  - **"Revisar Solicitudes" ahora filtra por persona**: un usuario común ve **únicamente las suyas**; los administradores ven todas, porque son quienes aprueban. **Filtrado en el servidor**, no en la pantalla: las solicitudes de otros —con sus proveedores, montos y correos— ya no viajan al navegador.
+  - "Solicitado por" y "Registrado por" se **precargan** con el nombre de la sesión, pero quedan editables (alguien puede registrar en nombre de otro).
+  - **El banco de pruebas ahora puede simular sesiones reales**: el stub de `UrlFetchApp` responde como Google, usando el correo como "token". Sin eso no se podía probar nada en modo `'estricto'`. Se agregaron 7 comprobaciones de privacidad, verificadas quitando el filtro y devolviendo el correo al formulario: **detectan ambas regresiones**. `sw.js` → `control-pagos-v58`.
+
 - **2026-09-16**: 🔧 **Despliegue nuevo del Apps Script — `APPS_SCRIPT_URL` cambió.** El despliegue anterior (`AKfycbyDHauDZG…`) **dejó de tomar el código nuevo**: `verificarVersion()` en el editor mostraba las 7 secciones, pero el Web App seguía sirviendo una versión vieja incluso eligiendo "New version" y tras sondear 2 minutos. Se creó un despliegue nuevo (`AKfycbxDRCP3efj…`, Version 17) y se verificó que responde las 7 secciones.
   - **Nuevo diagnóstico disponible: `verificarVersion()`** — se corre desde el editor y muestra qué código está **guardado**, independientemente del despliegue. Separa dos problemas que desde afuera se ven idénticos: "pegué una copia vieja" vs. "el despliegue apunta a una versión anterior". Fue lo que permitió descartar el primero.
   - ⚠️ **Si un despliegue deja de actualizarse, no insistir:** crear uno nuevo (`Deploy → New deployment`) y cambiar `APPS_SCRIPT_URL` en `index.html`. Es un cambio de una línea y evita perder intentos.
