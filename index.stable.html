@@ -352,6 +352,15 @@
     .tipo-btn.active[data-value="seguridad_social"] .tipo-icon svg { color: #0d9488; }
     .tipo-btn.active[data-value="seguridad_social"] .tipo-label { color: #0d9488; }
 
+    .tipo-btn.active[data-value="compra_materiales"] {
+      border-color: #4f46e5;
+      background: rgba(79,70,229,0.08);
+      box-shadow: 0 0 0 3px rgba(79,70,229,0.12);
+    }
+    .tipo-btn.active[data-value="compra_materiales"] .tipo-icon { background: rgba(79,70,229,0.12); }
+    .tipo-btn.active[data-value="compra_materiales"] .tipo-icon svg { color: #4f46e5; }
+    .tipo-btn.active[data-value="compra_materiales"] .tipo-label { color: #4f46e5; }
+
     .tipo-btn.active[data-value="nomina"] {
       border-color: #ea580c;
       background: rgba(234,88,12,0.08);
@@ -974,6 +983,7 @@
     .badge-caja     { background: rgba(219,39,119,0.1); color: #db2777; }
     .badge-seguridad { background: rgba(13,148,136,0.1); color: #0d9488; }
     .badge-nomina    { background: rgba(234,88,12,0.1);  color: #ea580c; }
+    .badge-materiales{ background: rgba(79,70,229,0.1);  color: #4f46e5; }
 
     .badge-estado-pendiente  { background: var(--warning-light); color: var(--warning); }
     .badge-estado-aprobado   { background: var(--success-light); color: var(--success); }
@@ -2205,6 +2215,17 @@
           <span class="tipo-label">Pago Nómina</span>
         </button>
 
+        <button type="button" class="tipo-btn" data-value="compra_materiales">
+          <div class="tipo-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+              <line x1="12" y1="22.08" x2="12" y2="12"/>
+            </svg>
+          </div>
+          <span class="tipo-label">Compra Materiales</span>
+        </button>
+
       </div>
       <input type="hidden" id="tipoFactura" name="tipo_factura" />
 
@@ -2328,6 +2349,7 @@
             <option value="caja_menor">Caja Menor</option>
             <option value="seguridad_social">Seguridad Social</option>
             <option value="nomina">Pago Nómina</option>
+            <option value="compra_materiales">Compra Materiales</option>
           </select>
         </div>
         <div class="field">
@@ -2513,6 +2535,17 @@
               </svg>
             </div>
             <span class="tipo-label">Pago Nómina</span>
+          </button>
+
+          <button type="button" class="tipo-btn" data-value="compra_materiales">
+            <div class="tipo-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                <line x1="12" y1="22.08" x2="12" y2="12"/>
+              </svg>
+            </div>
+            <span class="tipo-label">Compra Materiales</span>
           </button>
 
         </div>
@@ -2879,7 +2912,7 @@
       nombre:    '',
       foto:      '',
       rol:       'admin',
-      secciones: ['pagos', 'viaticos', 'caja_menor', 'impuestos', 'seguridad_social', 'nomina']
+      secciones: ['pagos', 'viaticos', 'caja_menor', 'impuestos', 'seguridad_social', 'nomina', 'compra_materiales']
     };
 
     // Apps Script no responde bien al preflight CORS, así que se envía como
@@ -3160,6 +3193,10 @@
 
     function tipoInfo(tipoRaw) {
       const tipo = String(tipoRaw || '').toLowerCase();
+      // Los exactos van PRIMERO. Ojo: esta función termina devolviendo "Venta"
+      // por defecto, así que un tipo sin caso propio se etiquetaría mal en vez
+      // de fallar de forma visible.
+      if (tipo === 'compra_materiales') return { badgeClass: 'badge-materiales', label: 'Compra Materiales' };
       if (tipo.includes('impuesto')) return { badgeClass: 'badge-impuestos', label: 'Pago Impuestos' };
       if (tipo.includes('viatic'))   return { badgeClass: 'badge-viaticos',  label: 'Viáticos' };
       if (tipo.includes('caja'))     return { badgeClass: 'badge-caja',      label: 'Caja Menor' };
@@ -4211,7 +4248,8 @@
       viaticos:         'Viáticos',
       caja_menor:       'Caja Menor',
       impuestos:        'Pago Impuestos',
-      seguridad_social: 'Seguridad Social',
+      seguridad_social:  'Seguridad Social',
+      compra_materiales: 'Compra Materiales',
       nomina:           'Pago Nómina'
     };
 
@@ -4686,7 +4724,8 @@
       if (t === 'viaticos')         return 'viaticos';
       if (t === 'caja_menor')       return 'caja_menor';
       if (t === 'impuestos')        return 'impuestos';
-      if (t === 'seguridad_social') return 'seguridad_social';
+      if (t === 'seguridad_social')  return 'seguridad_social';
+      if (t === 'compra_materiales') return 'compra_materiales';
       if (t === 'nomina')           return 'nomina';
       return 'pagos';
     }

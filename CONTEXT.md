@@ -392,7 +392,29 @@ Calculándolo, el saldo siempre coincide con las filas que están en las hojas: 
 - Solo **administradores** pueden cargar o corregir un saldo (validado en el servidor, no solo ocultando el botón).
 - **Banco de pruebas: [prueba-saldos.js](prueba-saldos.js)** — 35 comprobaciones de la lógica de dinero contra hojas simuladas. Correr con `node prueba-saldos.js apps-script.gs`. **Re-correrlo ante cualquier cambio en el bloque E.**
 
+## ➕ Cómo agregar un tipo de pago / sección nueva
+Toca **ocho** lugares. Olvidar uno da fallos sutiles y silenciosos — ya pasó dos veces (el CSS de selección, y `tipoInfo()` etiquetando como "Venta"). **[prueba-consulta.js](prueba-consulta.js) verifica los ocho automáticamente**, así que basta correrlo: `node prueba-consulta.js`.
+
+En [apps-script.gs](apps-script.gs):
+1. `SECCIONES` — la clave, el nombre de la hoja y el de la carpeta de Drive (ambas se crean solas al primer registro).
+2. `etiquetaTipo_()` — para los correos. **Los casos exactos van primero**: `'compra_materiales'` contiene `'compra'`, así que el genérico lo capturaría antes.
+
+En [index.html](index.html):
+3. Botón en `#tipoSelector` **y** en `#tipoSelectorSolicitud` (los dos).
+4. CSS `.tipo-btn.active[data-value="..."]` — **sin esto el botón no se marca al tocarlo** y parece que no respondiera.
+5. `<option>` en el filtro `#fTipo`.
+6. `tipoInfo()` — **devuelve "Venta" por defecto**, así que un tipo sin caso propio se etiqueta mal en silencio. Los exactos, primero.
+7. `seccionDeTipoFront()`.
+8. `ETIQUETA_SECCION` (para el selector de secciones de Configuración) y el arreglo `secciones` por defecto de `sesion`.
+
+¿Necesita saldo propio? Solo si es una bolsa de dinero aparte. Si no, `cuentaDePago_()` lo manda al banco de la empresa automáticamente.
+
 ## Historial de cambios recientes
+- **2026-09-16**: ➕ **Sección nueva: "Compra Materiales"** (hoja `Compra Materiales`, carpeta `PJ04 COMPRA MATERIALES`, color índigo `#4f46e5`). Descuenta del banco de la empresa del registro, como los demás tipos que no son fondos.
+  - De paso se corrigió `etiquetaTipo_()`: **Seguridad Social y Pago Nómina salían con el valor crudo en los correos** (`seguridad_social`, `nomina`) porque nunca se les agregó su caso. Se reordenó para que los exactos vayan primero.
+  - **Nuevo control en [prueba-consulta.js](prueba-consulta.js):** verifica que **cada** sección del backend esté dada de alta en los ocho lugares, **ejecutando** `tipoInfo()` y `etiquetaTipo_()` en vez de buscar texto (la primera versión daba falsos negativos porque el código usa prefijos como `'viatic'` e `'impuesto'`). También comprueba que la etiqueta **coincida** entre la app y los correos. Verificado quitando el CSS y el caso de `tipoInfo`: detecta ambos.
+  - Las pruebas de permisos tenían el número de secciones **escrito a mano** y se rompieron al agregar la séptima. Ahora lo leen del backend, así que una sección nueva no rompe pruebas ajenas. (Detalle: `SECCIONES` es `const` y los `const` no quedan expuestos en el contexto de la VM; hay que evaluarlos dentro.) `sw.js` → `control-pagos-v52`.
+
 - **2026-09-16**: 🔍 **Consulta de pagos: diagnóstico claro, auto-reparación del Service Worker y verificación de extremo a extremo.** El usuario reportó `Unexpected token '<', "<!DOCTYPE"... is not valid JSON` al consultar.
   - **Qué significa ese error:** el servidor devolvió **HTML en vez de JSON**. Verificado con `curl` que el backend desplegado responde JSON correcto, así que el HTML se genera **en el navegador del cliente** — casi siempre por un **Service Worker viejo atascado** que rompe la redirección con la que Apps Script entrega las respuestas.
   - **Auto-reparación:** un SW roto **no puede corregirse solo**, porque es él mismo quien sirve la app; se queda indefinidamente y el usuario no tiene forma de saberlo. Ahora la página le pregunta su versión por `MessageChannel`; las anteriores a la v51 **no contestan**, y ese silencio basta para detectarlas: se desregistran y se recarga. Protegido contra bucles con `sessionStorage`.

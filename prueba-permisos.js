@@ -90,11 +90,22 @@ function montar(modoLogin, usuarios) {
   return ctx;
 }
 
+// SECCIONES se declara con `const`, y los `const` NO quedan expuestos como
+// propiedad del contexto: hay que evaluarlos dentro para poder leerlos.
+// Se lee del backend en vez de escribir el número a mano, así agregar una
+// sección nueva no rompe pruebas que no tienen nada que ver con ella.
+function totalSecciones(g) {
+  return vm.runInContext('Object.keys(SECCIONES).length', g);
+}
+
 console.log('\n=== MODO_LOGIN = off: todo abierto, como antes del login ===');
 {
   const g = montar('off', []);
   const ctx = g.contextoDe_(null);
-  chk('da acceso a todas las secciones', ctx.secciones.length === 6, JSON.stringify(ctx.secciones));
+  // El total se lee del backend y no se escribe a mano: agregar una sección
+  // nueva no debe romper una prueba que no tiene nada que ver con ella.
+  const TOTAL = totalSecciones(g);
+  chk('da acceso a todas las secciones', ctx.secciones.length === TOTAL, JSON.stringify(ctx.secciones));
   const hojas = g.hojasPermitidas_(ctx).map(h => h.getName());
   chk('lee las hojas de pagos que existen', hojas.length === 4, JSON.stringify(hojas));
   chk('NUNCA incluye la hoja USUARIOS', hojas.indexOf('USUARIOS') === -1, JSON.stringify(hojas));
@@ -104,8 +115,9 @@ console.log('\n=== MODO_LOGIN = off: todo abierto, como antes del login ===');
 console.log('\n=== seccionesDeUsuario_: cómo se interpreta la columna SECCIONES ===');
 {
   const g = montar('off', []);
-  chk('"todas" = las 6',        g.seccionesDeUsuario_({ SECCIONES: 'todas' }).length === 6);
-  chk('vacío = las 6',          g.seccionesDeUsuario_({ SECCIONES: '' }).length === 6);
+  const TOTAL = totalSecciones(g);
+  chk('"todas" = todas las secciones', g.seccionesDeUsuario_({ SECCIONES: 'todas' }).length === TOTAL);
+  chk('vacío = todas las secciones',   g.seccionesDeUsuario_({ SECCIONES: '' }).length === TOTAL);
   const dos = g.seccionesDeUsuario_({ SECCIONES: 'viaticos,caja_menor' });
   chk('lista de dos = 2',       dos.length === 2 && dos.indexOf('viaticos') !== -1, JSON.stringify(dos));
   chk('tolera espacios',        g.seccionesDeUsuario_({ SECCIONES: ' viaticos , nomina ' }).length === 2);
@@ -154,7 +166,7 @@ console.log('\n=== suave: si no hay token, se deja pasar (para probar sin romper
 {
   const g = montar('suave', []);
   let ok = true;
-  try { const c = g.contextoDe_({}); ok = c.secciones.length === 6; } catch (e) { ok = false; }
+  try { const c = g.contextoDe_({}); ok = c.secciones.length === totalSecciones(g); } catch (e) { ok = false; }
   chk('sin token pasa con acceso total', ok);
 }
 

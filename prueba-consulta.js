@@ -170,5 +170,73 @@ console.log('\n=== El filtro del navegador sobre esos registros ===');
   chk('devuelve ordenado (no rompe con fechas iguales)', fechas.length === 3, fechas);
 }
 
+// ── Alta completa de cada tipo de pago ────────────────────────────────────
+console.log('\n=== Cada tipo de pago está dado de alta en TODOS lados ===');
+{
+  // Agregar un tipo toca ocho lugares distintos. Olvidar uno da fallos sutiles:
+  // ya pasó con el CSS de selección (el botón no se marcaba al tocarlo) y
+  // tipoInfo() etiqueta como "Venta" cualquier tipo sin caso propio.
+  const gs   = fs.readFileSync('apps-script.gs', 'utf8');
+  const html = fs.readFileSync('index.html', 'utf8');
+  const js   = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].pop()[1];
+
+  // Fuente de verdad: las secciones declaradas en el backend
+  const bloque   = gs.match(/const SECCIONES = \{[\s\S]*?\n\};/)[0];
+  const secciones = [...bloque.matchAll(/^\s{2}(\w+)\s*:/gm)].map(m => m[1]);
+  chk('se leyeron las secciones del backend', secciones.length >= 7, secciones);
+
+  // Los tipos de pago que tienen botón propio (la sección 'pagos' agrupa varios)
+  const tiposConSeccionPropia = secciones.filter(s => s !== 'pagos');
+
+  tiposConSeccionPropia.forEach(tipo => {
+    const etiqueta = tipo.replace(/_/g, ' ');
+
+    chk(etiqueta + ': tiene botón en Nuevo Pago y en Solicitudes',
+        (html.match(new RegExp('data-value="' + tipo + '"', 'g')) || []).length >= 2,
+        (html.match(new RegExp('data-value="' + tipo + '"', 'g')) || []).length);
+
+    chk(etiqueta + ': tiene color de selección (si no, el botón no se marca)',
+        html.indexOf('.tipo-btn.active[data-value="' + tipo + '"]') !== -1);
+
+    chk(etiqueta + ': está en el filtro de Consultar Pagos',
+        html.indexOf('<option value="' + tipo + '"') !== -1);
+
+    chk(etiqueta + ': seccionDeTipoFront lo reconoce',
+        new RegExp("=== '" + tipo + "'\\s*\\)\\s*return '" + tipo + "'").test(js));
+
+    chk(etiqueta + ': tiene etiqueta en Configuración',
+        new RegExp('\\b' + tipo + '\\s*:').test(js.match(/const ETIQUETA_SECCION = \{[\s\S]*?\};/)[0]));
+
+    // Se EJECUTA la función real en vez de buscar texto en el código: el código
+    // usa prefijos ('impuesto', 'viatic') y una comparación de cadenas daba
+    // falsos negativos. Lo que importa es el resultado, no cómo esté escrito.
+    const etiquetaCorreo = g.etiquetaTipo_(tipo);
+    chk(etiqueta + ': etiquetaTipo_ lo traduce para los correos',
+        etiquetaCorreo && etiquetaCorreo !== tipo && etiquetaCorreo !== '—',
+        etiquetaCorreo);
+  });
+
+  // tipoInfo devuelve "Venta" por defecto: cualquier tipo sin caso propio se
+  // etiquetaría MAL en la tabla de resultados y en los reportes exportados,
+  // en silencio. También se ejecuta de verdad.
+  const cuerpoTipoInfo = js.match(/function tipoInfo[\s\S]*?\n    \}/)[0];
+  const ctxInfo = { console };
+  vm.createContext(ctxInfo);
+  vm.runInContext(cuerpoTipoInfo + '; this.tipoInfo = tipoInfo;', ctxInfo);
+
+  const malEtiquetados = tiposConSeccionPropia
+    .map(t => ({ tipo: t, info: ctxInfo.tipoInfo(t) }))
+    .filter(x => x.info.label === 'Venta' || x.info.badgeClass === 'badge-venta');
+  chk('ningún tipo cae al "Venta" por defecto de tipoInfo',
+      malEtiquetados.length === 0, malEtiquetados);
+
+  // Y que la etiqueta mostrada sea coherente entre la app y los correos
+  const incoherentes = tiposConSeccionPropia
+    .map(t => ({ tipo: t, app: ctxInfo.tipoInfo(t).label, correo: g.etiquetaTipo_(t) }))
+    .filter(x => x.app !== x.correo);
+  chk('la etiqueta coincide entre la app y los correos',
+      incoherentes.length === 0, incoherentes);
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);

@@ -149,6 +149,7 @@ const SECCIONES = {
   caja_menor:       { hoja: 'Caja Menor',       carpeta: 'PJ04 CAJA MENOR',       tipos: ['caja_menor'] },
   impuestos:        { hoja: 'Pago Impuestos',   carpeta: 'PJ04 IMPUESTOS',        tipos: ['impuestos'] },
   seguridad_social: { hoja: 'Seguridad Social', carpeta: 'PJ04 SEGURIDAD SOCIAL', tipos: ['seguridad_social'] },
+  compra_materiales:{ hoja: 'Compra Materiales', carpeta: 'PJ04 COMPRA MATERIALES', tipos: ['compra_materiales'] },
   nomina:           { hoja: 'Pago Nomina',      carpeta: 'PJ04 NOMINA',           tipos: ['nomina'] }
 };
 
@@ -547,12 +548,17 @@ function formatoMoneda_(valor) {
 
 function etiquetaTipo_(tipo) {
   const t = String(tipo || '').toLowerCase();
+  // Los exactos van PRIMERO: 'compra_materiales' contiene 'compra', así que si
+  // se comprobara antes el genérico, saldría etiquetado como "Compra".
+  if (t === 'compra_materiales')    return 'Compra Materiales';
+  if (t === 'seguridad_social')     return 'Seguridad Social';
+  if (t === 'nomina')               return 'Pago Nómina';
+  if (t === 'compra')               return 'Compra';
+  if (t === 'venta')                return 'Venta';
   if (t.indexOf('impuesto') !== -1) return 'Pago Impuestos';
   if (t.indexOf('viatic')   !== -1) return 'Viáticos';
   if (t.indexOf('caja')     !== -1) return 'Caja Menor';
   if (t.indexOf('pago')     !== -1) return 'Pago a Proveedor';
-  if (t === 'compra')               return 'Compra';
-  if (t === 'venta')                return 'Venta';
   return tipo || '—';
 }
 
@@ -1219,7 +1225,8 @@ function notificarAccesoAprobado_(correo, nombre) {
 function precargarUsuarios() {
   const LISTA = [
     // { correo: 'persona@empresa.com', nombre: 'Nombre Apellido', telefono: '300...', rol: 'usuario', secciones: 'viaticos,caja_menor' },
-    // secciones válidas: pagos, viaticos, caja_menor, impuestos, seguridad_social, nomina — o 'todas'
+    // secciones válidas: pagos, viaticos, caja_menor, impuestos, seguridad_social,
+    // nomina, compra_materiales — o 'todas'
   ];
 
   if (!LISTA.length) {
