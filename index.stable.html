@@ -2521,7 +2521,8 @@
         <table class="results-table">
           <thead>
             <tr>
-              <th>Fecha</th>
+              <th>Registrado</th>
+              <th>Fecha de pago</th>
               <th>Empresa</th>
               <th>Tipo</th>
               <th>Nombre del pago</th>
@@ -3401,6 +3402,36 @@
       return new Date(str);
     }
 
+    // Lee FECHA REGISTRO, que viene como 'dd/MM/yyyy HH:mm' y CON HORA.
+    //
+    // `parseFecha` no sirve para esto: ante '15/09/2026 18:40' parte por '/' y
+    // termina haciendo Number('2026 18:40') = NaN, o sea fecha inválida. Por eso
+    // nunca se pudo ordenar por el momento del registro, y los pagos del mismo
+    // día quedaban en el orden en que estaban en la hoja —que no es cronológico,
+    // porque la migración agregó las filas viejas al final.
+    function parseFechaHora(valor) {
+      if (!valor) return null;
+      const texto = String(valor).trim();
+
+      const m = texto.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+      if (m) return new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0));
+
+      const iso = texto.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{1,2}):(\d{2}))?/);
+      if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3], +(iso[4] || 0), +(iso[5] || 0));
+
+      const d = new Date(texto);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    // Para mostrar: 15/09/2026 18:40
+    function formatoFechaHora(valor) {
+      const d = parseFechaHora(valor);
+      if (!d) return String(valor || '—');
+      const p = n => String(n).padStart(2, '0');
+      return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() +
+             ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+
     function tipoInfo(tipoRaw) {
       const tipo = String(tipoRaw || '').toLowerCase();
       // Los exactos van PRIMERO. Ojo: esta función termina devolviendo "Venta"
@@ -3443,8 +3474,22 @@
         return true;
       });
 
-      // Más reciente primero
-      filtered.sort((a, b) => (parseFecha(b['FECHA DE PAGO']) || 0) - (parseFecha(a['FECHA DE PAGO']) || 0));
+      // Del último registrado al primero. Se ordena por FECHA REGISTRO, que
+      // incluye la hora: la fecha de pago se repite mucho (varios pagos del
+      // mismo día) y con ella sola los empates quedaban en el orden de la hoja,
+      // que no es cronológico. Si dos registros empatan hasta el minuto, se
+      // desempata por fecha de pago.
+      filtered.sort((a, b) => {
+        const ra = parseFechaHora(a['FECHA REGISTRO']);
+        const rb = parseFechaHora(b['FECHA REGISTRO']);
+        if (ra && rb) {
+          const dif = rb.getTime() - ra.getTime();
+          if (dif !== 0) return dif;
+        } else if (ra || rb) {
+          return ra ? -1 : 1;    // los que tienen fecha de registro van primero
+        }
+        return (parseFecha(b['FECHA DE PAGO']) || 0) - (parseFecha(a['FECHA DE PAGO']) || 0);
+      });
       return filtered;
     }
 
@@ -3482,7 +3527,8 @@
             : '—';
         const valor = valorDe(r);
         return `<tr>
-          <td>${r['FECHA DE PAGO'] || '—'}</td>
+          <td style="white-space:nowrap;">${escapeHtml(formatoFechaHora(r['FECHA REGISTRO']))}</td>
+          <td style="white-space:nowrap;">${r['FECHA DE PAGO'] || '—'}</td>
           <td>${r['EMPRESA'] || '—'}</td>
           <td><span class="badge ${badgeClass}">${tipoLabel}</span></td>
           <td>${r['NOMBRE DE PAGO'] || '—'}</td>
@@ -3524,7 +3570,10 @@
 
     function filasParaExportar() {
       return ultimosResultados.map(r => ({
-        'Fecha':           r['FECHA DE PAGO'] || '',
+        // La fecha de registro va primero porque es la que define el orden:
+        // sin ella, quien reciba el Excel no puede reproducir el mismo listado.
+        'Registrado':      formatoFechaHora(r['FECHA REGISTRO']),
+        'Fecha de pago':   r['FECHA DE PAGO'] || '',
         'Empresa':         r['EMPRESA'] || '',
         'Tipo':            tipoInfo(r['TIPO FACTURA']).label,
         'Nombre del pago': r['NOMBRE DE PAGO'] || '',

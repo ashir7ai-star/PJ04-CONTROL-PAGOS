@@ -115,7 +115,7 @@ console.log('\n=== El filtro del navegador sobre esos registros ===');
   const html = fs.readFileSync('index.html', 'utf8');
   const js   = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].pop()[1];
 
-  const trozos = ['function parseFecha', 'function filtrarRows'].map(f => {
+  const trozos = ['function parseFecha', 'function parseFechaHora', 'function filtrarRows'].map(f => {
     const i = js.indexOf(f);
     if (i === -1) throw new Error('No se encontró ' + f + ' en index.html');
     let prof = 0, j = i, visto = false, c = '';
@@ -163,11 +163,73 @@ console.log('\n=== El filtro del navegador sobre esos registros ===');
   chk('filtrar por un tipo sin permiso devuelve vacío, no error',
       ctx.filtrarRows(filas).length === 0);
 
-  // Orden: más reciente primero
   Object.keys(campos).forEach(k => delete campos[k]);
-  const ordenado = ctx.filtrarRows(filas);
-  const fechas = ordenado.map(r => r['FECHA DE PAGO']);
-  chk('devuelve ordenado (no rompe con fechas iguales)', fechas.length === 3, fechas);
+  chk('devuelve ordenado (no rompe con fechas iguales)', ctx.filtrarRows(filas).length === 3);
+}
+
+// ── Orden cronológico: del último registrado al primero ───────────────────
+console.log('\n=== Orden: del último registrado al primero ===');
+{
+  // Caso real reportado: varios viáticos con la MISMA fecha de pago. Ordenar
+  // por fecha de pago los dejaba en el orden de la hoja —que no es cronológico,
+  // porque la migración agregó las filas viejas al final—, así que un registro
+  // de prueba viejo aparecía antes que el último cargado del día.
+  const html = fs.readFileSync('index.html', 'utf8');
+  const js   = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].pop()[1];
+
+  const trozos = ['function parseFecha', 'function parseFechaHora', 'function filtrarRows'].map(f => {
+    const i = js.indexOf(f);
+    if (i === -1) throw new Error('No se encontró ' + f);
+    let prof = 0, j = i, visto = false, c = '';
+    while (j < js.length) {
+      const ch = js[j]; c += ch;
+      if (ch === '{') { prof++; visto = true; }
+      if (ch === '}') { prof--; if (visto && prof === 0) break; }
+      j++;
+    }
+    return c;
+  }).join('\n');
+
+  const campos = {};
+  const doc = { getElementById: () => ({ get value() { return ''; }, _flatpickr: { selectedDates: [] } }) };
+  const ctx = { document: doc, vistaRestringida: null, TIPOS_GASTOS: [], console, Date };
+  vm.createContext(ctx);
+  vm.runInContext(trozos + '; this.filtrarRows = filtrarRows;', ctx);
+
+  // Mismo día de pago, distintas horas de registro, en orden arbitrario de hoja
+  const p = (registro, nombre) => ({
+    'FECHA REGISTRO': registro, 'FECHA DE PAGO': '2026-09-15',
+    'EMPRESA': 'AMPAC SAS', 'TIPO FACTURA': 'viaticos',
+    'NOMBRE DE PAGO': nombre, 'PROVEEDOR': 'x', 'VALOR FACTURA': 1
+  });
+
+  const filas = [
+    p('15/09/2026 19:40', 'TEST viaticos'),     // el más nuevo, pero primero en la hoja
+    p('15/09/2026 14:50', 'DESAYUNO'),
+    p('15/09/2026 18:40', 'HIDRATACION'),
+    p('15/09/2026 15:00', 'MATERIALES')
+  ];
+
+  const orden = ctx.filtrarRows(filas).map(r => r['NOMBRE DE PAGO']);
+  chk('ordena por hora de registro, del más nuevo al más viejo',
+      JSON.stringify(orden) === JSON.stringify(['TEST viaticos', 'HIDRATACION', 'MATERIALES', 'DESAYUNO']),
+      orden);
+
+  // La hora importa: sin ella, los cuatro empatarían y quedaría el orden de hoja
+  const soloFecha = ctx.filtrarRows([
+    p('16/09/2026 09:00', 'de hoy'),
+    p('15/09/2026 23:59', 'de ayer tarde')
+  ]).map(r => r['NOMBRE DE PAGO']);
+  chk('un registro de hoy va antes que uno de ayer',
+      JSON.stringify(soloFecha) === JSON.stringify(['de hoy', 'de ayer tarde']), soloFecha);
+
+  // Filas sin fecha de registro (datos viejos) no deben romper el orden
+  const conHuecos = ctx.filtrarRows([
+    { 'FECHA REGISTRO': '', 'FECHA DE PAGO': '2026-09-10', 'NOMBRE DE PAGO': 'sin registro', 'PROVEEDOR': 'x', 'VALOR FACTURA': 1 },
+    p('15/09/2026 10:00', 'con registro')
+  ]).map(r => r['NOMBRE DE PAGO']);
+  chk('las filas sin fecha de registro no rompen el orden',
+      conHuecos.length === 2 && conHuecos[0] === 'con registro', conHuecos);
 }
 
 // ── Alta completa de cada tipo de pago ────────────────────────────────────

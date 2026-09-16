@@ -461,6 +461,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-16**: 🔴 **Consultar Pagos no mostraba el orden cronológico real.** Detectado por el usuario al cotejar contra el Sheet de viáticos.
+  - **Causa:** se ordenaba por **FECHA DE PAGO**, que en viáticos se repite mucho (varios pagos del mismo día). Al empatar quedaban en el orden de la hoja, que **no es cronológico**: la migración agregó las filas viejas al final, así que un registro de prueba aparecía antes que el último cargado del día.
+  - **Y había un fallo más profundo:** `parseFecha()` **no sabe leer FECHA REGISTRO**. Ante `15/09/2026 18:40` parte por `/` y termina haciendo `Number("2026 18:40")` = NaN → fecha inválida. Por eso nunca se pudo ordenar por el momento del registro.
+  - **Fix:** nueva `parseFechaHora()` que lee fecha **con hora** (`dd/MM/yyyy HH:mm` e ISO), y el orden pasa a ser por **FECHA REGISTRO descendente**, con FECHA DE PAGO como desempate. Las filas sin fecha de registro no rompen el orden.
+  - **Se agregó la columna "Registrado"** a la tabla y a las exportaciones (Excel y PDF), primera de todas: sin ella, quien recibe el archivo no puede reproducir ni verificar el orden. Es el mismo criterio de veracidad que pidió el usuario.
+  - 3 comprobaciones nuevas en [prueba-consulta.js](prueba-consulta.js), verificadas restaurando el orden viejo: reproduce el síntoma exacto. `sw.js` → `control-pagos-v65`.
+
 - **2026-09-16**: 🎨 **Rediseño de la lista de usuarios en Configuración.** En celular se veía desordenada: era una tabla convertida en pares "ETIQUETA: valor", con los valores alineados a la derecha y cortados (`nathan@ylevigroup.cor`, `Administrado`).
   - **Ahora es una lista, no una tabla.** El mismo marcado se ve como tabla en pantalla ancha y como **tarjeta con jerarquía propia** en celular: avatar con iniciales, nombre destacado, correo y teléfono debajo, y luego rol, estado, secciones y último acceso en orden de importancia. Los administradores llevan el avatar en color.
   - **Cuatro columnas, cuatro bloques por fila.** El encabezado y las filas comparten la misma grilla; si no coinciden, los títulos quedan corridos respecto de los datos **sin dar ningún error**. Hay 3 comprobaciones en [prueba-frontend.js](prueba-frontend.js) que vigilan esa correspondencia, verificadas desalineando el encabezado a propósito.
