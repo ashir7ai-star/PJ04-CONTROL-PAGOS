@@ -486,6 +486,42 @@ function formaDeTexto_(t) {
 
 function revisarFechasRegistro() {
   const lineas = ['CÓMO ESTÁN GUARDADAS LAS FECHAS DE REGISTRO', ''];
+
+  // ZONAS HORARIAS. Importa más de lo que parece:
+  //
+  // Una celda que es FECHA REAL guarda un instante, y formatearla la convierte
+  // a la zona que se le pida. Una celda de TEXTO se arma con new Date(...), que
+  // usa la zona del SCRIPT. Si esas zonas no coinciden, los dos grupos quedan
+  // corridos en horas ENTRE SÍ: cada registro se ve creíble por separado, pero
+  // intercalados dan un orden equivocado.
+  //
+  // Hay que revisarlo ANTES de normalizar: normalizar con las zonas desalineadas
+  // grabaría el corrimiento en la hoja, y ahí ya no se puede distinguir del dato.
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const zHoja   = ss.getSpreadsheetTimeZone();
+    const zScript = Session.getScriptTimeZone();
+    lineas.push('ZONAS HORARIAS');
+    lineas.push('   hoja de cálculo:      ' + zHoja);
+    lineas.push('   script (new Date):    ' + zScript);
+    lineas.push('   ZONA_HORARIA del código: ' + ZONA_HORARIA);
+
+    // La comparación que importa no son los nombres sino el desfase real hoy.
+    const ahora = new Date();
+    const enHoja   = Utilities.formatDate(ahora, zHoja,        'yyyy-MM-dd HH:mm');
+    const enScript = Utilities.formatDate(ahora, zScript,      'yyyy-MM-dd HH:mm');
+    const enCodigo = Utilities.formatDate(ahora, ZONA_HORARIA, 'yyyy-MM-dd HH:mm');
+    lineas.push('   el mismo instante:    hoja ' + enHoja + ' · script ' + enScript + ' · código ' + enCodigo);
+    lineas.push(enHoja === enScript && enScript === enCodigo
+      ? '   ✅ Las tres coinciden: no hay corrimiento posible por zona horaria.'
+      : '   ⚠️ NO COINCIDEN. Las fechas reales y las de texto quedan corridas entre sí. ' +
+        'NO normalizar hasta alinearlas (Archivo → Configuración → Zona horaria).');
+    lineas.push('');
+  } catch (err) {
+    lineas.push('No se pudieron leer las zonas horarias: ' + err.message);
+    lineas.push('');
+  }
+
   let textoAmbiguo = 0, textoClaro = 0, fechasReales = 0, vacias = 0, otras = 0;
 
   // Evidencia de formato para TODA la columna. Un solo registro con el primer
@@ -1376,7 +1412,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-16-d · fechas reales + formato por columna';
+const REVISION_BACKEND = '2026-09-16-e · fechas reales + formato por columna + zonas';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
