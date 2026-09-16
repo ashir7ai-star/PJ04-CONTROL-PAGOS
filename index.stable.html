@@ -4105,6 +4105,23 @@
     // borra al cerrar sesión. Cuando vence, el servidor lo rechaza y la app
     // vuelve a pedir el ingreso; no hay forma de estirar su validez desde acá.
     const CLAVE_SESION = 'pj04_sesion';
+    // Se recuerda el último modo que informó el servidor. Si una recarga no
+    // logra preguntarlo, se usa este en vez de asumir 'off' — asumir 'off'
+    // apagaría los permisos de alguien que sí tiene sesión válida.
+    const CLAVE_MODO = 'pj04_modo';
+
+    function leerModoRecordado() {
+      try {
+        const m = localStorage.getItem(CLAVE_MODO);
+        return (m === 'off' || m === 'suave' || m === 'estricto') ? m : null;
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function guardarModoRecordado(modo) {
+      try { localStorage.setItem(CLAVE_MODO, modo); } catch (err) {}
+    }
 
     // Lee la fecha de vencimiento que viene DENTRO del token. No es una
     // validación de seguridad (esa la hace el servidor contra Google): sirve
@@ -4201,21 +4218,46 @@
     // interruptor vive en un solo lado (MODO_LOGIN en el Apps Script) y no hay
     // que republicar la app para activarlo o desactivarlo.
     async function arrancarSesion() {
+      // ORDEN IMPORTANTE: primero se restaura la sesión guardada, DESPUÉS se
+      // consulta la red.
+      //
+      // Al revés (como estaba) la sesión dependía de que el servidor
+      // respondiera rápido: si la consulta tardaba o fallaba, se asumía
+      // 'off' y el usuario perdía su sesión y sus permisos de administrador
+      // en silencio, sin haber cerrado sesión. Apps Script tarda más de 8
+      // segundos con frecuencia, así que pasaba seguido.
+      //
+      // Restaurar primero no debilita nada: la sesión guardada ya fue validada
+      // por el servidor cuando se creó, y toda operación real la vuelve a
+      // validar. Acá solo decide qué se le muestra a la persona.
+      const guardada      = leerSesionGuardada();
+      const modoRecordado = leerModoRecordado();
+      let   restaurada    = false;
+
+      if (sesionGuardadaSirve(guardada)) {
+        sesion.modo    = guardada.modo || modoRecordado || 'suave';
+        sesion.idToken = guardada.idToken;
+        aplicarSesion(guardada);
+        ocultarLogin();
+        restaurada = true;
+      }
+
       // Red de seguridad: la pantalla de acceso arranca visible para que no se
       // alcance a ver contenido detrás. Si algo sale mal y nadie la oculta, la
-      // app queda tapada y nadie puede trabajar. Este temporizador garantiza
-      // que eso no pase: pase lo que pase, a los 12s se destapa.
+      // app queda tapada y nadie puede trabajar.
       const salvavidas = setTimeout(() => {
         if (loginOverlay.style.display !== 'none' && !sesion.correo) {
           console.warn('arrancarSesion no respondió a tiempo; se destapa la app.');
           ocultarLogin();
         }
-      }, 12000);
+      }, 20000);
 
       let estado = null;
       try {
         const control = new AbortController();
-        const alarma  = setTimeout(() => control.abort(), 8000);
+        // 25s: Apps Script en frío tarda bastante, y cortar antes hacía que
+        // una respuesta lenta se confundiera con "el login está apagado".
+        const alarma  = setTimeout(() => control.abort(), 25000);
         try {
           const res = await fetch(APPS_SCRIPT_URL + '?action=estado_login&_=' + Date.now(), { signal: control.signal });
           estado = await res.json();
@@ -4227,10 +4269,18 @@
       }
       clearTimeout(salvavidas);
 
-      // Si no se pudo consultar, se asume 'off' y el sistema sigue funcionando.
-      // Preferimos que la app quede usable a dejar a todos afuera por un fallo
-      // de red: la restricción real la hace el servidor de todos modos.
-      sesion.modo = (estado && estado.modo) || 'off';
+      if (estado && estado.modo) {
+        guardarModoRecordado(estado.modo);
+        sesion.modo = estado.modo;
+      } else if (restaurada || modoRecordado) {
+        // No se pudo preguntar: se usa el último modo conocido en vez de
+        // asumir 'off', que apagaría los permisos de quien sí tiene sesión.
+        sesion.modo = sesion.modo || modoRecordado;
+      } else {
+        // Primera visita de este navegador y sin respuesta del servidor: la
+        // app queda usable. La restricción real la aplica el servidor igual.
+        sesion.modo = 'off';
+      }
 
       if (sesion.modo === 'off') {
         ocultarLogin();
@@ -4239,16 +4289,10 @@
         return;
       }
 
-      // Si hay una sesión guardada y todavía vale, se entra directo. La app
-      // queda usable al instante y la validación contra el servidor corre
-      // detrás: si resulta que ya no sirve, ahí se pide el ingreso.
-      const guardada = leerSesionGuardada();
-      if (sesionGuardadaSirve(guardada)) {
-        sesion.idToken = guardada.idToken;
-        aplicarSesion(guardada);
-        ocultarLogin();
+      if (restaurada) {
+        aplicarPermisos();     // ahora ya se conoce el modo definitivo
         cargarSaldos(false);
-        revalidarSesion();
+        revalidarSesion();     // confirma contra el servidor, en segundo plano
         return;
       }
 
