@@ -1,4 +1,4 @@
-const CACHE = 'control-pagos-v52';
+const CACHE = 'control-pagos-v53';
 // Rutas RELATIVAS a propósito: así la app funciona igual en
 // ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/ que en un dominio propio, sin
 // tener que cambiar código el día que se mude. En un Service Worker, './'
@@ -25,7 +25,14 @@ self.addEventListener('install', e => {
       // actualizaciones sin ningún aviso.
       // Con allSettled, lo que se pueda cachear se cachea y lo que no, se
       // pedirá a la red cuando haga falta. La app funciona igual.
-      Promise.allSettled(ASSETS.map(u => c.add(u).catch(() => null)))
+      // `cache: 'reload'` obliga a bajar de la RED, saltándose la caché HTTP
+      // del navegador. Sin esto, GitHub Pages manda `Cache-Control: max-age=600`
+      // y la instalación podía guardar en la caché NUEVA una copia VIEJA de
+      // index.html: la versión subía pero el contenido seguía siendo el de
+      // antes, y el usuario no veía los cambios aunque todo pareciera bien.
+      Promise.allSettled(ASSETS.map(
+        u => c.add(new Request(u, { cache: 'reload' })).catch(() => null)
+      ))
     )
   );
   self.skipWaiting();
@@ -70,6 +77,31 @@ self.addEventListener('fetch', e => {
   // Las respuestas redirigidas no se pueden devolver desde un Service Worker
   // cuando el pedido no está en modo "follow"; se dejan pasar directo.
   if (e.request.mode === 'navigate' && e.request.redirect !== 'follow') return;
+
+  // ── El documento HTML: primero la red, la caché como respaldo ──
+  //
+  // El resto de los archivos (fuentes, librerías de CDN) casi nunca cambian y
+  // conviene servirlos de caché. index.html es lo contrario: es lo ÚNICO que
+  // cambia en cada actualización. Servirlo de caché hacía que el usuario
+  // siguiera viendo una versión vieja aunque el despliegue hubiera salido bien
+  // — pasó varias veces y es difícil de diagnosticar, porque todo "funciona".
+  //
+  // Si no hay red, se usa la copia guardada: la app sigue abriendo sin conexión.
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request)
+        .then(respuesta => {
+          // Se guarda bajo './index.html' y no bajo la URL pedida, para que
+          // los enlaces con parámetros (?vista=gastos) no llenen la caché de
+          // copias equivalentes.
+          const copia = respuesta.clone();
+          caches.open(CACHE).then(c => c.put('./index.html', copia)).catch(() => {});
+          return respuesta;
+        })
+        .catch(() => caches.match('./index.html').then(r => r || caches.match('./')))
+    );
+    return;
+  }
 
   e.respondWith(
     caches.match(e.request).then(cached => cached || fetch(e.request))
