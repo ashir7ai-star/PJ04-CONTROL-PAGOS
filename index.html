@@ -1671,10 +1671,6 @@
           <input type="text" id="fProveedor" placeholder="Nombre del proveedor" />
         </div>
         <div class="field">
-          <label for="fNumeroFactura">Número de pago</label>
-          <input type="text" id="fNumeroFactura" placeholder="Ej: FAC-2024-001" autocomplete="off" />
-        </div>
-        <div class="field">
           <label for="fFechaInicio">Fecha desde</label>
           <input type="text" id="fFechaInicio" placeholder="dd/mm/aaaa" readonly />
         </div>
@@ -2190,7 +2186,6 @@
       document.getElementById('fEmpresa').value        = '';
       document.getElementById('fTipo').value           = '';
       document.getElementById('fProveedor').value      = '';
-      document.getElementById('fNumeroFactura').value  = '';
       document.getElementById('fFechaInicio')._flatpickr.clear();
       document.getElementById('fFechaFin')._flatpickr.clear();
       document.getElementById('searchResults').style.display = 'none';
@@ -2208,7 +2203,7 @@
         if (rows && rows.status === 'error') throw new Error(rows.message || 'Error del servidor');
         if (!Array.isArray(rows)) rows = Object.values(rows);
         // Filtrar filas vacías
-        rows = rows.filter(r => r['PROVEEDOR'] || r['NUMERO DE FACTURA'] || r['NOMBRE DE PAGO']);
+        rows = rows.filter(r => r['PROVEEDOR'] || r['NOMBRE DE PAGO']);
         const filtered = filtrarRows(rows);
         renderResultados(filtered);
       } catch(err) {
@@ -2262,7 +2257,6 @@
       const empresa  = document.getElementById('fEmpresa').value.toLowerCase();
       const tipo     = document.getElementById('fTipo').value.toLowerCase();
       const prov     = document.getElementById('fProveedor').value.toLowerCase().trim();
-      const numFac   = document.getElementById('fNumeroFactura').value.toLowerCase().trim();
       const fi       = document.getElementById('fFechaInicio')._flatpickr.selectedDates[0];
       const ff       = document.getElementById('fFechaFin')._flatpickr.selectedDates[0];
 
@@ -2270,14 +2264,12 @@
         const rEmpresa = String(r['EMPRESA']           || '').toLowerCase();
         const rTipo    = String(r['TIPO FACTURA']       || '').toLowerCase();
         const rProv    = String(r['PROVEEDOR']          || '').toLowerCase();
-        const rNum     = String(r['NUMERO DE FACTURA']  || '').toLowerCase();
         const rFecha   = parseFecha(r['FECHA DE PAGO']);
 
         if (vistaRestringida === 'gastos' && !TIPOS_GASTOS.some(t => rTipo.includes(t))) return false;
         if (empresa && !rEmpresa.includes(empresa))  return false;
         if (tipo    && !rTipo.includes(tipo))         return false;
         if (prov    && !rProv.includes(prov))         return false;
-        if (numFac  && !rNum.includes(numFac))        return false;
         if (fi && rFecha) { const f = new Date(fi.getFullYear(), fi.getMonth(), fi.getDate()); if (rFecha < f) return false; }
         if (ff && rFecha) { const f = new Date(ff.getFullYear(), ff.getMonth(), ff.getDate()); if (rFecha > f) return false; }
         return true;
@@ -2351,14 +2343,12 @@
       const empresa = document.getElementById('fEmpresa').value;
       const tipoVal = document.getElementById('fTipo').value;
       const prov    = document.getElementById('fProveedor').value.trim();
-      const num     = document.getElementById('fNumeroFactura').value.trim();
       const fi      = document.getElementById('fFechaInicio').value.trim();
       const ff      = document.getElementById('fFechaFin').value.trim();
 
       if (empresa)  partes.push('Empresa: ' + empresa);
       if (tipoVal)  partes.push('Tipo: ' + tipoInfo(tipoVal).label);
       if (prov)     partes.push('Proveedor: ' + prov);
-      if (num)      partes.push('N° de pago: ' + num);
       if (fi || ff) partes.push('Fecha: ' + (fi || '…') + ' a ' + (ff || '…'));
 
       return partes.length ? partes.join('   •   ') : 'Todos los registros';

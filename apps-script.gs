@@ -223,7 +223,16 @@ function subirArchivosASeccion_(archivos, seccion) {
 
 function registrarPago_(body) {
   const seccion = seccionDeTipo_(body.tipo_factura);
-  const hoja    = hojaDeSeccion_(seccion);
+
+  // Un usuario solo puede registrar en las secciones que tiene asignadas.
+  // Se valida acá, en el servidor: ocultar el botón en la pantalla no alcanza,
+  // porque cualquiera puede llamar a esta URL directamente.
+  const ctx = contextoDe_(body);
+  if (ctx.secciones.indexOf(seccion) === -1) {
+    throw new Error('SIN_PERMISO_SECCION');
+  }
+
+  const hoja = hojaDeSeccion_(seccion);
 
   agregarFilaPorEncabezados_(hoja, {
     'FECHA REGISTRO': Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'),
@@ -243,12 +252,16 @@ function registrarPago_(body) {
 }
 
 // ─── Consultar pagos (reemplaza el webhook GET de n8n) ────────────────────
-// Lee todas las hojas de pagos. Cuando exista el login, aquí se filtrará por
-// las secciones que tenga permitidas el usuario.
+// Devuelve SOLO las hojas que el usuario tiene permitidas. El filtrado ocurre
+// acá y no en el navegador: el frontend nunca llega a recibir los datos de una
+// sección que no le corresponde.
+// Con MODO_LOGIN = 'off' el contexto da acceso a todas, así que se comporta
+// igual que antes del login.
 
-function consultarPagos_() {
+function consultarPagos_(ctx) {
+  const contexto  = ctx || contextoDe_(null);
   const resultado = [];
-  hojasDePagos_().forEach(hoja => {
+  hojasPermitidas_(contexto).forEach(hoja => {
     const valores = hoja.getDataRange().getValues();
     if (valores.length < 2) return;
     const encabezados = valores[0];
@@ -433,14 +446,35 @@ const ENCABEZADOS_SOLICITUDES = [
 
 // ─── Puntos de entrada del Web App ────────────────────────────────────────
 
+// Los errores de sesión/permiso se devuelven con un "codigo" estable para que
+// el frontend pueda reaccionar (pedir login, mostrar "pendiente de aprobación")
+// en vez de tener que adivinar leyendo el texto del mensaje.
+const CODIGOS_ACCESO = {
+  SESION_INVALIDA:      'Tu sesión venció o no es válida. Volvé a entrar con Google.',
+  NO_REGISTRADO:        'Tu cuenta todavía no tiene acceso al sistema.',
+  PENDIENTE_APROBACION: 'Tu acceso está esperando la aprobación de un administrador.',
+  USUARIO_INACTIVO:     'Tu acceso está desactivado. Hablá con un administrador.',
+  SOLO_ADMIN:           'Esta acción es solo para administradores.',
+  SIN_PERMISO_SECCION:  'No tenés permiso para registrar en esa sección.'
+};
+
+function errorJson_(err) {
+  const texto  = String((err && err.message) || err);
+  const codigo = Object.keys(CODIGOS_ACCESO).filter(c => texto.indexOf(c) !== -1)[0];
+  return respuestaJson_(codigo
+    ? { status: 'error', codigo: codigo, message: CODIGOS_ACCESO[codigo] }
+    : { status: 'error', message: texto });
+}
+
 function doGet(e) {
   const accion = e.parameter.action;
   try {
+    // e.parameter sirve como "body" para que un GET también pueda traer idToken.
     if (accion === 'consultar_solicitudes') return respuestaJson_(consultarSolicitudes_());
-    if (accion === 'consultar_pagos')       return respuestaJson_(consultarPagos_());
+    if (accion === 'consultar_pagos')       return respuestaJson_(consultarPagos_(contextoDe_(e.parameter)));
     return respuestaJson_({ status: 'error', message: 'Acción no reconocida: ' + accion });
   } catch (err) {
-    return respuestaJson_({ status: 'error', message: String(err) });
+    return errorJson_(err);
   }
 }
 
@@ -456,9 +490,16 @@ function doPost(e) {
     if (body.action === 'solicitar_aprobacion') return respuestaJson_(crearSolicitud_(body));
     if (body.action === 'decidir_solicitud')    return respuestaJson_(decidirSolicitud_(body));
     if (body.action === 'registrar_pago')       return respuestaJson_(registrarPago_(body));
+    // Consultar por POST para no mandar el ID token en la URL (quedaría en el
+    // historial del navegador y en los logs del servidor).
+    if (body.action === 'consultar_pagos')      return respuestaJson_(consultarPagos_(contextoDe_(body)));
+    if (body.action === 'iniciar_sesion')       return respuestaJson_(iniciarSesion_(body));
+    if (body.action === 'registrar_usuario')    return respuestaJson_(registrarUsuario_(body));
+    if (body.action === 'listar_usuarios')      return respuestaJson_(listarUsuarios_(body));
+    if (body.action === 'guardar_usuario')      return respuestaJson_(guardarUsuario_(body));
     return respuestaJson_({ status: 'error', message: 'Acción no reconocida: ' + body.action });
   } catch (err) {
-    return respuestaJson_({ status: 'error', message: String(err) });
+    return errorJson_(err);
   }
 }
 
@@ -728,4 +769,419 @@ function notificarSolicitante_(solicitud, estado, comentario) {
     (!aprobado && comentario ? '\n\nMotivo: ' + comentario : '');
 
   MailApp.sendEmail({ to: solicitud['CORREO'], subject: asunto, body: textoPlano, htmlBody: html });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// D) USUARIOS, LOGIN Y PERMISOS POR SECCIÓN
+//
+// Un login en el frontend no da NINGUNA seguridad si el servidor le responde a
+// cualquiera que sepa la URL. Por eso acá el servidor:
+//   1. recibe el ID token de Google que mandó el navegador,
+//   2. lo verifica CONTRA GOOGLE (no confía en nada que venga del cliente),
+//   3. saca de ahí el correo verificado,
+//   4. busca ese correo en la hoja USUARIOS y responde SOLO las hojas que le
+//      corresponden a esa persona.
+// El correo no se puede falsificar desde el navegador porque la firma del
+// token la valida Google, no nosotros.
+// ══════════════════════════════════════════════════════════════════════════
+
+// Client ID de OAuth (Google Cloud Console → Credentials → OAuth 2.0 Client ID,
+// tipo "Web application"). El mismo valor va en index.html.
+const CLIENT_ID_GOOGLE = 'PENDIENTE.apps.googleusercontent.com';
+
+// Interruptor de encendido del control de acceso. Existe para poder desplegar y
+// probar SIN riesgo de dejar afuera a todo el mundo de un sistema que está en
+// producción con pagos reales:
+//   'off'      → no se pide token. El sistema funciona exactamente como hoy.
+//   'suave'    → si llega token se respeta y se filtra por permisos; si no
+//                llega, se deja pasar con acceso total. Sirve para probar el
+//                login en producción sin romperle el trabajo a nadie.
+//   'estricto' → sin token válido de un usuario ACTIVO no se responde nada.
+// Pasar a 'estricto' recién cuando USUARIOS esté cargada y probada.
+const MODO_LOGIN = 'off';
+
+const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
+const ENCABEZADOS_USUARIOS = [
+  'CORREO', 'NOMBRE', 'TELEFONO', 'ROL', 'SECCIONES', 'ESTADO',
+  'FECHA REGISTRO', 'ULTIMO ACCESO'
+];
+
+// ─── Hoja USUARIOS ────────────────────────────────────────────────────────
+
+function hojaUsuarios_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let hoja = ss.getSheetByName(NOMBRE_HOJA_USUARIOS);
+  if (!hoja) {
+    hoja = ss.insertSheet(NOMBRE_HOJA_USUARIOS, ss.getNumSheets());
+    hoja.getRange(1, 1, 1, ENCABEZADOS_USUARIOS.length)
+        .setValues([ENCABEZADOS_USUARIOS]).setFontWeight('bold');
+    hoja.setFrozenRows(1);
+    // Los dos administradores quedan activos de entrada: si no, nadie podría
+    // entrar a Configuración a activar a nadie (el huevo y la gallina).
+    CORREOS_ADMIN.forEach(correo => {
+      hoja.appendRow([
+        correo, '', '', 'admin', 'todas', 'activo',
+        Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'), ''
+      ]);
+    });
+  }
+  return hoja;
+}
+
+function usuariosTodos_() {
+  const valores = hojaUsuarios_().getDataRange().getValues();
+  if (valores.length < 2) return [];
+  const encabezados = valores[0];
+  return valores.slice(1).map((fila, i) => {
+    const obj = { _fila: i + 2 };   // fila real en la hoja, para poder editarla
+    encabezados.forEach((h, j) => { obj[h] = fila[j]; });
+    return obj;
+  }).filter(u => String(u['CORREO']).trim() !== '');
+}
+
+function usuarioPorCorreo_(correo) {
+  const buscado = String(correo || '').trim().toLowerCase();
+  if (!buscado) return null;
+  const hallados = usuariosTodos_().filter(
+    u => String(u['CORREO']).trim().toLowerCase() === buscado
+  );
+  return hallados.length ? hallados[0] : null;
+}
+
+// ─── Verificación del ID token contra Google ──────────────────────────────
+
+function verificarIdToken_(idToken) {
+  if (!idToken) return null;
+
+  // Verificar es una llamada de red por petición. Se cachea unos minutos para
+  // que el login no le sume latencia a cada consulta (la lentitud de
+  // Aprobaciones ya fue un problema real).
+  const cache = CacheService.getScriptCache();
+  const clave = 'tok_' + Utilities.base64Encode(
+    Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, idToken)
+  );
+  const enCache = cache.get(clave);
+  if (enCache) return JSON.parse(enCache);
+
+  const respuesta = UrlFetchApp.fetch(
+    'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken),
+    { muteHttpExceptions: true }
+  );
+  if (respuesta.getResponseCode() !== 200) return null;
+
+  let datos;
+  try { datos = JSON.parse(respuesta.getContentText()); }
+  catch (err) { return null; }
+
+  // Que el token sea válido no alcanza: tiene que ser un token emitido PARA
+  // ESTA aplicación. Sin este chequeo, un token sacado de cualquier otra app
+  // de Google serviría para entrar acá.
+  if (String(datos.aud) !== String(CLIENT_ID_GOOGLE)) return null;
+  if (String(datos.email_verified) !== 'true')        return null;
+  if (Number(datos.exp) * 1000 < Date.now())          return null;
+
+  const perfil = {
+    correo: String(datos.email || '').toLowerCase(),
+    nombre: String(datos.name || ''),
+    foto:   String(datos.picture || '')
+  };
+  // Se cachea hasta que el token expire, con tope de 5 minutos.
+  const vida = Math.max(0, Math.min(300, Math.floor(Number(datos.exp) - Date.now() / 1000)));
+  if (vida > 0) cache.put(clave, JSON.stringify(perfil), vida);
+  return perfil;
+}
+
+// ─── Contexto de la petición: quién llama y qué puede ver ─────────────────
+// Toda acción del Web App pasa por acá. Devuelve el "contexto" que después
+// usan consultarPagos_ y registrarPago_ para decidir qué mostrar y qué dejar
+// escribir.
+
+function contextoDe_(body) {
+  const sinLogin = {
+    autenticado: false, correo: '', nombre: '', rol: 'admin',
+    secciones: Object.keys(SECCIONES), estado: 'activo', modo: MODO_LOGIN
+  };
+
+  if (MODO_LOGIN === 'off') return sinLogin;
+
+  const perfil = verificarIdToken_(body && body.idToken);
+  if (!perfil) {
+    if (MODO_LOGIN === 'suave') return sinLogin;
+    throw new Error('SESION_INVALIDA');
+  }
+
+  const usuario = usuarioPorCorreo_(perfil.correo);
+  if (!usuario) {
+    if (MODO_LOGIN === 'suave') return sinLogin;
+    throw new Error('NO_REGISTRADO');        // el frontend le ofrece registrarse
+  }
+
+  const estado = String(usuario['ESTADO'] || '').toLowerCase();
+  if (estado !== 'activo') {
+    if (MODO_LOGIN === 'suave') return sinLogin;
+    throw new Error(estado === 'pendiente' ? 'PENDIENTE_APROBACION' : 'USUARIO_INACTIVO');
+  }
+
+  return {
+    autenticado: true,
+    correo:      perfil.correo,
+    nombre:      String(usuario['NOMBRE'] || perfil.nombre),
+    rol:         String(usuario['ROL'] || 'usuario').toLowerCase(),
+    secciones:   seccionesDeUsuario_(usuario),
+    estado:      estado,
+    modo:        MODO_LOGIN
+  };
+}
+
+// La columna SECCIONES admite "todas" o una lista separada por comas.
+function seccionesDeUsuario_(usuario) {
+  const crudo = String(usuario['SECCIONES'] || '').trim().toLowerCase();
+  if (!crudo || crudo === 'todas') return Object.keys(SECCIONES);
+  const validas = Object.keys(SECCIONES);
+  return crudo.split(',').map(s => s.trim()).filter(s => validas.indexOf(s) !== -1);
+}
+
+function esAdmin_(ctx) {
+  return ctx.rol === 'admin';
+}
+
+// Las hojas de pagos que este usuario tiene permitido leer.
+function hojasPermitidas_(ctx) {
+  const ss        = SpreadsheetApp.getActiveSpreadsheet();
+  const principal = hojaPrincipal_();
+  const hojas     = [];
+  ctx.secciones.forEach(seccion => {
+    const cfg = SECCIONES[seccion];
+    if (!cfg) return;
+    if (!cfg.hoja) { hojas.push(principal); return; }   // sección "pagos"
+    const h = ss.getSheetByName(cfg.hoja);
+    if (h) hojas.push(h);
+  });
+  return hojas;
+}
+
+// ─── Acciones de sesión ───────────────────────────────────────────────────
+
+// El frontend llama a esto apenas el usuario se loguea con Google.
+// Devuelve qué puede hacer, o por qué no puede entrar.
+function iniciarSesion_(body) {
+  if (MODO_LOGIN === 'off') {
+    return {
+      status: 'success', modo: 'off', acceso: 'total',
+      secciones: Object.keys(SECCIONES), rol: 'admin',
+      mensaje: 'El control de acceso todavía no está activado.'
+    };
+  }
+
+  const perfil = verificarIdToken_(body.idToken);
+  if (!perfil) return { status: 'error', codigo: 'SESION_INVALIDA', message: 'No pudimos validar tu sesión de Google. Volvé a entrar.' };
+
+  const usuario = usuarioPorCorreo_(perfil.correo);
+  if (!usuario) {
+    return {
+      status: 'registro_requerido', codigo: 'NO_REGISTRADO',
+      correo: perfil.correo, nombre: perfil.nombre,
+      message: 'Todavía no tenés acceso. Completá tus datos para solicitarlo.'
+    };
+  }
+
+  const estado = String(usuario['ESTADO'] || '').toLowerCase();
+  if (estado === 'pendiente') {
+    return {
+      status: 'pendiente', codigo: 'PENDIENTE_APROBACION', correo: perfil.correo,
+      message: 'Tu solicitud de acceso está esperando aprobación de un administrador.'
+    };
+  }
+  if (estado !== 'activo') {
+    return {
+      status: 'error', codigo: 'USUARIO_INACTIVO', correo: perfil.correo,
+      message: 'Tu acceso está desactivado. Hablá con un administrador.'
+    };
+  }
+
+  // Marca de último acceso, para que los admins vean quién está usando el sistema.
+  try {
+    const col = ENCABEZADOS_USUARIOS.indexOf('ULTIMO ACCESO') + 1;
+    hojaUsuarios_().getRange(usuario._fila, col)
+      .setValue(Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'));
+  } catch (err) { /* no vale la pena fallar el login por esto */ }
+
+  return {
+    status:    'success',
+    correo:    perfil.correo,
+    nombre:    String(usuario['NOMBRE'] || perfil.nombre),
+    foto:      perfil.foto,
+    rol:       String(usuario['ROL'] || 'usuario').toLowerCase(),
+    secciones: seccionesDeUsuario_(usuario),
+    modo:      MODO_LOGIN
+  };
+}
+
+// Alta propia: queda PENDIENTE, sin ver nada, hasta que un admin la active.
+// Nunca se auto-asigna permisos.
+function registrarUsuario_(body) {
+  const perfil = verificarIdToken_(body.idToken);
+  if (!perfil) return { status: 'error', message: 'No pudimos validar tu sesión de Google.' };
+
+  if (usuarioPorCorreo_(perfil.correo)) {
+    return { status: 'error', message: 'Ese correo ya está registrado en el sistema.' };
+  }
+
+  const nombre   = String(body.nombre   || perfil.nombre || '').trim();
+  const telefono = String(body.telefono || '').trim();
+  if (!nombre)   return { status: 'error', message: 'El nombre es obligatorio.' };
+  if (!telefono) return { status: 'error', message: 'El teléfono es obligatorio.' };
+
+  hojaUsuarios_().appendRow([
+    perfil.correo, nombre, telefono, 'usuario', '', 'pendiente',
+    Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'), ''
+  ]);
+
+  notificarSolicitudDeAcceso_(perfil.correo, nombre, telefono);
+  return { status: 'success', message: 'Solicitud enviada. Un administrador tiene que activarte.' };
+}
+
+function notificarSolicitudDeAcceso_(correo, nombre, telefono) {
+  try {
+    const html = plantillaCorreo_({
+      color:          '#ff9500',
+      colorFondo:     'rgba(255,149,0,0.12)',
+      etiquetaEstado: 'Acceso pendiente',
+      titulo:         nombre,
+      valor:          '',
+      intro:          'Una persona pidió acceso al sistema. Actívala desde Configuración y asignale sus secciones.',
+      detalles:       filaDetalle_('Nombre', nombre) +
+                      filaDetalle_('Correo', correo) +
+                      filaDetalle_('Teléfono', telefono),
+      aviso:          ''
+    });
+    MailApp.sendEmail({
+      to:       CORREOS_ADMIN.join(','),
+      subject:  'Solicitud de acceso: ' + nombre,
+      body:     nombre + ' (' + correo + ', tel. ' + telefono + ') pidió acceso al sistema.',
+      htmlBody: html
+    });
+  } catch (err) { /* el alta ya quedó registrada; el correo es un extra */ }
+}
+
+// ─── Administración de usuarios (solo admins) ─────────────────────────────
+
+function listarUsuarios_(body) {
+  const ctx = contextoDe_(body);
+  if (MODO_LOGIN !== 'off' && !esAdmin_(ctx)) throw new Error('SOLO_ADMIN');
+
+  return {
+    status: 'success',
+    modo: MODO_LOGIN,
+    secciones: Object.keys(SECCIONES).map(k => ({ clave: k, hoja: SECCIONES[k].hoja || 'principal' })),
+    usuarios: usuariosTodos_().map(u => ({
+      correo:    String(u['CORREO']),
+      nombre:    String(u['NOMBRE'] || ''),
+      telefono:  String(u['TELEFONO'] || ''),
+      rol:       String(u['ROL'] || 'usuario').toLowerCase(),
+      secciones: String(u['SECCIONES'] || ''),
+      estado:    String(u['ESTADO'] || '').toLowerCase(),
+      registro:  String(u['FECHA REGISTRO'] || ''),
+      acceso:    String(u['ULTIMO ACCESO'] || '')
+    }))
+  };
+}
+
+function guardarUsuario_(body) {
+  const ctx = contextoDe_(body);
+  if (MODO_LOGIN !== 'off' && !esAdmin_(ctx)) throw new Error('SOLO_ADMIN');
+
+  const correo = String(body.correo || '').trim().toLowerCase();
+  if (!correo) return { status: 'error', message: 'Falta el correo.' };
+
+  const rol    = String(body.rol || 'usuario').toLowerCase();
+  const estado = String(body.estado || 'activo').toLowerCase();
+  if (['admin', 'usuario'].indexOf(rol) === -1)                       return { status: 'error', message: 'Rol inválido.' };
+  if (['activo', 'pendiente', 'inactivo'].indexOf(estado) === -1)     return { status: 'error', message: 'Estado inválido.' };
+
+  // Solo se guardan claves de sección que existan de verdad.
+  const validas   = Object.keys(SECCIONES);
+  const pedidas   = String(body.secciones || '').toLowerCase() === 'todas'
+    ? 'todas'
+    : String(body.secciones || '').split(',').map(s => s.trim()).filter(s => validas.indexOf(s) !== -1).join(',');
+
+  // Red de seguridad: no dejar el sistema sin ningún admin activo. Si se
+  // pudiera, un admin se degradaría a sí mismo y nadie podría volver a entrar
+  // a Configuración.
+  const usuarios     = usuariosTodos_();
+  const adminsActivos = usuarios.filter(u =>
+    String(u['ROL']).toLowerCase() === 'admin' && String(u['ESTADO']).toLowerCase() === 'activo'
+  );
+  const esteEsAdminActivo = adminsActivos.some(u => String(u['CORREO']).toLowerCase() === correo);
+  const dejaDeSerlo       = esteEsAdminActivo && (rol !== 'admin' || estado !== 'activo');
+  if (dejaDeSerlo && adminsActivos.length <= 1) {
+    return { status: 'error', message: 'No se puede: quedaría el sistema sin ningún administrador activo.' };
+  }
+
+  const hoja      = hojaUsuarios_();
+  const existente = usuarioPorCorreo_(correo);
+  const fila      = [
+    correo,
+    String(body.nombre || (existente ? existente['NOMBRE'] : '')),
+    String(body.telefono || (existente ? existente['TELEFONO'] : '')),
+    rol, pedidas, estado,
+    existente ? existente['FECHA REGISTRO'] : Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'),
+    existente ? existente['ULTIMO ACCESO'] : ''
+  ];
+
+  if (existente) hoja.getRange(existente._fila, 1, 1, fila.length).setValues([fila]);
+  else           hoja.appendRow(fila);
+
+  if (existente && String(existente['ESTADO']).toLowerCase() === 'pendiente' && estado === 'activo') {
+    notificarAccesoAprobado_(correo, fila[1]);
+  }
+  return { status: 'success' };
+}
+
+function notificarAccesoAprobado_(correo, nombre) {
+  try {
+    const html = plantillaCorreo_({
+      color:          '#34c759',
+      colorFondo:     'rgba(52,199,89,0.12)',
+      etiquetaEstado: 'Acceso activado',
+      titulo:         nombre || correo,
+      valor:          '',
+      intro:          'Ya tenés acceso al sistema de Control de Pagos. Entrá con tu cuenta de Google.',
+      detalles:       filaDetalle_('Correo', correo),
+      aviso:          ''
+    });
+    MailApp.sendEmail({
+      to:       correo,
+      subject:  'Tu acceso a Control de Pagos fue activado',
+      body:     'Ya tenés acceso al sistema de Control de Pagos: ' + URL_APP,
+      htmlBody: html
+    });
+  } catch (err) { /* el alta ya quedó hecha */ }
+}
+
+// ─── Utilidad de arranque: precargar los usuarios que ya usan el sistema ──
+// Se corre A MANO desde el editor, ANTES de poner MODO_LOGIN en 'estricto',
+// para que el día que se encienda el login nadie quede afuera.
+// Editar la lista y correr precargarUsuarios().
+function precargarUsuarios() {
+  const LISTA = [
+    // { correo: 'persona@empresa.com', nombre: 'Nombre Apellido', telefono: '300...', rol: 'usuario', secciones: 'viaticos,caja_menor' },
+    // secciones válidas: pagos, viaticos, caja_menor, impuestos, seguridad_social, nomina — o 'todas'
+  ];
+
+  if (!LISTA.length) {
+    return 'La lista está vacía. Editá el array LISTA dentro de precargarUsuarios() y volvé a correr.';
+  }
+
+  const resultados = LISTA.map(u => {
+    const r = guardarUsuario_({
+      correo: u.correo, nombre: u.nombre, telefono: u.telefono || '',
+      rol: u.rol || 'usuario', secciones: u.secciones || '', estado: 'activo'
+    });
+    return u.correo + ': ' + (r.status === 'success' ? 'ok' : 'ERROR - ' + r.message);
+  });
+
+  const resumen = 'Precarga terminada.\n' + resultados.join('\n');
+  Logger.log(resumen);
+  return resumen;
 }
