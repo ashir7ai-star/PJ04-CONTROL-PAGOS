@@ -410,6 +410,11 @@ En [index.html](index.html):
 ¿Necesita saldo propio? Solo si es una bolsa de dinero aparte. Si no, `cuentaDePago_()` lo manda al banco de la empresa automáticamente.
 
 ## Historial de cambios recientes
+- **2026-09-16**: 🔧 **Despliegue nuevo del Apps Script — `APPS_SCRIPT_URL` cambió.** El despliegue anterior (`AKfycbyDHauDZG…`) **dejó de tomar el código nuevo**: `verificarVersion()` en el editor mostraba las 7 secciones, pero el Web App seguía sirviendo una versión vieja incluso eligiendo "New version" y tras sondear 2 minutos. Se creó un despliegue nuevo (`AKfycbxDRCP3efj…`, Version 17) y se verificó que responde las 7 secciones.
+  - **Nuevo diagnóstico disponible: `verificarVersion()`** — se corre desde el editor y muestra qué código está **guardado**, independientemente del despliegue. Separa dos problemas que desde afuera se ven idénticos: "pegué una copia vieja" vs. "el despliegue apunta a una versión anterior". Fue lo que permitió descartar el primero.
+  - ⚠️ **Si un despliegue deja de actualizarse, no insistir:** crear uno nuevo (`Deploy → New deployment`) y cambiar `APPS_SCRIPT_URL` en `index.html`. Es un cambio de una línea y evita perder intentos.
+  - 📌 **Apps Script devuelve 404 transitorios con frecuencia** en `script.googleusercontent.com/macros/echo` (se observó ~50% en una tanda de 10). Se resuelven reintentando; las **lecturas** ya reintentan solas. Las escrituras **no** reintentan a propósito, para no duplicar un pago.
+
 - **2026-09-16**: 🔴 **Un tipo de pago que el servidor no conoce ya NO se archiva en silencio.** Un pago de "Compra Materiales" quedó registrado en la hoja principal y en `PJ04 FACTURAS` en vez de crear su hoja y su carpeta.
   - **Causa:** el Apps Script desplegado era **anterior** al cambio que agregó la sección. `seccionDeTipo_()` devuelve `'pagos'` ante cualquier tipo desconocido — un valor por defecto correcto para Proveedor/Compra/Venta, pero que ante un tipo nuevo **archivaba el pago donde no correspondía, sin avisar**. Ese es el peor tipo de error en datos contables: nada falla visiblemente.
   - **Fix:** `tipoConocido_()` + validación en `registrarPago_()` **antes de escribir nada**. Si el servidor no conoce el tipo, devuelve un error que dice explícitamente que hay que redesplegar, y no registra nada.
