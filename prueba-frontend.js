@@ -116,6 +116,44 @@ const usados = [...new Set([...js.matchAll(/getElementById\('([A-Za-z0-9_-]+)'\)
 const rotos = usados.filter(i => !setIds.has(i));
 chk('getElementById siempre apunta a un id existente', rotos.length === 0, JSON.stringify(rotos));
 
+console.log('\n=== Diseño adaptable ===');
+// Se quitan los comentarios: si no, un comentario que MENCIONA una propiedad
+// (por ejemplo, explicando por qué no usarla) se confunde con la propiedad real.
+const css = ((html.match(/<style>([\s\S]*?)<\/style>/) || [])[1] || '')
+  .replace(/\/\*[\s\S]*?\*\//g, '');
+
+// `overflow-x: hidden` en html/body rompe position:sticky, y el encabezado y el
+// menú tienen que quedar fijos al hacer scroll (pedido explícito del usuario).
+const bloqueHtmlBody = (css.match(/\n\s*html,\s*body\s*\{[^}]*\}/) || [''])[0];
+chk('html/body no usa overflow-x:hidden (rompería el menú fijo)',
+    !/overflow-x:\s*hidden/.test(bloqueHtmlBody), bloqueHtmlBody.trim());
+chk('html/body recorta el desborde horizontal con clip',
+    /overflow-x:\s*clip/.test(bloqueHtmlBody), 'falta overflow-x: clip');
+
+// El encabezado y el menú siguen siendo sticky
+chk('el encabezado queda fijo al hacer scroll',
+    /\n\s*header\s*\{[^}]*position:\s*sticky/.test(css), 'header perdió position:sticky');
+chk('el menú queda fijo al hacer scroll',
+    /\.app-nav\s*\{[^}]*position:\s*sticky/.test(css), '.app-nav perdió position:sticky');
+
+// Las pestañas tienen que poder deslizarse: si no, la última se corta en celular
+chk('las pestañas se deslizan en pantallas angostas',
+    /\.app-nav\s*\{[^}]*overflow-x:\s*auto/.test(css), '.app-nav sin overflow-x:auto');
+
+// El logo del encabezado no puede ser más alto que el encabezado
+const altoHeader = Number((css.match(/\n\s*header\s*\{[^}]*height:\s*(\d+)px/) || [])[1] || 0);
+const ladoLogo   = Number((css.match(/\.brand-logo\s*\{[^}]*width:\s*(\d+)px/) || [])[1] || 0);
+chk('el logo entra en el encabezado', ladoLogo > 0 && altoHeader > 0 && ladoLogo < altoHeader,
+    'logo ' + ladoLogo + 'px vs header ' + altoHeader + 'px');
+
+// Ningún tamaño en línea en el HTML: no se puede adaptar por media query
+const enLinea = [...html.matchAll(/style="[^"]*width:\s*\d{2,}px[^"]*"/g)].map(m => m[0]);
+chk('sin anchos fijos escritos en línea (no se adaptan)', enLinea.length === 0, JSON.stringify(enLinea));
+
+// Debe haber reglas para celular y para celular angosto
+chk('hay reglas para celular (<=640px)',  /@media\s*\(max-width:\s*6[0-4]\d px?\)|@media\s*\(max-width:\s*640px\)/.test(css));
+chk('hay reglas para pantallas angostas (<=400px)', /@media\s*\(max-width:\s*4[0-2]\dpx\)/.test(css));
+
 console.log('\n=== Coherencia con el backend ===');
 const clienteFront = (html.match(/const CLIENT_ID_GOOGLE = '([^']+)'/) || [])[1];
 let clienteBack = null;

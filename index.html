@@ -116,7 +116,29 @@
     .header-brand {
       display: flex;
       align-items: center;
-      gap: 0px;
+      gap: 10px;
+      min-width: 0;        /* permite que el texto se recorte en vez de empujar */
+      flex: 1;
+    }
+
+    /* El logo estaba en 64px dentro de un header de 56px: desbordaba y empujaba
+       el texto a tres renglones en pantallas angostas. */
+    .brand-logo {
+      width: 36px;
+      height: 36px;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
+
+    .brand-text {
+      min-width: 0;
+    }
+
+    .brand-text h1,
+    .brand-text p {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .brand-icon {
@@ -695,7 +717,19 @@
       position: sticky;
       top: 56px;
       z-index: 99;
+      /* En pantallas angostas las pestañas no entran y la última quedaba
+         cortada contra el borde. Se deslizan en vez de desbordar, y así
+         soporta cualquier cantidad de pestañas sin rediseñar nada. */
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: none;            /* Firefox */
+      -ms-overflow-style: none;         /* Edge viejo */
+      -webkit-overflow-scrolling: touch;
+      scroll-snap-type: x proximity;
     }
+    .app-nav::-webkit-scrollbar { display: none; }   /* Chrome / Safari */
+
+    .nav-tab { scroll-snap-align: start; }
 
     .nav-tab {
       background: none;
@@ -1390,6 +1424,93 @@
       background: var(--surface) !important;
       border-color: var(--border) !important;
     }
+    /* ═══ Adaptación a celular y tablet ═══════════════════════════
+       Regla de fondo: la página NUNCA debe deslizarse en horizontal. Solo
+       pueden hacerlo contenedores concretos que lo necesiten (la tabla de
+       resultados y la barra de pestañas), cada uno con su propio scroll. */
+
+    html, body {
+      max-width: 100%;
+      /* `clip` y NO `hidden`: `overflow-x: hidden` convierte al elemento en
+         contenedor de scroll y eso ROMPE el `position: sticky` del encabezado y
+         del menú, que es justamente lo que se pidió que quedara fijo al hacer
+         scroll. `clip` recorta sin crear contenedor de scroll.
+         En navegadores viejos que no lo soportan simplemente no recorta: el
+         desborde real ya está corregido en el origen (logo del encabezado y
+         barra de pestañas), esto es solo una red de seguridad. */
+      overflow-x: clip;
+    }
+
+    /* Nada puede ser más ancho que la pantalla. Las excepciones (tablas anchas)
+       viven dentro de un contenedor con overflow propio.
+       `main` se deja afuera a propósito: ya tiene su propio max-width de 968px
+       para centrar el contenido en escritorio, y pisarlo acá lo ensancharía. */
+    header, nav, footer {
+      max-width: 100%;
+    }
+
+    img, svg { max-width: 100%; }
+
+    /* ── Tablet ── */
+    @media (max-width: 900px) {
+      header { padding: 0 16px; }
+      main   { padding-left: 16px; padding-right: 16px; }
+    }
+
+    /* ── Celular ── */
+    @media (max-width: 640px) {
+      header { padding: 0 14px; }
+      main   { padding-left: 14px; padding-right: 14px; }
+
+      .brand-logo { width: 30px; height: 30px; }
+      .brand-text h1 { font-size: 0.86rem; }
+      .brand-text p  { font-size: 0.68rem; }
+
+      .app-nav { padding: 0 8px; gap: 0; }
+      .nav-tab { padding: 13px 12px; font-size: 0.82rem; gap: 6px; }
+      .nav-tab svg { width: 16px; height: 16px; }
+
+      /* El texto del botón de tema ocupa lugar que hace falta para la marca */
+      #themeLabel { display: none; }
+      .theme-toggle { padding: 7px 9px; }
+
+      .page-title    { font-size: 1.5rem; }
+      .page-subtitle { font-size: 0.86rem; }
+
+      .card { padding: 18px 16px; }
+
+      .login-card { padding: 34px 24px 28px; }
+      .login-card h2 { font-size: 1.22rem; }
+
+      .modal-caja { padding: 20px 18px; }
+      .modal-acciones { flex-direction: column-reverse; }
+      .modal-acciones button { width: 100%; }
+    }
+
+    /* ── Celular angosto ── */
+    @media (max-width: 400px) {
+      header { padding: 0 12px; }
+      main   { padding-left: 12px; padding-right: 12px; }
+
+      .brand-text p { display: none; }     /* se conserva el nombre de la empresa */
+      .nav-tab { padding: 12px 10px; font-size: 0.78rem; }
+
+      .page-title { font-size: 1.32rem; }
+      .card { padding: 16px 14px; }
+
+      /* Con muy poco ancho, un tipo por fila se lee mejor que dos apretados */
+      .tipo-selector { grid-template-columns: 1fr; }
+
+      .filter-actions { flex-direction: column; }
+      .filter-actions button { width: 100%; }
+    }
+
+    /* Pantallas bajas en horizontal: el encabezado fijo se come la pantalla */
+    @media (max-height: 520px) and (orientation: landscape) {
+      header, .app-nav { position: static; }
+      .login-overlay { align-items: flex-start; }
+    }
+
     /* ─── Pantalla de acceso ─────────────────────────────────────── */
     /* Cubre toda la app hasta que el servidor confirme quién entra. Se pinta
        sin depender de JS para que nunca se alcance a ver el contenido detrás
@@ -1720,7 +1841,7 @@
   <header>
     <div class="header-brand">
       <div class="brand-icon">
-        <img src="icons/logo.png" alt="Millennium Logo" style="width:64px;height:64px;object-fit:contain;" />
+        <img src="icons/logo.png" alt="Millennium Logo" class="brand-logo" />
       </div>
       <div class="brand-text">
         <h1>Millennium Energy Co</h1>
