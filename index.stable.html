@@ -2817,15 +2817,16 @@
       <div style="margin-top:18px;">
         <p class="card-title">Comprobante de la transferencia <span class="req">*</span></p>
         <div class="upload-zone" id="tZona">
-          <div class="upload-icon">
+          <input type="file" id="tArchivo" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple />
+          <div class="upload-icon-wrap">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
           </div>
-          <p class="upload-text"><span>Haz clic o arrastra</span> el soporte de Bancolombia</p>
-          <p class="upload-hint">PDF, JPG, PNG — máx. 15 MB c/u</p>
-          <input type="file" id="tArchivo" accept=".pdf,.jpg,.jpeg,.png" multiple hidden />
+          <p class="upload-title"><span>Haz clic o arrastra</span> el soporte de Bancolombia</p>
+          <p class="upload-sub">PDF, JPG, PNG — máx. 15 MB c/u</p>
         </div>
         <div id="tPreview"></div>
       </div>

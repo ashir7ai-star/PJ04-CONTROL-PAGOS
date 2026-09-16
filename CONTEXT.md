@@ -439,6 +439,10 @@ Enviar dinero del banco al fondo de viáticos **NO es un gasto**: la plata no sa
 La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta tiene su propio saldo base, así que un traslado se descuenta del origen solo si es posterior a la base *del origen*, y se suma al destino solo si es posterior a la base *del destino*.
 
 ## Historial de cambios recientes
+- **2026-09-16**: 🐛 **Zona de carga de Traslados con un ícono gigante.** Escribí `.upload-icon`, `.upload-text` y `.upload-hint`, pero las clases reales son **`.upload-icon-wrap`**, **`.upload-title`** y **`.upload-sub`**. Una clase inexistente **no da ningún error**: el elemento simplemente queda sin estilo, y el SVG creció hasta ocupar media pantalla.
+  - **Estructura correcta de una zona de carga** (copiar de `#uploadZone`): el `<input type="file">` va **dentro** de `.upload-zone`, seguido de `.upload-icon-wrap` > `svg`, `.upload-title` y `.upload-sub`.
+  - ⚠️ **Es la segunda vez que inventé una clase** (la primera fue `.btn-secundario`). Ahora [prueba-frontend.js](prueba-frontend.js) **verifica que toda clase usada en el HTML exista en el CSS**. Verificada reintroduciendo el error exacto: lo detecta. `sw.js` → `control-pagos-v61`.
+
 - **2026-09-16**: 🔁 **Sección "Traslados"** — registrar envíos de dinero del banco a los fondos de Viáticos/Caja Menor. Ver la sección "🔁 Traslados" arriba. **12 comprobantes nuevos** en [prueba-saldos.js](prueba-saldos.js), incluida una que verifica que **el total del sistema solo baje por el gasto real** (la plata no se duplica ni se evapora al moverse). Verificadas invirtiendo el signo del traslado y sacando `TRASLADOS` de las hojas excluidas: detectan ambas. `sw.js` → `control-pagos-v60`.
 
 - **2026-09-16**: 🔒 **Aprobaciones: el correo sale de la sesión y cada quien ve solo sus solicitudes.**

@@ -169,6 +169,32 @@ chk('sin anchos fijos escritos en línea (no se adaptan)', enLinea.length === 0,
 chk('hay reglas para celular (<=640px)',  /@media\s*\(max-width:\s*6[0-4]\d px?\)|@media\s*\(max-width:\s*640px\)/.test(css));
 chk('hay reglas para pantallas angostas (<=400px)', /@media\s*\(max-width:\s*4[0-2]\dpx\)/.test(css));
 
+console.log('\n=== Toda clase usada en el HTML existe en el CSS ===');
+{
+  // Una clase mal escrita no da ningún error: el elemento simplemente queda
+  // sin estilo. Ya pasó dos veces — `.btn-secundario` (un botón sin aspecto de
+  // botón) y `.upload-icon` en lugar de `.upload-icon-wrap`, que dejó un ícono
+  // gigante ocupando media pantalla.
+  const cssLimpio = ((html.match(/<style>([\s\S]*?)<\/style>/) || [])[1] || '')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+
+  // Clases definidas: cualquier `.nombre` que aparezca en un selector
+  const definidas = new Set([...cssLimpio.matchAll(/\.([A-Za-z][\w-]*)/g)].map(m => m[1]));
+
+  // Clases usadas: solo las de atributos class="..." literales del HTML.
+  // Se excluye lo que provenga de plantillas de JavaScript, donde el valor se
+  // arma en tiempo de ejecución y no se puede verificar acá.
+  const soloHtml = html.replace(/<script>[\s\S]*?<\/script>/g, '');
+  const usadas = new Set();
+  [...soloHtml.matchAll(/class="([^"{}]+)"/g)].forEach(m => {
+    m[1].split(/\s+/).forEach(c => { if (c) usadas.add(c); });
+  });
+
+  const huerfanas = [...usadas].filter(c => !definidas.has(c));
+  chk('ninguna clase del HTML quedó sin definir en el CSS',
+      huerfanas.length === 0, JSON.stringify(huerfanas));
+}
+
 console.log('\n=== Toda petición al backend lleva la sesión ===');
 {
   // Encontrado en producción el 2026-09-16: "Consultar Pagos" pedía los datos
