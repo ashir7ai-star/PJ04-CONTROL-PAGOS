@@ -340,6 +340,76 @@ function verificarEncabezados_(destino, encabezadosPrincipal) {
   }
 }
 
+// ─── Diagnóstico: ¿es seguro borrar una carpeta de Drive? ─────────────────
+//
+// SOLO LECTURA. Revisa todos los pagos registrados y dice cuántos apuntan a
+// archivos que viven dentro de la carpeta indicada.
+//
+// Sirve antes de borrar una carpeta vieja: los enlaces del Sheet apuntan al
+// archivo, no a la carpeta, así que borrarla rompe el acceso a esas facturas
+// sin que nada avise.
+//
+// Editar NOMBRE al gusto y correr desde el editor.
+function revisarCarpetaAntesDeBorrar() {
+  const NOMBRE = 'FACTURAS';   // ← la carpeta que se quiere borrar
+
+  const carpetas = DriveApp.getFoldersByName(NOMBRE);
+  if (!carpetas.hasNext()) {
+    const r = 'No existe ninguna carpeta llamada "' + NOMBRE + '".';
+    Logger.log(r); return r;
+  }
+  const carpeta = carpetas.next();
+  const idCarpeta = carpeta.getId();
+
+  // Cuántos archivos tiene por dentro
+  let archivosDentro = 0;
+  const it = carpeta.getFiles();
+  while (it.hasNext() && archivosDentro < 1000) { it.next(); archivosDentro++; }
+
+  // Todos los enlaces guardados en los pagos
+  const ids = [];
+  hojasDePagos_().forEach(hoja => {
+    const valores = hoja.getDataRange().getValues();
+    if (valores.length < 2) return;
+    const col = valores[0].indexOf('URL ARCHIVO');
+    if (col === -1) return;
+    valores.slice(1).forEach(fila => {
+      String(fila[col] || '').split('\n').forEach(url => {
+        const m = String(url).match(/\/d\/([A-Za-z0-9_-]+)/);
+        if (m) ids.push(m[1]);
+      });
+    });
+  });
+
+  let enEsaCarpeta = 0, revisados = 0, inaccesibles = 0;
+  ids.forEach(id => {
+    revisados++;
+    try {
+      const padres = DriveApp.getFileById(id).getParents();
+      while (padres.hasNext()) {
+        if (padres.next().getId() === idCarpeta) { enEsaCarpeta++; break; }
+      }
+    } catch (err) { inaccesibles++; }
+  });
+
+  const lineas = [
+    'REVISIÓN DE LA CARPETA "' + NOMBRE + '"',
+    '',
+    'Archivos dentro de la carpeta: ' + archivosDentro,
+    'Enlaces de pagos revisados:    ' + revisados,
+    'Enlaces que apuntan AHÍ:       ' + enEsaCarpeta,
+    'Enlaces inaccesibles:          ' + inaccesibles,
+    '',
+    enEsaCarpeta === 0
+      ? '✅ SEGURO DE BORRAR: ningún pago registrado apunta a archivos de esa carpeta.'
+      : '⛔ NO BORRAR: ' + enEsaCarpeta + ' pago(s) quedarían con el enlace roto. ' +
+        'Mové esos archivos a otra carpeta antes, o dejá la carpeta donde está.'
+  ];
+  const resumen = lineas.join('\n');
+  Logger.log(resumen);
+  return resumen;
+}
+
 // ─── Diagnóstico: ¿qué código está realmente guardado? ────────────────────
 // Correr desde el editor (selector de función → Run) y mirar el registro.
 //
