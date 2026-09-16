@@ -14,8 +14,21 @@
 
 Conviene cargar las cuatro cuentas el mismo día y no registrar pagos mientras se hace.
 
+## 🧪 Bancos de pruebas (correr ante cualquier cambio)
+```
+node prueba-frontend.js index.html      # TDZ, DOM, diseño adaptable, Service Worker, sesión en cada llamada
+node prueba-permisos.js apps-script.gs  # permisos por sección, endpoints sin validar sesión
+node prueba-saldos.js   apps-script.gs  # aritmética del dinero y quién ve cada saldo
+node prueba-consulta.js                 # consulta de extremo a extremo + alta completa de cada tipo de pago
+```
+**Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
+
 ## Última actualización
-**2026-09-16** — ✅ **VERSIÓN ESTABLE** (tag `v1.2-saldos`). Incluye la **Fase 2 operativa** (login con Google, hoja `USUARIOS` con roles ya cargados a mano por el usuario, sección Configuración, sesión que se recuerda entre recargas) y el **panel de saldos** por cuenta. `MODO_LOGIN` sigue en **`'suave'`**: quien inicia sesión ve solo lo suyo, pero quien no la inicia todavía entra. Pasar a `'estricto'` cuando el usuario lo indique. Pendientes anotados arriba: **cargar los saldos** (después de meter los comprobantes atrasados) y **mudar el dominio** (bloqueado por acceso a Wix). `sw.js` → `control-pagos-v44`.
+**2026-09-16** — ✅ **VERSIÓN ESTABLE** (tag `v1.3-materiales`). Acceso **restringido** (`MODO_LOGIN = 'estricto'`): solo entran los usuarios registrados y activos. Incluye la sección **Compra Materiales**, los **saldos por cuenta** con visibilidad según rol, la **sesión que se recuerda y se renueva sola**, el arranque instantáneo, y el diseño adaptable a celular. `APPS_SCRIPT_URL` apunta al despliegue **`AKfycbxDRCP3efj…`** (el anterior dejó de tomar el código). `sw.js` → `control-pagos-v57`.
+
+**Pendientes:** cargar los cuatro saldos (después de registrar los comprobantes atrasados), mudar el dominio a `pagos.energy-millennium.com` (bloqueado por acceso a Wix), y el botón "Agregar factura" de Consultar Pagos, que nunca se construyó.
+
+**2026-09-16** — ✅ Versión estable anterior (tag `v1.2-saldos`). Incluye la **Fase 2 operativa** (login con Google, hoja `USUARIOS` con roles ya cargados a mano por el usuario, sección Configuración, sesión que se recuerda entre recargas) y el **panel de saldos** por cuenta. `MODO_LOGIN` sigue en **`'suave'`**: quien inicia sesión ve solo lo suyo, pero quien no la inicia todavía entra. Pasar a `'estricto'` cuando el usuario lo indique. Pendientes anotados arriba: **cargar los saldos** (después de meter los comprobantes atrasados) y **mudar el dominio** (bloqueado por acceso a Wix). `sw.js` → `control-pagos-v44`.
 
 **2026-09-15** — ✅ **VERSIÓN ESTABLE, Fase 1 completa y en producción** (tag de git `v1.0-fase1`). n8n quedó fuera del sistema por completo: "Nuevo Pago" y "Consultar Pagos" usan el mismo **Google Apps Script Web App** que ya usaba Aprobaciones. Cada tipo de pago tiene **su propia hoja en el Sheet y su propia carpeta en Drive**, con dos tipos nuevos (**Seguridad Social** y **Pago Nómina**). La migración de datos históricos **ya se ejecutó y se concilió**. `sw.js` → `control-pagos-v32`. Lo siguiente es la **Fase 2: login con Google + hoja `USUARIOS`**.
 
