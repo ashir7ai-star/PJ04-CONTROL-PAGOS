@@ -3254,9 +3254,20 @@
       navigator.serviceWorker.register('/PJ04-CONTROL-PAGOS/sw.js').then(reg => {
         // Forzar chequeo de actualización cada vez que se abre la app
         reg.update();
+
+        // Si quedó una versión nueva esperando (porque la instalación anterior
+        // falló o el navegador no la activó), se la empuja a tomar control. Sin
+        // esto, un Service Worker viejo puede quedarse activo indefinidamente y
+        // el usuario sigue viendo una versión vieja sin enterarse.
+        if (reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
+
         reg.addEventListener('updatefound', () => {
           const newSW = reg.installing;
+          if (!newSW) return;
           newSW.addEventListener('statechange', () => {
+            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+              newSW.postMessage('SKIP_WAITING');
+            }
             if (newSW.state === 'activated') {
               location.reload();
             }
@@ -3899,7 +3910,9 @@
       headerSesion.style.display = 'none';
       loginPaso1.style.display   = '';
       loginPaso2.style.display   = 'none';
-      loginPie.style.display     = 'none';
+      // Siempre disponible: el botón de Google muestra una sola cuenta, y quien
+      // tenga varias sesiones abiertas necesita poder elegir otra.
+      loginPie.style.display     = '';
       if (mensaje) {
         loginAviso.className   = 'login-aviso ' + (tipo || 'info');
         loginAviso.textContent = mensaje;
@@ -3968,9 +3981,12 @@
       }
       if (!googleInicializado) {
         google.accounts.id.initialize({
-          client_id: CLIENT_ID_GOOGLE,
-          callback:  onCredencialGoogle,
-          auto_select: true
+          client_id:   CLIENT_ID_GOOGLE,
+          callback:    onCredencialGoogle,
+          // Sin selección automática: en un sistema con permisos por persona,
+          // entrar solo con la cuenta que el navegador tenga a mano es un
+          // problema, no una comodidad. El usuario elige con cuál entra.
+          auto_select: false
         });
         googleInicializado = true;
       }
@@ -4112,16 +4128,23 @@
     });
 
     document.getElementById('btnCambiarCuenta').addEventListener('click', () => {
+      // `disableAutoSelect()` NO cambia la cuenta que muestra el botón de
+      // Google: solo evita que entre sola la próxima vez. Para elegir otra hay
+      // que pasar por el selector de cuentas de Google y volver acá.
       try { google.accounts.id.disableAutoSelect(); } catch (err) {}
       sesion.idToken = null;
-      mostrarLogin();
-      iniciarGoogle();
+      location.href = 'https://accounts.google.com/AccountChooser?continue=' +
+        encodeURIComponent(location.href.split('#')[0]);
     });
 
     document.getElementById('btnSalir').addEventListener('click', () => {
       try { google.accounts.id.disableAutoSelect(); } catch (err) {}
-      sesion.idToken = null;
-      sesion.correo  = '';
+      sesion.idToken   = null;
+      sesion.correo    = '';
+      sesion.nombre    = '';
+      sesion.foto      = '';
+      sesion.rol       = 'usuario';
+      sesion.secciones = [];
       mostrarLogin('info', 'Cerraste sesión.');
       iniciarGoogle();
     });

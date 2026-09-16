@@ -1,4 +1,4 @@
-const CACHE = 'control-pagos-v39';
+const CACHE = 'control-pagos-v40';
 const ASSETS = [
   '/PJ04-CONTROL-PAGOS/',
   '/PJ04-CONTROL-PAGOS/index.html',
@@ -13,7 +13,16 @@ const ASSETS = [
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(ASSETS))
+    caches.open(CACHE).then(c =>
+      // `addAll` es todo-o-nada: si UNO solo de los assets falla (y acá hay
+      // cinco CDN externos), la instalación entera falla, el Service Worker
+      // nuevo nunca se activa y el viejo se queda indefinidamente. En redes
+      // móviles inestables pasa seguido, y el usuario deja de recibir
+      // actualizaciones sin ningún aviso.
+      // Con allSettled, lo que se pueda cachear se cachea y lo que no, se
+      // pedirá a la red cuando haga falta. La app funciona igual.
+      Promise.allSettled(ASSETS.map(u => c.add(u).catch(() => null)))
+    )
   );
   self.skipWaiting();
 });
