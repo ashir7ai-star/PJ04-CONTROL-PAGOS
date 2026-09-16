@@ -24,7 +24,9 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
-**2026-09-16** — ✅ **VERSIÓN ESTABLE** (tag `v1.3-materiales`). Acceso **restringido** (`MODO_LOGIN = 'estricto'`): solo entran los usuarios registrados y activos. Incluye la sección **Compra Materiales**, los **saldos por cuenta** con visibilidad según rol, la **sesión que se recuerda y se renueva sola**, el arranque instantáneo, y el diseño adaptable a celular. `APPS_SCRIPT_URL` apunta al despliegue **`AKfycbxDRCP3efj…`** (el anterior dejó de tomar el código). `sw.js` → `control-pagos-v57`.
+**2026-09-16** — ✅ **VERSIÓN ESTABLE** (tag `v1.4-sesiones`). Acceso restringido con **sesiones propias de 30 días** (el token de Google ya no limita la sesión a 1 hora). Incluye la sección **Traslados** entre cuentas propias, la sección **Compra Materiales**, los **saldos por cuenta** con visibilidad por rol, **privacidad de solicitudes** por usuario, el **arranque en una sola petición** y la lista de usuarios rediseñada.
+
+`APPS_SCRIPT_URL` → despliegue **`AKfycbxDRCP3efj…`**. `sw.js` → `control-pagos-v64`. `MODO_LOGIN` = `'estricto'`.
 
 **Pendientes:** cargar los cuatro saldos (después de registrar los comprobantes atrasados), mudar el dominio a `pagos.energy-millennium.com` (bloqueado por acceso a Wix), y el botón "Agregar factura" de Consultar Pagos, que nunca se construyó.
 
