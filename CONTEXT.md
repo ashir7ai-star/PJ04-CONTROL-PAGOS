@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
 ## Última actualización
-**2026-09-15** — 🔄 **Fase 1 de la actualización grande: n8n queda fuera del sistema por completo.** "Nuevo Pago" y "Consultar Pagos" ahora hablan con el mismo **Google Apps Script Web App** que ya usaba Aprobaciones. Cada tipo de pago pasa a tener **su propia hoja en el Sheet y su propia carpeta en Drive**, y se agregan dos tipos nuevos: **Seguridad Social** y **Pago Nómina**. ⚠️ **Falta que el usuario despliegue el Apps Script y corra la migración** — ver "🚧 Fase 1: pasos pendientes del usuario" abajo. `sw.js` → `control-pagos-v32`.
+**2026-09-15** — ✅ **VERSIÓN ESTABLE, Fase 1 completa y en producción** (tag de git `v1.0-fase1`). n8n quedó fuera del sistema por completo: "Nuevo Pago" y "Consultar Pagos" usan el mismo **Google Apps Script Web App** que ya usaba Aprobaciones. Cada tipo de pago tiene **su propia hoja en el Sheet y su propia carpeta en Drive**, con dos tipos nuevos (**Seguridad Social** y **Pago Nómina**). La migración de datos históricos **ya se ejecutó y se concilió**. `sw.js` → `control-pagos-v32`. Lo siguiente es la **Fase 2: login con Google + hoja `USUARIOS`**.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -292,15 +292,21 @@ El usuario reportó que al enviar aparecía **"No se pudo conectar con el sistem
 
 **Si se necesita más velocidad en el futuro:** lo más pesado es el correo dentro del request. Se podría diferir con un trigger `.after()` de Apps Script guardando el payload en `CacheService`, a costa de más complejidad y de que el correo llegue ~1 minuto después.
 
-## 🚧 Fase 1: pasos pendientes del usuario
-El código ya está listo de los dos lados, pero **el frontend nuevo no funciona hasta que el Apps Script desplegado tenga las funciones nuevas**. Orden exacto:
+## ✅ Fase 1 — completa (2026-09-15)
+Todo desplegado, migrado y verificado. Hojas actuales del Sheet: `PAGOS REGISTRADOS` (principal), `SOLICITUDES DE APROBACION`, `Seguridad Social`, `Pago Nomina`, `Pago Impuestos`, `Caja Menor`, `Viaticos`.
 
-1. **Pegar [apps-script.gs](apps-script.gs) completo** en el editor de Apps Script del Sheet (reemplazando todo lo que haya).
-2. **Redesplegar** — `Deploy → Manage deployments → ✏️ (editar) → Version: "New version" → Deploy`. **NO** "New deployment": eso genera una URL distinta y habría que cambiar `APPS_SCRIPT_URL` en `index.html` otra vez.
-3. Probar registrar un pago y consultar. En este punto todo sigue funcionando con los datos donde están (la consulta lee **todas** las hojas de pagos, así que da igual si ya se migró o no).
-4. **Correr `migrarPagosAHojasPorSeccion()` una sola vez** desde el editor (selector de función → Run). Hace un **respaldo completo del Sheet** antes de tocar nada, y luego mueve cada registro histórico de Viáticos / Caja Menor / Impuestos / Seguridad Social / Nómina a su hoja. Proveedor, Compra y Venta se quedan en la hoja principal.
+### Cómo trabajar con el Apps Script (para sesiones futuras)
+- El proyecto de Apps Script está **bound al Sheet** y se llama "Untitled project" (nunca se le puso nombre). Se llega por `Extensions → Apps Script`.
+- Tras pegar código nuevo hay que **guardar (Ctrl+S)** para que el desplegable de funciones se actualice — si no, sigue mostrando la lista de la última versión guardada.
+- Las funciones que terminan en `_` son privadas por convención de Apps Script y **no aparecen** en ese desplegable. Es esperado.
+- Para que un cambio llegue al Web App: `Deploy → Manage deployments → ✏️ → Version: "New version" → Deploy`. **Nunca "New deployment"**: genera otra URL y obliga a cambiar `APPS_SCRIPT_URL` en `index.html`.
+- **Después de cada despliegue, probar el endpoint real con `curl`** (con `-H "User-Agent: Mozilla/5.0 ..."`). `node --check` sobre `apps-script.gs` valida sintaxis pero no errores de ejecución — así se detectó el `ReferenceError` de la zona muerta temporal.
 
-Mientras el paso 2 no esté hecho, "Nuevo Pago" y "Consultar Pagos" van a fallar — el n8n viejo ya no está cableado.
+### Si hay que volver a migrar (al agregar otra sección, por ejemplo)
+1. `simularMigracion()` — solo lectura, dice qué se movería. **Siempre primero.**
+2. Revisar que los totales cierren y que diga "Encabezados de las hojas destino: OK".
+3. `migrarPagosAHojasPorSeccion()` — hace respaldo del Sheet en Drive antes de tocar nada.
+4. Conciliar contra `?action=consultar_pagos`: misma cantidad de registros y misma suma de `VALOR FACTURA`, **descontando los registros de prueba**.
 
 ## 🗂️ Una hoja y una carpeta por sección
 Definido en `SECCIONES` dentro de [apps-script.gs](apps-script.gs). `hojaDeSeccion_()` crea la hoja si no existe (copiando los encabezados de la principal) y `carpetaDeSeccion_()` hace lo mismo con la carpeta de Drive.
@@ -319,6 +325,9 @@ Definido en `SECCIONES` dentro de [apps-script.gs](apps-script.gs). `hojaDeSecci
 Aprobaciones **no** tiene carpeta propia a propósito: es un visto bueno visual temporal, no un registro contable.
 
 ## Historial de cambios recientes
+- **2026-09-15**: ✅ **VERSIÓN ESTABLE — cierre de la Fase 1.** Etiquetada en git como **`v1.0-fase1`** (`git checkout v1.0-fase1` para volver a este punto exacto). Incluye: n8n fuera del sistema por completo, una hoja y una carpeta por sección, los tipos Seguridad Social y Pago Nómina, y la migración de datos históricos ya ejecutada. `index.stable.html` = `index.html`, `sw.js` = `control-pagos-v32`.
+  - **Migración ejecutada y conciliada** (2026-09-15 19:48): 56 filas movidas (52 viáticos + 4 caja menor). Verificado contra la API que los 97 registros reales siguen siendo 97 y que la suma de `VALOR FACTURA` es idéntica antes y después ($84.868.561). Respaldo automático en Drive: `RESPALDO CONTROL DE PAGOS 2026-09-15 19.48`.
+  - ⚠️ **Al conciliar, descontar los registros de prueba.** El primer chequeo dio diferencias que parecían pérdida de datos pero eran pruebas manuales creadas/borradas entre una captura y otra. También hay un duplicado real y legítimo en los datos (dos peajes del 9/11 por $13.200) que **ya existía antes** de migrar — no confundirlo con un error de la migración.
 - **2026-09-15**: 🛡️ Blindaje de la migración antes de correrla sobre datos reales. (a) Nueva `simularMigracion()`, de **solo lectura**: dice cuántas filas se moverían, a qué hoja, cuántas se quedan, y valida encabezados — sin tocar nada. (b) Nueva `verificarEncabezados_()`: la migración copia las filas **por posición de columna**, así que si una hoja destino tuviera los encabezados en otro orden los datos caerían en la columna equivocada **en silencio**; ahora se verifican **todas** las hojas destino antes de escribir nada, y si una falla no se movió ni se borró nada. (c) `SpreadsheetApp.flush()` entre copiar y borrar. (d) El borrado agrupa filas contiguas en `deleteRows(inicio, cantidad)` en vez de ~56 `deleteRow()` sueltos, para no acercarse al límite de 6 minutos. Orden de uso: `simularMigracion()` → revisar → `migrarPagosAHojasPorSeccion()`.
 - **2026-09-15**: ✅ Fase 1 verificada en producción tras el redespliegue: `consultar_pagos` y `consultar_solicitudes` devuelven `application/json` con CORS OK; 99 registros consolidados de 3 hojas distintas; los tipos nuevos (`seguridad_social`, `nomina`) crean su hoja y su carpeta solas al primer registro, con los encabezados copiados de la principal. Hoja principal real: **`PAGOS REGISTRADOS`**.
 - **2026-09-15**: 🐛 Fix en el Apps Script tras el primer despliegue de la Fase 1 (Version 4): el Web App devolvía una página HTML de error, `ReferenceError: Cannot access 'NOMBRE_HOJA_SOLICITUDES' before initialization`. Causa: `const HOJAS_NO_PAGOS = [NOMBRE_HOJA_SOLICITUDES, ...]` estaba declarada arriba (bloque de secciones) pero `NOMBRE_HOJA_SOLICITUDES` se declara mucho más abajo (bloque de Aprobaciones) — zona muerta temporal de `const`. Se reemplazó por la función `hojasNoPagos_()`, que evalúa recién al llamarse y por lo tanto no depende del orden del archivo. **Lección: `node --check` valida sintaxis pero NO detecta errores de orden en tiempo de ejecución**; para el Apps Script hay que probar el endpoint real con `curl` después de desplegar. Ojo: cuando el Web App falla así devuelve `Content-Type: text/html` sin `Access-Control-Allow-Origin` — el mensaje real está en el HTML, no en un JSON.
