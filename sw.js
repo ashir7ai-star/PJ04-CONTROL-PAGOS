@@ -1,4 +1,4 @@
-const CACHE = 'control-pagos-v50';
+const CACHE = 'control-pagos-v51';
 // Rutas RELATIVAS a propósito: así la app funciona igual en
 // ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/ que en un dominio propio, sin
 // tener que cambiar código el día que se mude. En un Service Worker, './'
@@ -79,4 +79,12 @@ self.addEventListener('fetch', e => {
 // Escucha mensaje del usuario para activar la nueva versión
 self.addEventListener('message', e => {
   if (e.data === 'SKIP_WAITING') self.skipWaiting();
+
+  // Responder al "¿qué versión sos?" permite que la página detecte un Service
+  // Worker viejo y atascado. Las versiones anteriores a la v51 no contestan
+  // esto, y ese silencio es justamente la señal de que hay que reemplazarlas:
+  // un SW roto no puede corregirse solo, porque es él mismo el que sirve la app.
+  if (e.data === 'VERSION' && e.ports && e.ports[0]) {
+    e.ports[0].postMessage(CACHE);
+  }
 });

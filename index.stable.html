@@ -2887,7 +2887,28 @@
     // Apps Script tarda bastante (Drive + Sheets + correo), por eso el timeout es amplio.
     // El ID token se adjunta automáticamente a todo lo que salga, para no depender
     // de acordarse de ponerlo en cada llamada.
+    // Acciones que solo LEEN. Reintentar una de estas es seguro; reintentar una
+    // que escribe podría registrar el mismo pago dos veces, así que no se hace.
+    const ACCIONES_DE_LECTURA = [
+      'consultar_pagos', 'consultar_solicitudes', 'consultar_saldos',
+      'listar_usuarios', 'iniciar_sesion', 'estado_login'
+    ];
+
     async function postAppsScript(payload, timeoutMs = 120000) {
+      const esLectura = ACCIONES_DE_LECTURA.indexOf(payload && payload.action) !== -1;
+      try {
+        return await enviarAppsScript(payload, timeoutMs);
+      } catch (err) {
+        // Un solo reintento, y solo para lecturas: Apps Script entrega sus
+        // respuestas a través de una redirección y de vez en cuando esa entrega
+        // falla devolviendo HTML. Repetir una lectura no tiene consecuencias.
+        if (!esLectura || !err || err.name === 'AbortError') throw err;
+        console.warn('Reintentando ' + payload.action + ' tras:', err.message);
+        return await enviarAppsScript(payload, timeoutMs);
+      }
+    }
+
+    async function enviarAppsScript(payload, timeoutMs) {
       const control = new AbortController();
       const alarma  = setTimeout(() => control.abort(), timeoutMs);
       const cuerpo  = sesion.idToken ? Object.assign({}, payload, { idToken: sesion.idToken }) : payload;
@@ -2896,14 +2917,46 @@
           method:  'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body:    JSON.stringify(cuerpo),
-          signal:  control.signal
+          signal:  control.signal,
+          // Sin cachés intermedias: son datos vivos y una respuesta guardada
+          // de otra sesión sería un problema de privacidad, no solo de frescura.
+          cache:   'no-store'
         });
-        const datos = await response.json();
+
+        // Se lee como texto y se parsea a mano: si el servidor devuelve HTML
+        // (una página de error de Apps Script, o una pantalla de Google),
+        // response.json() solo diría "Unexpected token '<'", que no dice nada
+        // sobre qué pasó realmente.
+        const texto = await response.text();
+        let datos;
+        try {
+          datos = JSON.parse(texto);
+        } catch (err) {
+          throw new Error(describirRespuestaNoJson(texto, response.status));
+        }
+
         manejarErrorDeSesion(datos);
         return datos;
       } finally {
         clearTimeout(alarma);
       }
+    }
+
+    // Traduce una respuesta que no es JSON a algo accionable.
+    function describirRespuestaNoJson(texto, estadoHttp) {
+      const t = String(texto || '');
+      const recorte = t.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+
+      if (/accounts\.google\.com|Elige una cuenta|Choose an account|Iniciar sesión|Sign in/i.test(t)) {
+        return 'Google pidió elegir una cuenta en vez de responder. Cerrá sesión en la app y volvé a entrar con una sola cuenta de Google abierta en este navegador.';
+      }
+      if (/ReferenceError|TypeError|SyntaxError|Exception/i.test(t)) {
+        return 'El servidor falló al ejecutarse. Detalle: ' + recorte;
+      }
+      if (/Moved Temporarily|temporarily moved|redirect/i.test(t)) {
+        return 'La respuesta del servidor se perdió en una redirección. Si se repite, cerrá la app por completo y volvé a abrirla.';
+      }
+      return 'El servidor respondió algo que no es JSON (HTTP ' + estadoHttp + '). Detalle: ' + (recorte || '(vacío)');
     }
 
     // Si el servidor rechazó la sesión, devolver al login en vez de mostrar un
@@ -3496,6 +3549,42 @@
 
       // Recargar automáticamente cuando el nuevo SW tome control
       navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
+
+      // Un Service Worker viejo y atascado NO puede corregirse solo: es él
+      // mismo quien sirve la app, así que sigue rompiendo las respuestas del
+      // backend indefinidamente y el usuario no tiene forma de saberlo.
+      // Se le pregunta la versión; las anteriores a la v51 no contestan, y ese
+      // silencio basta para saber que hay que reemplazarlo.
+      verificarServiceWorkerViejo();
+    }
+
+    function verificarServiceWorkerViejo() {
+      const ctrl = navigator.serviceWorker.controller;
+      if (!ctrl) return;   // sin SW activo no hay nada que reparar
+
+      // Una sola vez por pestaña, para no entrar en un ciclo de recargas.
+      try {
+        if (sessionStorage.getItem('pj04_sw_revisado')) return;
+        sessionStorage.setItem('pj04_sw_revisado', '1');
+      } catch (err) { return; }
+
+      const canal = new MessageChannel();
+      let respondio = false;
+
+      canal.port1.onmessage = () => { respondio = true; };
+      try { ctrl.postMessage('VERSION', [canal.port2]); } catch (err) { return; }
+
+      setTimeout(async () => {
+        if (respondio) return;
+        console.warn('Service Worker antiguo detectado: se reemplaza y se recarga.');
+        try {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map(r => r.unregister()));
+          location.reload();
+        } catch (err) {
+          console.error('No se pudo reemplazar el Service Worker:', err);
+        }
+      }, 3000);
     }
 
     // ─── Tema ──────────────────────────────────────────────────────
