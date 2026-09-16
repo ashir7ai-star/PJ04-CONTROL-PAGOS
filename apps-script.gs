@@ -562,6 +562,7 @@ function doPost(e) {
     // historial del navegador y en los logs del servidor).
     if (body.action === 'consultar_pagos')      return respuestaJson_(consultarPagos_(contextoDe_(body)));
     if (body.action === 'consultar_solicitudes')return respuestaJson_(consultarSolicitudes_(body));
+    if (body.action === 'arranque')             return respuestaJson_(arranque_(body));
     if (body.action === 'iniciar_sesion')       return respuestaJson_(iniciarSesion_(body));
     if (body.action === 'registrar_usuario')    return respuestaJson_(registrarUsuario_(body));
     if (body.action === 'listar_usuarios')      return respuestaJson_(listarUsuarios_(body));
@@ -1150,6 +1151,85 @@ function iniciarSesion_(body) {
     secciones: seccionesDeUsuario_(usuario),
     modo:      MODO_LOGIN
   };
+}
+
+// ─── Arranque: todo lo que la app necesita, en UNA sola petición ─────────
+//
+// Medición del 2026-09-16 sobre el despliegue real:
+//   · POST                        → ~2 s
+//   · GET con parámetro anti-caché → 5-33 s  (!)
+//   · nuestro código en sí         → ~1,4 s
+// Casi todo el tiempo se va en el viaje de ida y vuelta, no en el trabajo.
+// Por eso lo que importa es hacer MENOS peticiones, no código más rápido.
+//
+// Antes el arranque eran tres viajes: estado_login (el lento), iniciar_sesion
+// y consultar_saldos. Ahora es uno.
+//
+// Nunca lanza: si la sesión no sirve, igual devuelve el modo y el Client ID,
+// que es lo que la app necesita para poder mostrar la pantalla de acceso.
+function arranque_(body) {
+  const base = {
+    status:    'success',
+    modo:      MODO_LOGIN,
+    clientId:  CLIENT_ID_GOOGLE,
+    secciones: Object.keys(SECCIONES)
+  };
+
+  if (MODO_LOGIN === 'off') {
+    const ctx = contextoDe_(null);
+    base.sesion = { rol: 'admin', secciones: Object.keys(SECCIONES), nombre: '', correo: '' };
+    base.saldos = consultarSaldos_(ctx);
+    return base;
+  }
+
+  const perfil = verificarIdToken_(body && body.idToken);
+  if (!perfil) { base.sesion = null; base.codigo = 'SESION_INVALIDA'; return base; }
+
+  const usuario = usuarioPorCorreo_(perfil.correo);
+  if (!usuario) {
+    base.sesion = null;
+    base.codigo = 'NO_REGISTRADO';
+    base.correo = perfil.correo;
+    base.nombre = perfil.nombre;
+    return base;
+  }
+
+  const estado = String(usuario['ESTADO'] || '').toLowerCase();
+  if (estado !== 'activo') {
+    base.sesion = null;
+    base.codigo = estado === 'pendiente' ? 'PENDIENTE_APROBACION' : 'USUARIO_INACTIVO';
+    base.correo = perfil.correo;
+    return base;
+  }
+
+  const ctx = {
+    autenticado: true,
+    correo:      perfil.correo,
+    nombre:      String(usuario['NOMBRE'] || perfil.nombre),
+    rol:         String(usuario['ROL'] || 'usuario').toLowerCase(),
+    secciones:   seccionesDeUsuario_(usuario),
+    estado:      estado,
+    modo:        MODO_LOGIN
+  };
+
+  base.sesion = {
+    correo:    ctx.correo,
+    nombre:    ctx.nombre,
+    foto:      perfil.foto,
+    rol:       ctx.rol,
+    secciones: ctx.secciones
+  };
+  base.saldos = consultarSaldos_(ctx);
+
+  // Marca de último acceso. Escribir en la hoja cuesta tiempo, así que se hace
+  // al final y sin dejar que un fallo acá arruine un arranque que ya salió bien.
+  try {
+    const col = ENCABEZADOS_USUARIOS.indexOf('ULTIMO ACCESO') + 1;
+    hojaUsuarios_().getRange(usuario._fila, col)
+      .setValue(Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'));
+  } catch (err) { /* no vale la pena fallar el arranque por esto */ }
+
+  return base;
 }
 
 // Alta propia: queda PENDIENTE, sin ver nada, hasta que un admin la active.

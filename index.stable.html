@@ -2920,7 +2920,7 @@
     // Acciones que solo LEEN. Reintentar una de estas es seguro; reintentar una
     // que escribe podría registrar el mismo pago dos veces, así que no se hace.
     const ACCIONES_DE_LECTURA = [
-      'consultar_pagos', 'consultar_solicitudes', 'consultar_saldos',
+      'arranque', 'consultar_pagos', 'consultar_solicitudes', 'consultar_saldos',
       'listar_usuarios', 'iniciar_sesion', 'estado_login'
     ];
 
@@ -4404,8 +4404,7 @@
       if (sesion.modo === 'off') {
         ocultarLogin();
         aplicarPermisos();
-        cargarSaldos(false);
-        refrescarModoEnSegundoPlano();
+        refrescarModoEnSegundoPlano();   // trae también los saldos
         return;
       }
 
@@ -4420,14 +4419,14 @@
 
         if (sesionGuardadaSirve(guardada)) {
           sesion.idToken = guardada.idToken;
-          cargarSaldos(false);
           programarRenovacion(guardada.vence);
-          revalidarSesion();
+          // Un solo viaje: confirma la sesión, refresca permisos y trae los
+          // saldos. Antes eran tres peticiones separadas, y cada viaje a Apps
+          // Script cuesta varios segundos.
+          refrescarModoEnSegundoPlano();
         } else {
           renovarEnSilencio();   // sin pedirle nada al usuario
         }
-
-        refrescarModoEnSegundoPlano();
         return;
       }
 
@@ -4437,30 +4436,44 @@
       refrescarModoEnSegundoPlano();
     }
 
-    // Consulta el modo real sin bloquear el arranque. Si cambió, se aplica.
+    // Una sola petición trae TODO lo del arranque: modo de acceso, sesión y
+    // saldos. Antes eran tres viajes y cada viaje a Apps Script cuesta entre 2
+    // y 30 segundos — el tiempo se va en el viaje, no en el trabajo del
+    // servidor (nuestro código corre en ~1,4 s). Por eso lo que importa es
+    // hacer MENOS peticiones, no código más rápido.
     async function refrescarModoEnSegundoPlano() {
       try {
-        const control = new AbortController();
-        const alarma  = setTimeout(() => control.abort(), 25000);
-        let estado;
-        try {
-          const res = await fetch(APPS_SCRIPT_URL + '?action=estado_login&_=' + Date.now(), { signal: control.signal });
-          estado = await res.json();
-        } finally {
-          clearTimeout(alarma);
+        const r = await postAppsScript({ action: 'arranque' }, 60000);
+        if (!r || r.status !== 'success') return;
+
+        if (r.modo && r.modo !== sesion.modo) {
+          guardarModoRecordado(r.modo);
+          sesion.modo = r.modo;
+          aplicarPermisos();
+        } else if (r.modo) {
+          guardarModoRecordado(r.modo);
         }
-        if (!estado || !estado.modo || estado.modo === sesion.modo) {
-          if (estado && estado.modo) guardarModoRecordado(estado.modo);
+
+        if (r.sesion) {
+          // Confirma la sesión y refresca permisos por si un admin los cambió.
+          aplicarSesion(r.sesion);
+          correoRecordado = sesion.correo;
+          guardarSesion();
+          ocultarLogin();
+          if (r.saldos) pintarSaldosDesde(r.saldos);
           return;
         }
-        guardarModoRecordado(estado.modo);
-        sesion.modo = estado.modo;
-        aplicarPermisos();
-        if (estado.modo !== 'off' && !sesion.correo) { mostrarLogin(); iniciarGoogle(); }
+
+        if (r.modo === 'off') { ocultarLogin(); aplicarPermisos(); if (r.saldos) pintarSaldosDesde(r.saldos); return; }
+
+        // Sin sesión válida: si la persona ya venía usando el sistema, se
+        // intenta renovar en silencio antes de pedirle nada.
+        if (r.codigo === 'SESION_INVALIDA' && correoRecordado) { renovarEnSilencio(); return; }
+        if (!sesion.correo) { mostrarLogin(); iniciarGoogle(); }
       } catch (err) {
         // Sin respuesta se mantiene el último modo conocido. No se expulsa a
         // nadie por un problema de red: el servidor valida igual cada operación.
-        console.warn('No se pudo consultar el modo de acceso:', err && err.message);
+        console.warn('No se pudo completar el arranque:', err && err.message);
       }
     }
 
@@ -4525,33 +4538,6 @@
       setTimeout(rendirse, 8000);
     }
 
-    // Confirma contra el servidor que la sesión restaurada sigue siendo válida
-    // y que los permisos no cambiaron (un admin pudo haberlos modificado).
-    async function revalidarSesion() {
-      try {
-        const datos = await postAppsScript({ action: 'iniciar_sesion' }, 60000);
-        if (datos.status === 'success') {
-          aplicarSesion(datos);
-          guardarSesion();
-          return;
-        }
-        // Si el token venció, se renueva en silencio antes de molestar a nadie.
-        if (datos.codigo === 'SESION_INVALIDA' && correoRecordado) {
-          sesion.idToken = null;
-          renovarEnSilencio();
-          return;
-        }
-        // El resto (dado de baja, pendiente de aprobación) sí requiere avisar.
-        sesion.idToken = null;
-        olvidarSesion();
-        mostrarLogin('info', datos.message || 'Tu sesión venció. Volvé a entrar.');
-        iniciarGoogle();
-      } catch (err) {
-        // Sin conexión no se expulsa al usuario: el servidor rechaza igual
-        // cualquier operación real si la sesión no vale.
-        console.warn('No se pudo revalidar la sesión:', err);
-      }
-    }
 
     let googleInicializado = false;
     let correoRecordado    = '';
@@ -4643,7 +4629,9 @@
 
       let datos;
       try {
-        datos = await postAppsScript({ action: 'iniciar_sesion' }, 90000);
+        // Un solo viaje: valida la sesión, trae permisos y saldos. Antes eran
+        // dos peticiones, y cada una a Apps Script cuesta varios segundos.
+        datos = await postAppsScript({ action: 'arranque' }, 90000);
       } catch (err) {
         const agotado = err && err.name === 'AbortError';
         mostrarLogin('error', agotado
@@ -4652,8 +4640,10 @@
         return;
       }
 
-      if (datos.status === 'success') {
-        aplicarSesion(datos);
+      if (datos.modo) { sesion.modo = datos.modo; guardarModoRecordado(datos.modo); }
+
+      if (datos.sesion) {
+        aplicarSesion(datos.sesion);
         correoRecordado = sesion.correo;
         guardarSesion();   // para no tener que entrar de nuevo en cada recarga
         // Avisa que la renovación silenciosa terminó bien, y programa la
@@ -4661,20 +4651,22 @@
         if (renovacionEnCurso) { renovacionEnCurso(); renovacionEnCurso = null; }
         programarRenovacion(vencimientoDeToken(sesion.idToken));
         ocultarLogin();
-        // Recién acá se piden los saldos: antes de tener sesión, el servidor
-        // rechazaría la consulta y mostraría un error en la pantalla de login.
-        cargarSaldos(false);
+        if (datos.saldos) pintarSaldosDesde(datos.saldos);
         return;
       }
 
-      if (datos.status === 'registro_requerido') {
-        pedirDatosDeRegistro(datos);
+      if (datos.codigo === 'NO_REGISTRADO') {
+        pedirDatosDeRegistro({
+          correo:  datos.correo,
+          nombre:  datos.nombre,
+          message: 'Todavía no tenés acceso. Completá tus datos para solicitarlo.'
+        });
         return;
       }
 
-      if (datos.status === 'pendiente') {
+      if (datos.codigo === 'PENDIENTE_APROBACION') {
         descartarSesion();
-        mostrarLogin('espera', datos.message);
+        mostrarLogin('espera', 'Tu solicitud de acceso está esperando la aprobación de un administrador.');
         loginPie.style.display = '';
         return;
       }
@@ -5016,6 +5008,14 @@
       return '$' + valor.toLocaleString('es-CO');
     }
 
+    // Pinta saldos ya recibidos (por ejemplo, los que vienen con el arranque),
+    // sin gastar otra petición.
+    function pintarSaldosDesde(r) {
+      if (!r || r.status !== 'success') return;
+      saldosPuedeEditar = !!r.puedeEditar;
+      pintarSaldos(r);
+    }
+
     async function cargarSaldos(silencioso) {
       if (!silencioso) {
         saldosNota.textContent = 'Cargando saldos…';
@@ -5027,8 +5027,7 @@
           saldosNota.textContent = 'No se pudieron cargar los saldos.';
           return;
         }
-        saldosPuedeEditar = !!r.puedeEditar;
-        pintarSaldos(r);
+        pintarSaldosDesde(r);
       } catch (err) {
         saldosNota.textContent = 'No se pudieron cargar los saldos. Revisá tu conexión.';
       }
