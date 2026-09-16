@@ -803,7 +803,7 @@ const CLIENT_ID_GOOGLE = '165996240052-u1qhq59gag42uvuojlgk54m0ojd1hp2g.apps.goo
 //                login en producción sin romperle el trabajo a nadie.
 //   'estricto' → sin token válido de un usuario ACTIVO no se responde nada.
 // Pasar a 'estricto' recién cuando USUARIOS esté cargada y probada.
-const MODO_LOGIN = 'off';
+const MODO_LOGIN = 'suave';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [

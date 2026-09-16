@@ -75,7 +75,16 @@ function montar(modoLogin, usuarios) {
   };
 
   let codigo = fs.readFileSync(RUTA, 'utf8');
-  codigo = codigo.replace("const MODO_LOGIN = 'off';", "const MODO_LOGIN = '" + modoLogin + "';");
+  // Sustituye el valor real que tenga el archivo, sea cual sea: MODO_LOGIN es un
+  // interruptor operativo que se mueve seguido, y una búsqueda literal de 'off'
+  // dejaba las pruebas corriendo todas en el mismo modo sin avisar.
+  // Se comprueba que el patrón COINCIDA, no que el texto cambie: si el modo
+  // pedido ya es el del archivo, el resultado es idéntico y eso no es un error.
+  const patron = /^const MODO_LOGIN = '[a-z]+';$/m;
+  if (!patron.test(codigo)) {
+    throw new Error('No se pudo fijar MODO_LOGIN en las pruebas: cambió la forma de la declaración.');
+  }
+  codigo = codigo.replace(patron, "const MODO_LOGIN = '" + modoLogin + "';");
   vm.createContext(ctx);
   vm.runInContext(codigo, ctx);
   return ctx;
