@@ -268,6 +268,82 @@ function consultarPagos_() {
 // ─── Migración: repartir los pagos de la hoja principal por sección ───────
 // Se ejecuta UNA sola vez, a mano, desde el editor de Apps Script.
 // Hace un respaldo completo del Sheet antes de tocar nada.
+//
+// Antes de correr la migración real, correr SIEMPRE simularMigracion(): no
+// modifica nada y dice exactamente qué filas se moverían y a dónde.
+
+// La migración copia las filas POR POSICIÓN de columna, no por nombre. Si una
+// hoja destino tuviera los encabezados en otro orden, los datos caerían en la
+// columna equivocada sin dar error. Esto lo impide.
+function verificarEncabezados_(destino, encabezadosPrincipal) {
+  const ancho = encabezadosPrincipal.length;
+  const suyos = destino.getRange(1, 1, 1, ancho).getValues()[0];
+  for (let i = 0; i < ancho; i++) {
+    if (String(suyos[i]).trim() !== String(encabezadosPrincipal[i]).trim()) {
+      throw new Error(
+        'La hoja "' + destino.getName() + '" tiene los encabezados en distinto orden que la principal. ' +
+        'Columna ' + (i + 1) + ': esperaba "' + encabezadosPrincipal[i] + '" y encontró "' + suyos[i] + '". ' +
+        'No se movió nada. Corregí los encabezados y volvé a intentar.'
+      );
+    }
+  }
+}
+
+// Simulacro de SOLO LECTURA. No escribe, no borra, no hace respaldo.
+// Corrélo primero y revisá el resultado en el registro de ejecución.
+function simularMigracion() {
+  const principal   = hojaPrincipal_();
+  const valores     = principal.getDataRange().getValues();
+  const encabezados = valores[0];
+  const colTipo     = encabezados.indexOf('TIPO FACTURA');
+  if (colTipo === -1) throw new Error('No se encontró la columna "TIPO FACTURA" en la hoja principal.');
+
+  const porSeccion = {};
+  let seQuedan = 0;
+  for (let i = 1; i < valores.length; i++) {
+    const fila = valores[i];
+    if (!fila.some(v => v !== '')) continue;
+    const seccion = seccionDeTipo_(fila[colTipo]);
+    if (seccion === 'pagos') { seQuedan++; continue; }
+    porSeccion[seccion] = (porSeccion[seccion] || 0) + 1;
+  }
+
+  const lineas = ['SIMULACRO — no se modificó nada.'];
+  lineas.push('Hoja principal: "' + principal.getName() + '" (' + (valores.length - 1) + ' filas de datos).');
+  lineas.push('Se quedan en la principal: ' + seQuedan + ' (Proveedor, Compra, Venta).');
+
+  const claves = Object.keys(porSeccion);
+  if (!claves.length) {
+    lineas.push('No hay nada para mover.');
+  } else {
+    let total = 0;
+    claves.forEach(s => {
+      const destino = SECCIONES[s].hoja;
+      const existe  = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(destino);
+      lineas.push('  ' + porSeccion[s] + ' fila(s) → hoja "' + destino + '"' +
+        (existe ? ' (ya existe, tiene ' + Math.max(0, existe.getLastRow() - 1) + ' fila(s))' : ' (se creará)'));
+      total += porSeccion[s];
+    });
+    lineas.push('Total a mover: ' + total);
+  }
+
+  // Chequeo de encabezados de las hojas destino que ya existan
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const problemas = [];
+  claves.forEach(s => {
+    const h = ss.getSheetByName(SECCIONES[s].hoja);
+    if (!h) return;
+    try { verificarEncabezados_(h, encabezados); }
+    catch (err) { problemas.push(String(err.message || err)); }
+  });
+  lineas.push(problemas.length
+    ? 'PROBLEMA DE ENCABEZADOS:\n  ' + problemas.join('\n  ')
+    : 'Encabezados de las hojas destino: OK.');
+
+  const resumen = lineas.join('\n');
+  Logger.log(resumen);
+  return resumen;
+}
 
 function migrarPagosAHojasPorSeccion() {
   const ss        = SpreadsheetApp.getActiveSpreadsheet();
@@ -300,17 +376,35 @@ function migrarPagosAHojasPorSeccion() {
     filasAEliminar.push(i + 1);
   }
 
-  // 4) Escribir en las hojas destino (en bloque, mucho más rápido que fila por fila)
-  let movidas = 0;
-  Object.keys(porSeccion).forEach(seccion => {
-    const destino = hojaDeSeccion_(seccion);
-    const filas   = porSeccion[seccion];
-    destino.getRange(destino.getLastRow() + 1, 1, filas.length, filas[0].length).setValues(filas);
-    movidas += filas.length;
+  // 4) Escribir en las hojas destino (en bloque, mucho más rápido que fila por fila).
+  //    Se verifican TODOS los encabezados antes de escribir nada: si una hoja no
+  //    coincide, verificarEncabezados_ lanza y no se movió ni se borró nada.
+  const destinos = Object.keys(porSeccion).map(seccion => {
+    const hoja = hojaDeSeccion_(seccion);
+    verificarEncabezados_(hoja, encabezados);
+    return { seccion: seccion, hoja: hoja };
   });
 
-  // 5) Borrar de la principal, de abajo hacia arriba para no descuadrar los índices
-  filasAEliminar.reverse().forEach(n => principal.deleteRow(n));
+  let movidas = 0;
+  destinos.forEach(d => {
+    const filas = porSeccion[d.seccion];
+    d.hoja.getRange(d.hoja.getLastRow() + 1, 1, filas.length, filas[0].length).setValues(filas);
+    movidas += filas.length;
+  });
+  SpreadsheetApp.flush();   // asegura que las copias quedaron guardadas antes de borrar
+
+  // 5) Borrar de la principal, de abajo hacia arriba para no descuadrar los índices.
+  //    Se agrupan las filas contiguas en un solo deleteRows() — con ~56 filas
+  //    sueltas, borrar una por una son 56 llamadas y puede acercarse al límite
+  //    de 6 minutos de Apps Script.
+  filasAEliminar.sort((a, b) => a - b);
+  const bloques = [];
+  filasAEliminar.forEach(n => {
+    const ultimo = bloques[bloques.length - 1];
+    if (ultimo && n === ultimo.inicio + ultimo.cantidad) ultimo.cantidad++;
+    else bloques.push({ inicio: n, cantidad: 1 });
+  });
+  bloques.reverse().forEach(b => principal.deleteRows(b.inicio, b.cantidad));
 
   const resumen = 'Respaldo: "' + nombreRespaldo + '". Filas movidas: ' + movidas +
     '. Detalle: ' + Object.keys(porSeccion).map(s => s + '=' + porSeccion[s].length).join(', ');
