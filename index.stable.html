@@ -2903,11 +2903,13 @@
 
     // Trae las solicitudes crudas del servidor (sin filtrar ni pintar).
     async function traerSolicitudes() {
-      // El parámetro _ evita que el navegador sirva una respuesta cacheada
-      const res = await fetch(APPS_SCRIPT_URL + '?action=consultar_solicitudes&_=' + Date.now());
-      const raw = await res.json();
+      // Por POST y no por GET: las solicitudes ahora exigen sesión, y el token
+      // se adjunta solo en postAppsScript. Mandarlo en la URL además lo dejaría
+      // en el historial del navegador y en los registros del servidor.
+      const raw = await postAppsScript({ action: 'consultar_solicitudes' }, 60000);
       let rows = raw;
       if (typeof raw === 'string') rows = JSON.parse(raw);
+      if (rows && rows.status === 'error') throw new Error(rows.message || 'Error del servidor');
       if (!Array.isArray(rows)) rows = Object.values(rows);
       return rows.filter(r => r['ID SOLICITUD'] || r['SOLICITADO POR']);
     }

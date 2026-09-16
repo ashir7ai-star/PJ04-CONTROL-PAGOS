@@ -475,7 +475,7 @@ function doGet(e) {
     if (accion === 'estado_login') {
       return respuestaJson_({ status: 'success', modo: MODO_LOGIN, clientId: CLIENT_ID_GOOGLE });
     }
-    if (accion === 'consultar_solicitudes') return respuestaJson_(consultarSolicitudes_());
+    if (accion === 'consultar_solicitudes') return respuestaJson_(consultarSolicitudes_(e.parameter));
     if (accion === 'consultar_pagos')       return respuestaJson_(consultarPagos_(contextoDe_(e.parameter)));
     return respuestaJson_({ status: 'error', message: 'Acción no reconocida: ' + accion });
   } catch (err) {
@@ -498,6 +498,7 @@ function doPost(e) {
     // Consultar por POST para no mandar el ID token en la URL (quedaría en el
     // historial del navegador y en los logs del servidor).
     if (body.action === 'consultar_pagos')      return respuestaJson_(consultarPagos_(contextoDe_(body)));
+    if (body.action === 'consultar_solicitudes')return respuestaJson_(consultarSolicitudes_(body));
     if (body.action === 'iniciar_sesion')       return respuestaJson_(iniciarSesion_(body));
     if (body.action === 'registrar_usuario')    return respuestaJson_(registrarUsuario_(body));
     if (body.action === 'listar_usuarios')      return respuestaJson_(listarUsuarios_(body));
@@ -611,6 +612,8 @@ function plantillaCorreo_(opciones) {
 // ─── 1) Crear solicitud ───────────────────────────────────────────────────
 
 function crearSolicitud_(body) {
+  contextoDe_(body);   // solo usuarios con sesión válida pueden pedir aprobaciones
+
   const hoja = hojaSolicitudes_();
   const id   = body.fecha_envio || new Date().toISOString();
 
@@ -684,7 +687,11 @@ function notificarAdmins_(fila) {
 
 // ─── 2) Consultar solicitudes ─────────────────────────────────────────────
 
-function consultarSolicitudes_() {
+function consultarSolicitudes_(body) {
+  // Las solicitudes traen proveedores, montos y correos: no pueden quedar
+  // abiertas a cualquiera que conozca la URL.
+  contextoDe_(body);
+
   const hoja    = hojaSolicitudes_();
   const valores = hoja.getDataRange().getValues();
   if (valores.length < 2) return [];
@@ -705,6 +712,11 @@ function consultarSolicitudes_() {
 // ─── 3) Decidir (aprobar / rechazar) ──────────────────────────────────────
 
 function decidirSolicitud_(body) {
+  // Aprobar o rechazar un pago es un acto administrativo: solo admins.
+  // Sin esto, cualquiera que conociera la URL podía aprobar solicitudes.
+  const ctx = contextoDe_(body);
+  if (MODO_LOGIN !== 'off' && !esAdmin_(ctx)) throw new Error('SOLO_ADMIN');
+
   const hoja        = hojaSolicitudes_();
   const valores     = hoja.getDataRange().getValues();
   const encabezados = valores[0];
@@ -726,7 +738,9 @@ function decidirSolicitud_(body) {
   const aprobado = body.decision === 'aprobado';
   const cambios = {
     'ESTADO':         aprobado ? 'Aprobado' : 'Rechazado',
-    'REVISADO POR':   body.revisado_por || '',
+    // Quién revisó sale de la SESIÓN VERIFICADA, no de lo que diga el cliente:
+    // si no, cualquiera podría firmar la aprobación con el nombre de otro.
+    'REVISADO POR':   ctx.autenticado ? (ctx.nombre || ctx.correo) : (body.revisado_por || ''),
     'FECHA DECISION': Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'),
     'COMENTARIO':     body.comentario || ''
   };
@@ -805,7 +819,11 @@ const CLIENT_ID_GOOGLE = '165996240052-u1qhq59gag42uvuojlgk54m0ojd1hp2g.apps.goo
 //                login en producción sin romperle el trabajo a nadie.
 //   'estricto' → sin token válido de un usuario ACTIVO no se responde nada.
 // Pasar a 'estricto' recién cuando USUARIOS esté cargada y probada.
-const MODO_LOGIN = 'suave';
+//
+// 2026-09-16: ACTIVADO EN ESTRICTO a pedido del usuario. Solo se entra con
+// cuenta de Google registrada y activa. Verificado antes de activarlo: 6
+// usuarios cargados, todos activos, 4 administradores, ninguno sin secciones.
+const MODO_LOGIN = 'estricto';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [

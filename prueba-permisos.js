@@ -203,5 +203,55 @@ console.log('\n=== verificación del token: qué rechaza ===');
   chk('si Google no responde 200 = null', g.verificarIdToken_('loquesea') === null);
 }
 
+console.log('\n=== Ningún endpoint del Web App queda sin validar sesión ===');
+{
+  // Encontrado en producción el 2026-09-16: `decidir_solicitud` dejaba a
+  // cualquiera con la URL aprobar pagos sin sesión. Activar el login NO protege
+  // por sí solo: MODO_LOGIN solo actúa donde alguien llamó a contextoDe_.
+  const codigo = fs.readFileSync(RUTA, 'utf8');
+  const lineas = codigo.split(/\r?\n/);
+
+  const cuerpos = {};
+  lineas.forEach((l, i) => {
+    const m = l.match(/^function\s+(\w+)/);
+    if (!m) return;
+    let prof = 0, j = i, c = '', visto = false;
+    do {
+      c += lineas[j] + '\n';
+      for (const ch of lineas[j]) { if (ch === '{') { prof++; visto = true; } if (ch === '}') prof--; }
+      j++;
+    } while (j < lineas.length && (!visto || prof > 0));
+    cuerpos[m[1]] = c;
+  });
+
+  // Públicas a propósito: validan el token ellas mismas o no revelan datos.
+  const PUBLICAS = ['estado_login'];
+
+  const rutas = [...new Set([...codigo.matchAll(/=== '([a-z_]+)'\)\s*return respuestaJson_\((\w+)\(/g)]
+    .map(m => m[1] + '|' + m[2]))];
+
+  const abiertas = [];
+  rutas.forEach(par => {
+    const [accion, f] = par.split('|');
+    if (PUBLICAS.indexOf(accion) !== -1) return;
+    const c = cuerpos[f] || '';
+    if (!/contextoDe_|verificarIdToken_/.test(c)) abiertas.push(accion + ' (' + f + ')');
+  });
+
+  chk('toda acción del Web App valida la sesión', abiertas.length === 0, JSON.stringify(abiertas));
+  chk('se encontraron rutas para auditar', rutas.length >= 8, 'rutas=' + rutas.length);
+
+  // decidir_solicitud tiene que exigir admin, no solo sesión: aprobar un pago
+  // es un acto administrativo.
+  chk('aprobar/rechazar exige rol admin',
+      /function decidirSolicitud_[\s\S]*?SOLO_ADMIN/.test(codigo),
+      'decidirSolicitud_ no exige admin');
+
+  // Quién aprobó no puede venir del cliente: se firmaría con el nombre de otro.
+  chk('"REVISADO POR" sale de la sesión verificada',
+      /'REVISADO POR':\s*ctx\.autenticado/.test(codigo),
+      'REVISADO POR todavía confía en el cliente');
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);
