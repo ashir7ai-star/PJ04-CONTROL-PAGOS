@@ -353,18 +353,18 @@ function verificarEncabezados_(destino, encabezadosPrincipal) {
 function revisarCarpetaAntesDeBorrar() {
   const NOMBRE = 'FACTURAS';   // ← la carpeta que se quiere borrar
 
-  const carpetas = DriveApp.getFoldersByName(NOMBRE);
-  if (!carpetas.hasNext()) {
-    const r = 'No existe ninguna carpeta llamada "' + NOMBRE + '".';
-    Logger.log(r); return r;
-  }
-  const carpeta = carpetas.next();
-  const idCarpeta = carpeta.getId();
+  // Si la carpeta ya no está, igual se revisan los enlaces: lo que de verdad
+  // importa es si las facturas siguen alcanzables, no dónde viven.
+  const carpetas  = DriveApp.getFoldersByName(NOMBRE);
+  const existe    = carpetas.hasNext();
+  const carpeta   = existe ? carpetas.next() : null;
+  const idCarpeta = existe ? carpeta.getId() : null;
 
-  // Cuántos archivos tiene por dentro
   let archivosDentro = 0;
-  const it = carpeta.getFiles();
-  while (it.hasNext() && archivosDentro < 1000) { it.next(); archivosDentro++; }
+  if (existe) {
+    const it = carpeta.getFiles();
+    while (it.hasNext() && archivosDentro < 1000) { it.next(); archivosDentro++; }
+  }
 
   // Todos los enlaces guardados en los pagos
   const ids = [];
@@ -382,29 +382,47 @@ function revisarCarpetaAntesDeBorrar() {
   });
 
   let enEsaCarpeta = 0, revisados = 0, inaccesibles = 0;
+  const rotos = [];
   ids.forEach(id => {
     revisados++;
     try {
-      const padres = DriveApp.getFileById(id).getParents();
-      while (padres.hasNext()) {
-        if (padres.next().getId() === idCarpeta) { enEsaCarpeta++; break; }
+      const archivo = DriveApp.getFileById(id);
+      if (idCarpeta) {
+        const padres = archivo.getParents();
+        while (padres.hasNext()) {
+          if (padres.next().getId() === idCarpeta) { enEsaCarpeta++; break; }
+        }
       }
-    } catch (err) { inaccesibles++; }
+    } catch (err) {
+      inaccesibles++;
+      if (rotos.length < 5) rotos.push(id);
+    }
   });
 
   const lineas = [
     'REVISIÓN DE LA CARPETA "' + NOMBRE + '"',
     '',
-    'Archivos dentro de la carpeta: ' + archivosDentro,
-    'Enlaces de pagos revisados:    ' + revisados,
-    'Enlaces que apuntan AHÍ:       ' + enEsaCarpeta,
-    'Enlaces inaccesibles:          ' + inaccesibles,
+    existe
+      ? 'La carpeta existe. Archivos dentro: ' + archivosDentro
+      : 'La carpeta YA NO EXISTE (borrada o en la papelera).',
     '',
-    enEsaCarpeta === 0
-      ? '✅ SEGURO DE BORRAR: ningún pago registrado apunta a archivos de esa carpeta.'
-      : '⛔ NO BORRAR: ' + enEsaCarpeta + ' pago(s) quedarían con el enlace roto. ' +
-        'Mové esos archivos a otra carpeta antes, o dejá la carpeta donde está.'
-  ];
+    'Enlaces de pagos revisados: ' + revisados,
+    existe ? 'Enlaces que apuntan AHÍ:    ' + enEsaCarpeta : '',
+    'Enlaces ROTOS:              ' + inaccesibles,
+    ''
+  ].filter(l => l !== '' || true);
+
+  if (inaccesibles > 0) {
+    lineas.push('⛔ Hay ' + inaccesibles + ' factura(s) que ya no se pueden abrir.');
+    if (rotos.length) lineas.push('   Primeros IDs afectados: ' + rotos.join(', '));
+    lineas.push('   Revisá la papelera de Drive: si están ahí, restaurarlas arregla los enlaces.');
+  } else if (existe && enEsaCarpeta > 0) {
+    lineas.push('⛔ NO BORRAR: ' + enEsaCarpeta + ' pago(s) quedarían con el enlace roto. ' +
+                'Mové esos archivos a otra carpeta antes.');
+  } else {
+    lineas.push('✅ TODO EN ORDEN: las ' + revisados + ' facturas registradas siguen accesibles.');
+    if (existe) lineas.push('   Y ningún pago apunta a esa carpeta, así que se puede borrar.');
+  }
   const resumen = lineas.join('\n');
   Logger.log(resumen);
   return resumen;
