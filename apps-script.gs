@@ -296,6 +296,20 @@ function registrarPago_(body) {
 // Con MODO_LOGIN = 'off' el contexto da acceso a todas, así que se comporta
 // igual que antes del login.
 
+// Convierte el valor de una celda a texto para enviarlo al navegador.
+//
+// OJO CON LA HORA: cuando Sheets guarda la celda como fecha real (no como
+// texto), formatearla con 'yyyy-MM-dd' DESCARTA LA HORA. En FECHA REGISTRO eso
+// arruina el orden cronológico: todos los registros del mismo día llegaban con
+// 00:00 y quedaban empatados. Las columnas de fecha+hora se formatean con hora.
+function formatearValorDeCelda_(encabezado, valor) {
+  if (!(valor instanceof Date)) return valor;
+  const conHora = ['FECHA REGISTRO', 'FECHA SOLICITUD', 'FECHA DECISION', 'ULTIMO ACCESO'];
+  return conHora.indexOf(String(encabezado).trim().toUpperCase()) !== -1
+    ? Utilities.formatDate(valor, ZONA_HORARIA, 'dd/MM/yyyy HH:mm')
+    : Utilities.formatDate(valor, ZONA_HORARIA, 'yyyy-MM-dd');
+}
+
 function consultarPagos_(ctx) {
   const contexto  = ctx || contextoDe_(null);
   const resultado = [];
@@ -308,7 +322,7 @@ function consultarPagos_(ctx) {
       const obj = {};
       encabezados.forEach((h, i) => {
         const v = fila[i];
-        obj[h] = (v instanceof Date) ? Utilities.formatDate(v, ZONA_HORARIA, 'yyyy-MM-dd') : v;
+        obj[h] = formatearValorDeCelda_(h, v);
       });
       resultado.push(obj);
     });
@@ -878,7 +892,7 @@ function consultarSolicitudes_(body) {
       const obj = {};
       encabezados.forEach((h, i) => {
         const v = fila[i];
-        obj[h] = (v instanceof Date) ? Utilities.formatDate(v, ZONA_HORARIA, 'yyyy-MM-dd') : v;
+        obj[h] = formatearValorDeCelda_(h, v);
       });
       return obj;
     });

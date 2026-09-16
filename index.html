@@ -949,7 +949,16 @@
       width: 100%;
       border-collapse: collapse;
       font-size: 0.82rem;
+      /* Con ocho columnas, en pantallas medianas el contenido se comprimía
+         hasta cortar los importes. Se le da un ancho mínimo y el contenedor
+         se desliza: es preferible desplazarse a leer "$152.00" en vez de
+         "$152.000" — un importe cortado es un dato equivocado. */
+      min-width: 900px;
     }
+    .results-table td, .results-table th { white-space: nowrap; }
+    /* Estas dos sí pueden partirse en varias líneas: son texto, no cifras. */
+    .results-table td:nth-child(5),
+    .results-table td:nth-child(6) { white-space: normal; min-width: 150px; }
 
     .results-table th {
       background: var(--surface-2);
@@ -1446,6 +1455,10 @@
       background: var(--surface) !important;
       border-color: var(--border) !important;
     }
+    /* Consultar Pagos muestra una tabla de ocho columnas: necesita más ancho
+       que el resto de las vistas, que son formularios. */
+    #viewSearch { max-width: 1280px; }
+
     /* ─── Saldos disponibles ─────────────────────────────────────── */
     .saldos { margin-bottom: 28px; }
     .btn-refrescar svg { width: 14px; height: 14px; }

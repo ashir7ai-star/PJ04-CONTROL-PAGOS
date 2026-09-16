@@ -461,6 +461,12 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-16**: 🔴 **La hora del registro se perdía en el servidor.** Aun después de corregir el orden, las fechas llegaban como `09/12/2026 00:00`.
+  - **Causa:** cuando Sheets guarda la celda como **fecha real** (no como texto), `consultarPagos_` la formateaba con `yyyy-MM-dd`, que **descarta la hora**. Todos los registros del mismo día llegaban con 00:00 y quedaban empatados, así que el orden cronológico seguía siendo imposible. Afectaba también a `FECHA SOLICITUD`, `FECHA DECISION` y `ULTIMO ACCESO`.
+  - **Fix:** `formatearValorDeCelda_()` — las columnas de fecha **con hora** se formatean `dd/MM/yyyy HH:mm`; las de solo fecha siguen en `yyyy-MM-dd`.
+  - ⚠️ Una celda puede ser **texto o fecha real** según cómo se escribió, y las dos se ven igual en el Sheet. Al leer fechas del Sheet hay que contemplar ambos casos.
+  - **Los importes se cortaban** (`$152.00` en vez de `$152.000`). Un importe cortado es un dato equivocado, no un problema estético: la tabla pasa a `min-width: 900px` con desplazamiento, las cifras no se parten nunca, y la vista de Consultar Pagos se ensancha a 1280px (el resto son formularios y no lo necesitan). `sw.js` → `control-pagos-v66`.
+
 - **2026-09-16**: 🔴 **Consultar Pagos no mostraba el orden cronológico real.** Detectado por el usuario al cotejar contra el Sheet de viáticos.
   - **Causa:** se ordenaba por **FECHA DE PAGO**, que en viáticos se repite mucho (varios pagos del mismo día). Al empatar quedaban en el orden de la hoja, que **no es cronológico**: la migración agregó las filas viejas al final, así que un registro de prueba aparecía antes que el último cargado del día.
   - **Y había un fallo más profundo:** `parseFecha()` **no sabe leer FECHA REGISTRO**. Ante `15/09/2026 18:40` parte por `/` y termina haciendo `Number("2026 18:40")` = NaN → fecha inválida. Por eso nunca se pudo ordenar por el momento del registro.
