@@ -2997,6 +2997,17 @@
     function manejarErrorDeSesion(datos) {
       if (!datos || datos.status !== 'error' || !datos.codigo) return;
       if (['SESION_INVALIDA', 'NO_REGISTRADO', 'PENDIENTE_APROBACION', 'USUARIO_INACTIVO'].indexOf(datos.codigo) === -1) return;
+
+      // Un token vencido NO es una sesión cerrada. Si esta persona ya venía
+      // usando el sistema, primero se intenta renovar en silencio; recién si
+      // eso falla se le pide que entre. Expulsarla de entrada era lo que hacía
+      // que "se cerrara sola" cada tanto.
+      if (datos.codigo === 'SESION_INVALIDA' && correoRecordado && !renovando) {
+        sesion.idToken = null;
+        renovarEnSilencio();
+        return;
+      }
+
       sesion.idToken = null;
       // La sesión guardada ya no sirve: hay que borrarla o el próximo arranque
       // intentaría entrar con ella otra vez y fallaría igual.
@@ -4380,92 +4391,141 @@
     // Arranque: le preguntamos al servidor si el login está encendido. Así el
     // interruptor vive en un solo lado (MODO_LOGIN en el Apps Script) y no hay
     // que republicar la app para activarlo o desactivarlo.
+    // El arranque NO espera a la red.
+    //
+    // Antes se consultaba `estado_login` y se esperaba la respuesta (hasta 25s)
+    // antes de mostrar nada: con Apps Script frío eso eran 30 segundos de
+    // pantalla en blanco, sin siquiera el botón de Google. Ahora se usa el
+    // último modo conocido de inmediato y la consulta corre por detrás.
     async function arrancarSesion() {
-      // ORDEN IMPORTANTE: primero se restaura la sesión guardada, DESPUÉS se
-      // consulta la red.
-      //
-      // Al revés (como estaba) la sesión dependía de que el servidor
-      // respondiera rápido: si la consulta tardaba o fallaba, se asumía
-      // 'off' y el usuario perdía su sesión y sus permisos de administrador
-      // en silencio, sin haber cerrado sesión. Apps Script tarda más de 8
-      // segundos con frecuencia, así que pasaba seguido.
-      //
-      // Restaurar primero no debilita nada: la sesión guardada ya fue validada
-      // por el servidor cuando se creó, y toda operación real la vuelve a
-      // validar. Acá solo decide qué se le muestra a la persona.
       const guardada      = leerSesionGuardada();
       const modoRecordado = leerModoRecordado();
-      let   restaurada    = false;
 
-      if (sesionGuardadaSirve(guardada)) {
-        sesion.modo    = guardada.modo || modoRecordado || 'suave';
-        sesion.idToken = guardada.idToken;
-        aplicarSesion(guardada);
+      // Modo inmediato, sin tocar la red.
+      sesion.modo = (guardada && guardada.modo) || modoRecordado || 'off';
+
+      if (sesion.modo === 'off') {
         ocultarLogin();
-        restaurada = true;
+        aplicarPermisos();
+        cargarSaldos(false);
+        refrescarModoEnSegundoPlano();
+        return;
       }
 
-      // Red de seguridad: la pantalla de acceso arranca visible para que no se
-      // alcance a ver contenido detrás. Si algo sale mal y nadie la oculta, la
-      // app queda tapada y nadie puede trabajar.
-      const salvavidas = setTimeout(() => {
-        if (loginOverlay.style.display !== 'none' && !sesion.correo) {
-          console.warn('arrancarSesion no respondió a tiempo; se destapa la app.');
-          ocultarLogin();
-        }
-      }, 20000);
+      if (guardada && guardada.correo) {
+        // El perfil se restaura SIEMPRE, incluso con el token vencido.
+        // Token vencido NO es lo mismo que sesión cerrada: el token de Google
+        // dura ~1 hora y no se puede alargar, pero sí se puede renovar solo.
+        // Tratarlos como equivalentes era lo que obligaba a entrar de nuevo.
+        correoRecordado = guardada.correo;
+        aplicarSesion(guardada);
+        ocultarLogin();
 
-      let estado = null;
+        if (sesionGuardadaSirve(guardada)) {
+          sesion.idToken = guardada.idToken;
+          cargarSaldos(false);
+          programarRenovacion(guardada.vence);
+          revalidarSesion();
+        } else {
+          renovarEnSilencio();   // sin pedirle nada al usuario
+        }
+
+        refrescarModoEnSegundoPlano();
+        return;
+      }
+
+      // Nadie entró nunca en este navegador: acá sí hay que pedir el ingreso.
+      mostrarLogin();
+      iniciarGoogle();
+      refrescarModoEnSegundoPlano();
+    }
+
+    // Consulta el modo real sin bloquear el arranque. Si cambió, se aplica.
+    async function refrescarModoEnSegundoPlano() {
       try {
         const control = new AbortController();
-        // 25s: Apps Script en frío tarda bastante, y cortar antes hacía que
-        // una respuesta lenta se confundiera con "el login está apagado".
         const alarma  = setTimeout(() => control.abort(), 25000);
+        let estado;
         try {
           const res = await fetch(APPS_SCRIPT_URL + '?action=estado_login&_=' + Date.now(), { signal: control.signal });
           estado = await res.json();
         } finally {
           clearTimeout(alarma);
         }
-      } catch (err) {
-        console.error('estado_login:', err);
-      }
-      clearTimeout(salvavidas);
-
-      if (estado && estado.modo) {
+        if (!estado || !estado.modo || estado.modo === sesion.modo) {
+          if (estado && estado.modo) guardarModoRecordado(estado.modo);
+          return;
+        }
         guardarModoRecordado(estado.modo);
         sesion.modo = estado.modo;
-      } else if (restaurada || modoRecordado) {
-        // No se pudo preguntar: se usa el último modo conocido en vez de
-        // asumir 'off', que apagaría los permisos de quien sí tiene sesión.
-        sesion.modo = sesion.modo || modoRecordado;
-      } else {
-        // Primera visita de este navegador y sin respuesta del servidor: la
-        // app queda usable. La restricción real la aplica el servidor igual.
-        sesion.modo = 'off';
-      }
-
-      if (sesion.modo === 'off') {
-        ocultarLogin();
         aplicarPermisos();
-        cargarSaldos(false);
+        if (estado.modo !== 'off' && !sesion.correo) { mostrarLogin(); iniciarGoogle(); }
+      } catch (err) {
+        // Sin respuesta se mantiene el último modo conocido. No se expulsa a
+        // nadie por un problema de red: el servidor valida igual cada operación.
+        console.warn('No se pudo consultar el modo de acceso:', err && err.message);
+      }
+    }
+
+    // ─── Renovación silenciosa del token ───────────────────────────
+    // Google entrega un token nuevo sin intervención del usuario mientras siga
+    // con sesión iniciada en el navegador. Solo se le pide algo si esto falla.
+    let renovando = false;
+    let temporizadorRenovacion = null;
+
+    function programarRenovacion(vence) {
+      clearTimeout(temporizadorRenovacion);
+      if (!vence) return;
+      // Cinco minutos antes de vencer, para que nunca llegue a caducar mientras
+      // la persona está trabajando.
+      const espera = Math.max(30000, vence - Date.now() - 5 * 60000);
+      if (espera > 2147483647) return;   // más allá del máximo de setTimeout
+      temporizadorRenovacion = setTimeout(renovarEnSilencio, espera);
+    }
+
+    function renovarEnSilencio() {
+      if (renovando) return;
+      renovando = true;
+
+      let resuelto = false;
+      const rendirse = () => {
+        if (resuelto) return;
+        resuelto = true;
+        renovando = false;
+        // Solo acá, tras agotar la vía silenciosa, se le pide al usuario.
+        mostrarLogin('info', 'Necesitamos que confirmes tu cuenta para continuar.');
+        iniciarGoogle();
+      };
+
+      // `onCredencialGoogle` marca el fin al recibir el token nuevo.
+      renovacionEnCurso = () => { resuelto = true; renovando = false; };
+
+      if (!window.google || !google.accounts || !google.accounts.id) {
+        setTimeout(() => { if (!resuelto) renovarEnSilencio2(rendirse); }, 600);
         return;
       }
+      renovarEnSilencio2(rendirse);
+    }
 
-      if (restaurada) {
-        aplicarPermisos();     // ahora ya se conoce el modo definitivo
-        cargarSaldos(false);
-        revalidarSesion();     // confirma contra el servidor, en segundo plano
+    let renovacionEnCurso = null;
+
+    function renovarEnSilencio2(rendirse) {
+      try {
+        iniciarGoogle();                  // initialize con auto_select + login_hint
+        google.accounts.id.prompt(aviso => {
+          // Si Google no puede resolverlo solo (sin sesión, One Tap bloqueado),
+          // se pide el ingreso en vez de dejar al usuario esperando.
+          if (aviso && (aviso.isNotDisplayed && aviso.isNotDisplayed() ||
+                        aviso.isSkippedMoment && aviso.isSkippedMoment())) {
+            rendirse();
+          }
+        });
+      } catch (err) {
+        rendirse();
         return;
       }
-
-      // Hay una sesión vencida: se recuerda la cuenta para que volver a entrar
-      // sea un solo toque, en vez de elegir de cero.
-      if (guardada && guardada.correo) correoRecordado = guardada.correo;
-      olvidarSesion();
-
-      mostrarLogin();
-      iniciarGoogle();
+      // Red de seguridad: si en 8s no llegó un token nuevo, se pide el ingreso.
+      setTimeout(rendirse, 8000);
     }
 
     // Confirma contra el servidor que la sesión restaurada sigue siendo válida
@@ -4478,7 +4538,13 @@
           guardarSesion();
           return;
         }
-        // Cualquier otra respuesta significa que esta sesión ya no sirve.
+        // Si el token venció, se renueva en silencio antes de molestar a nadie.
+        if (datos.codigo === 'SESION_INVALIDA' && correoRecordado) {
+          sesion.idToken = null;
+          renovarEnSilencio();
+          return;
+        }
+        // El resto (dado de baja, pendiente de aprobación) sí requiere avisar.
         sesion.idToken = null;
         olvidarSesion();
         mostrarLogin('info', datos.message || 'Tu sesión venció. Volvé a entrar.');
@@ -4526,7 +4592,15 @@
     // controles, y ancho completo de la tarjeta en vez de una píldora suelta.
     function redibujarBotonGoogle() {
       const zona = document.getElementById('googleBtn');
-      if (!zona || !googleInicializado) return;
+      if (!zona) return;
+      // Mientras Google carga su librería, un texto en vez de un hueco vacío:
+      // sin esto la tarjeta se veía incompleta y parecía colgada.
+      if (!googleInicializado) {
+        if (!zona.innerHTML.trim()) {
+          zona.innerHTML = '<span style="font-size:0.82rem;color:var(--text-muted);">Conectando con Google…</span>';
+        }
+        return;
+      }
       // Con el overlay oculto la zona mide 0 y el botón saldría con el ancho
       // mínimo. Se redibuja al volver a mostrar el login.
       if (loginOverlay.style.display === 'none') return;
@@ -4585,6 +4659,10 @@
         aplicarSesion(datos);
         correoRecordado = sesion.correo;
         guardarSesion();   // para no tener que entrar de nuevo en cada recarga
+        // Avisa que la renovación silenciosa terminó bien, y programa la
+        // siguiente antes de que este token nuevo llegue a vencer.
+        if (renovacionEnCurso) { renovacionEnCurso(); renovacionEnCurso = null; }
+        programarRenovacion(vencimientoDeToken(sesion.idToken));
         ocultarLogin();
         // Recién acá se piden los saldos: antes de tener sesión, el servidor
         // rechazaría la consulta y mostraría un error en la pantalla de login.

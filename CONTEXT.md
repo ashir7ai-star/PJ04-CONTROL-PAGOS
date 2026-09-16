@@ -410,6 +410,14 @@ En [index.html](index.html):
 ¿Necesita saldo propio? Solo si es una bolsa de dinero aparte. Si no, `cuentaDePago_()` lo manda al banco de la empresa automáticamente.
 
 ## Historial de cambios recientes
+- **2026-09-16**: 🔑 **Arranque instantáneo y renovación silenciosa de la sesión.** Reportado: ~30s de pantalla en blanco sin siquiera el botón de Google, y la sesión "venciéndose" sola pese a ser un dispositivo ya registrado.
+  - **Los 30 segundos:** `arrancarSesion()` **esperaba** la respuesta de `estado_login` (timeout 25s) antes de mostrar nada. Con Apps Script frío eso bloqueaba todo. Ahora el arranque **no toca la red**: usa el último modo conocido de inmediato y `refrescarModoEnSegundoPlano()` lo confirma por detrás; si cambió, se aplica.
+  - **La sesión que "vencía":** el token de Google dura ~1 hora y **no se puede alargar** — pero **token vencido ≠ sesión cerrada**. Tratarlos como equivalentes era el error. Ahora, con el token vencido: (a) el perfil y los permisos **se restauran igual**, (b) se pide un token nuevo a Google **en silencio** (`auto_select` + `login_hint`, que funciona mientras la persona siga con sesión en el navegador), (c) solo si eso falla se le pide entrar.
+  - **Renovación anticipada:** `programarRenovacion()` renueva **5 minutos antes** de que el token caduque, así nunca caduca mientras alguien está trabajando.
+  - **Un `SESION_INVALIDA` ya no expulsa** a quien venía usando el sistema: primero se intenta la renovación silenciosa. Eso era lo que la cerraba "sola" cada tanto.
+  - Mientras carga la librería de Google, el botón muestra "Conectando con Google…" en vez de un hueco vacío que parecía colgado.
+  - ⚠️ **Principio:** nada de lo que decide el arranque debe depender de que el servidor conteste rápido. Apps Script es lento y a veces falla; la app tiene que abrir igual. `sw.js` → `control-pagos-v54`.
+
 - **2026-09-16**: 🔴 **Causa raíz de "desplegué pero no veo los cambios".** El usuario no veía la sección nueva pese a que GitHub Pages ya la servía (verificado con `curl`).
   - **El defecto:** GitHub Pages manda `Cache-Control: max-age=600` en `index.html` y `sw.js`. Cuando el Service Worker nuevo se instalaba, su `c.add()` **pasaba por la caché HTTP del navegador**, así que podía guardar en la caché NUEVA una copia VIEJA de `index.html`. **La versión subía pero el contenido no**, y todo parecía correcto: por eso costó tanto verlo.
   - **Tres correcciones:** (a) `c.add(new Request(u, { cache: 'reload' }))` fuerza bajar de la red, salteando la caché HTTP. (b) `registrarServiceWorker` con `updateViaCache: 'none'`, para que el propio `sw.js` no tarde hasta 10 minutos en detectarse. (c) **El documento HTML pasa a red-primero con caché de respaldo**: el resto de los archivos (fuentes, CDN) casi nunca cambian y conviene servirlos de caché, pero `index.html` es lo único que cambia en cada actualización. Sigue abriendo sin conexión.
