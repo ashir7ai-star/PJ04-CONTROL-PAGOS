@@ -474,7 +474,15 @@ function doGet(e) {
     // Sin autenticación a propósito: el frontend necesita saber si tiene que
     // pedir login ANTES de tener una sesión. No revela ningún dato.
     if (accion === 'estado_login') {
-      return respuestaJson_({ status: 'success', modo: MODO_LOGIN, clientId: CLIENT_ID_GOOGLE });
+      return respuestaJson_({
+        status: 'success',
+        modo: MODO_LOGIN,
+        clientId: CLIENT_ID_GOOGLE,
+        // Las claves de sección no son un dato sensible (son nombres de
+        // categoría que ya se ven en pantalla) y sirven para verificar desde
+        // afuera qué versión del script está realmente desplegada.
+        secciones: Object.keys(SECCIONES)
+      });
     }
     if (accion === 'consultar_solicitudes') return respuestaJson_(consultarSolicitudes_(e.parameter));
     if (accion === 'consultar_pagos')       return respuestaJson_(consultarPagos_(contextoDe_(e.parameter)));

@@ -4785,7 +4785,12 @@
       // Con login activo manda la sesión, no el link.
       desactivarVistaRestringida();
 
-      const puede = (s) => sesion.secciones.indexOf(s) !== -1;
+      // Un administrador ve TODO por definición. No se consulta su lista de
+      // secciones: si el servidor desplegado fuera más viejo que la app y no
+      // conociera una sección nueva, esa opción le desaparecería de la pantalla
+      // sin ninguna explicación. El permiso real lo sigue validando el servidor.
+      const esAdministrador = sesion.rol === 'admin';
+      const puede = (s) => esAdministrador || sesion.secciones.indexOf(s) !== -1;
 
       // Botones de tipo de pago, en los dos formularios
       document.querySelectorAll('#tipoSelector .tipo-btn, #tipoSelectorSolicitud .tipo-btn').forEach(btn => {
