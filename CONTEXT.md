@@ -422,7 +422,25 @@ En [index.html](index.html):
 
 ¿Necesita saldo propio? Solo si es una bolsa de dinero aparte. Si no, `cuentaDePago_()` lo manda al banco de la empresa automáticamente.
 
+## 🔁 Traslados entre cuentas propias (2026-09-16)
+Enviar dinero del banco al fondo de viáticos **NO es un gasto**: la plata no sale de la empresa, cambia de bolsillo. El gasto ocurre después, cuando quien está en campo lo usa y carga su recibo.
+
+⚠️ **Si un traslado se registrara como un pago, el reporte contaría DOS VECES el mismo dinero** — una al enviarlo y otra al gastarlo. Por eso `TRASLADOS` está en `hojasNoPagos_()` y hay una prueba que lo vigila.
+
+| Aspecto | Cómo quedó |
+|---|---|
+| Hoja | `TRASLADOS` (fecha, origen, destino, monto, quién, nota, comprobante) |
+| Carpeta | `PJ04 TRASLADOS` |
+| Efecto en saldos | **resta** del origen, **suma** al destino |
+| Quién puede | **solo administradores** (validado en el servidor) |
+| Movimientos | **banco → fondo** únicamente; se rechaza banco→banco, fondo→banco y origen=destino |
+| Comprobante | **obligatorio** |
+
+La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta tiene su propio saldo base, así que un traslado se descuenta del origen solo si es posterior a la base *del origen*, y se suma al destino solo si es posterior a la base *del destino*.
+
 ## Historial de cambios recientes
+- **2026-09-16**: 🔁 **Sección "Traslados"** — registrar envíos de dinero del banco a los fondos de Viáticos/Caja Menor. Ver la sección "🔁 Traslados" arriba. **12 comprobantes nuevos** en [prueba-saldos.js](prueba-saldos.js), incluida una que verifica que **el total del sistema solo baje por el gasto real** (la plata no se duplica ni se evapora al moverse). Verificadas invirtiendo el signo del traslado y sacando `TRASLADOS` de las hojas excluidas: detectan ambas. `sw.js` → `control-pagos-v60`.
+
 - **2026-09-16**: 🔒 **Aprobaciones: el correo sale de la sesión y cada quien ve solo sus solicitudes.**
   - **Se eliminó el campo "Correo"** del formulario de solicitud: el sistema ya sabe con qué cuenta entraste. Ahora `crearSolicitud_()` lo toma de `ctx.correo` (la sesión verificada contra Google). No es solo comodidad: **es lo que hace confiable el filtro de privacidad**, porque si el correo fuera un campo libre, cualquiera podría escribir el de otro y ver —o generar— solicitudes ajenas.
   - **"Revisar Solicitudes" ahora filtra por persona**: un usuario común ve **únicamente las suyas**; los administradores ven todas, porque son quienes aprueban. **Filtrado en el servidor**, no en la pantalla: las solicitudes de otros —con sus proveedores, montos y correos— ya no viajan al navegador.

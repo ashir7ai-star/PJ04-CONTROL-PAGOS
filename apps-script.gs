@@ -159,7 +159,11 @@ const SECCIONES = {
 // ("Cannot access ... before initialization"). Dentro de una función se evalúa
 // recién al llamarla, cuando todo el archivo ya está cargado.
 function hojasNoPagos_() {
-  return [NOMBRE_HOJA_SOLICITUDES, 'USUARIOS', 'SALDOS'];
+  // TRASLADOS va acá por una razón contable, no técnica: un traslado NO es un
+  // gasto. Si se contara como pago, el reporte sumaría dos veces el mismo
+  // dinero — una al enviarlo a viáticos y otra cuando la persona en campo lo
+  // gaste y cargue su recibo.
+  return [NOMBRE_HOJA_SOLICITUDES, 'USUARIOS', 'SALDOS', 'TRASLADOS'];
 }
 
 function hojaPrincipal_() {
@@ -213,16 +217,23 @@ function seccionDeTipo_(tipo) {
   return 'pagos';
 }
 
+function carpetaPorNombre_(nombre) {
+  const carpetas = DriveApp.getFoldersByName(nombre);
+  return carpetas.hasNext() ? carpetas.next() : DriveApp.createFolder(nombre);
+}
+
 function carpetaDeSeccion_(seccion) {
   const cfg = SECCIONES[seccion] || SECCIONES.pagos;
-  const carpetas = DriveApp.getFoldersByName(cfg.carpeta);
-  return carpetas.hasNext() ? carpetas.next() : DriveApp.createFolder(cfg.carpeta);
+  return carpetaPorNombre_(cfg.carpeta);
 }
 
 // Sube archivos a la carpeta de la sección indicada.
 function subirArchivosASeccion_(archivos, seccion) {
+  return subirArchivosACarpeta_(archivos, carpetaDeSeccion_(seccion));
+}
+
+function subirArchivosACarpeta_(archivos, carpeta) {
   if (!archivos || archivos.length === 0) return '';
-  const carpeta = carpetaDeSeccion_(seccion);
   return archivos.map(a => {
     const blob = Utilities.newBlob(
       Utilities.base64Decode(a.datos),
@@ -569,6 +580,8 @@ function doPost(e) {
     if (body.action === 'guardar_usuario')      return respuestaJson_(guardarUsuario_(body));
     if (body.action === 'consultar_saldos')     return respuestaJson_(consultarSaldos_(contextoDe_(body)));
     if (body.action === 'ajustar_saldo')        return respuestaJson_(ajustarSaldo_(body));
+    if (body.action === 'registrar_traslado')   return respuestaJson_(registrarTraslado_(body));
+    if (body.action === 'consultar_traslados')  return respuestaJson_(consultarTraslados_(body));
     return respuestaJson_({ status: 'error', message: 'Acción no reconocida: ' + body.action });
   } catch (err) {
     return errorJson_(err);
@@ -1539,8 +1552,30 @@ function consultarSaldos_(ctx) {
   const bases    = basesDeSaldo_();
 
   const acumulado = {};
-  Object.keys(CUENTAS).forEach(c => { acumulado[c] = { gastado: 0, pagos: 0 }; });
+  Object.keys(CUENTAS).forEach(c => {
+    acumulado[c] = { gastado: 0, pagos: 0, enviado: 0, recibido: 0, traslados: 0 };
+  });
   let sinCuenta = 0;
+
+  // Traslados: restan del origen y suman al destino. Se aplica la MISMA regla
+  // de corte que con los pagos —solo los posteriores al saldo base de cada
+  // cuenta— y se evalúa por separado para cada lado, porque cada cuenta tiene
+  // su propia fecha de base.
+  trasladosTodos_().forEach(t => {
+    if (!t.fecha || !t.monto) return;
+
+    const salida = bases[t.origen];
+    if (salida && t.fecha.getTime() > salida.fecha.getTime()) {
+      acumulado[t.origen].enviado   += t.monto;
+      acumulado[t.origen].traslados += 1;
+    }
+
+    const entrada = bases[t.destino];
+    if (entrada && t.fecha.getTime() > entrada.fecha.getTime()) {
+      acumulado[t.destino].recibido  += t.monto;
+      acumulado[t.destino].traslados += 1;
+    }
+  });
 
   hojasDePagos_().forEach(hoja => {
     const valores = hoja.getDataRange().getValues();
@@ -1600,7 +1635,12 @@ function consultarSaldos_(ctx) {
       concepto:    base ? base.concepto : '',
       gastado:     acumulado[clave].gastado,
       pagos:       acumulado[clave].pagos,
-      saldo:       base ? base.monto - acumulado[clave].gastado : 0
+      enviado:     acumulado[clave].enviado,
+      recibido:    acumulado[clave].recibido,
+      traslados:   acumulado[clave].traslados,
+      saldo:       base
+        ? base.monto - acumulado[clave].gastado - acumulado[clave].enviado + acumulado[clave].recibido
+        : 0
     };
   });
 
@@ -1611,6 +1651,124 @@ function consultarSaldos_(ctx) {
     // solo le sirve (y solo le corresponde) a un administrador.
     sinCuenta:   esAdministrador ? sinCuenta : 0,
     cuentas:     cuentas
+  };
+}
+
+// ─── Traslados entre cuentas propias ──────────────────────────────────────
+//
+// Enviar plata del banco al fondo de viáticos NO es un gasto: el dinero no
+// sale de la empresa, cambia de bolsillo. El gasto ocurre después, cuando la
+// persona en campo lo usa y carga su recibo. Por eso los traslados viven en su
+// propia hoja, quedan fuera de los reportes de pagos, y lo único que hacen es
+// mover saldo de una cuenta a otra.
+//
+// Reglas (definidas por el usuario): solo administradores, siempre de un banco
+// hacia un fondo, y con comprobante obligatorio.
+
+const NOMBRE_HOJA_TRASLADOS = 'TRASLADOS';
+const CARPETA_TRASLADOS     = 'PJ04 TRASLADOS';
+const ENCABEZADOS_TRASLADOS = [
+  'FECHA', 'ORIGEN', 'DESTINO', 'MONTO', 'REGISTRADO POR', 'NOTA', 'URL COMPROBANTE'
+];
+
+function hojaTraslados_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let hoja = ss.getSheetByName(NOMBRE_HOJA_TRASLADOS);
+  if (!hoja) {
+    hoja = ss.insertSheet(NOMBRE_HOJA_TRASLADOS, ss.getNumSheets());
+    hoja.getRange(1, 1, 1, ENCABEZADOS_TRASLADOS.length)
+        .setValues([ENCABEZADOS_TRASLADOS]).setFontWeight('bold');
+    hoja.setFrozenRows(1);
+  }
+  return hoja;
+}
+
+function trasladosTodos_() {
+  const valores = hojaTraslados_().getDataRange().getValues();
+  if (valores.length < 2) return [];
+  const enc = valores[0];
+  const c = {
+    fecha:   enc.indexOf('FECHA'),
+    origen:  enc.indexOf('ORIGEN'),
+    destino: enc.indexOf('DESTINO'),
+    monto:   enc.indexOf('MONTO'),
+    quien:   enc.indexOf('REGISTRADO POR'),
+    nota:    enc.indexOf('NOTA'),
+    url:     enc.indexOf('URL COMPROBANTE')
+  };
+  return valores.slice(1)
+    .filter(f => f.some(v => v !== ''))
+    .map(f => ({
+      fechaTexto: String(f[c.fecha]),
+      fecha:      fechaHoraDeRegistro_(f[c.fecha]),
+      origen:     String(f[c.origen] || '').trim(),
+      destino:    String(f[c.destino] || '').trim(),
+      monto:      montoANumero_(f[c.monto]),
+      quien:      String(f[c.quien] || ''),
+      nota:       String(f[c.nota] || ''),
+      url:        String(f[c.url] || '')
+    }));
+}
+
+function registrarTraslado_(body) {
+  const ctx = contextoDe_(body);
+  if (MODO_LOGIN !== 'off' && !esAdmin_(ctx)) throw new Error('SOLO_ADMIN');
+
+  const origen  = String(body.origen  || '').trim();
+  const destino = String(body.destino || '').trim();
+
+  if (!CUENTAS[origen])  return { status: 'error', message: 'Cuenta de origen desconocida.' };
+  if (!CUENTAS[destino]) return { status: 'error', message: 'Cuenta de destino desconocida.' };
+  if (origen === destino) return { status: 'error', message: 'El origen y el destino no pueden ser la misma cuenta.' };
+
+  // Banco → fondo, según lo definido. Bloquearlo evita movimientos sin sentido
+  // cargados por error, que en saldos serían difíciles de detectar después.
+  if (CUENTAS[origen].grupo !== 'banco') {
+    return { status: 'error', message: 'El origen tiene que ser una cuenta bancaria.' };
+  }
+  if (CUENTAS[destino].grupo !== 'fondo') {
+    return { status: 'error', message: 'El destino tiene que ser Viáticos o Caja Menor.' };
+  }
+
+  const monto = montoANumero_(body.monto);
+  if (!monto || monto <= 0) return { status: 'error', message: 'El monto tiene que ser mayor a cero.' };
+
+  if (!body.archivos || !body.archivos.length) {
+    return { status: 'error', message: 'Adjuntá el comprobante de la transferencia.' };
+  }
+
+  hojaTraslados_().appendRow([
+    Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'),
+    origen,
+    destino,
+    monto,
+    ctx.nombre || ctx.correo || String(body.registrado_por || ''),
+    String(body.nota || ''),
+    subirArchivosACarpeta_(body.archivos, carpetaPorNombre_(CARPETA_TRASLADOS))
+  ]);
+
+  return { status: 'success' };
+}
+
+function consultarTraslados_(body) {
+  const ctx = contextoDe_(body);
+  if (MODO_LOGIN !== 'off' && !esAdmin_(ctx)) throw new Error('SOLO_ADMIN');
+
+  return {
+    status: 'success',
+    cuentas: Object.keys(CUENTAS).map(c => ({
+      clave: c, etiqueta: CUENTAS[c].etiqueta, grupo: CUENTAS[c].grupo
+    })),
+    // Del más reciente al más viejo: es el orden en que se quiere revisar.
+    traslados: trasladosTodos_().reverse().map(t => ({
+      fecha:   t.fechaTexto,
+      origen:  (CUENTAS[t.origen]  || {}).etiqueta || t.origen,
+      destino: (CUENTAS[t.destino] || {}).etiqueta || t.destino,
+      monto:   t.monto,
+      quien:   t.quien,
+      nota:    t.nota,
+      url:     t.url
+    }))
   };
 }
 

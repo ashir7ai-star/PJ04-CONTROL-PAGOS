@@ -2092,6 +2092,13 @@
       </svg>
       Configuración
     </button>
+    <button class="nav-tab" data-view="traslados" id="navTraslados" style="display:none;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+        <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+      </svg>
+      Traslados
+    </button>
   </nav>
 
   <!-- Main -->
@@ -2766,6 +2773,88 @@
     </div>
   </div>
 
+  <!-- Traslados entre cuentas propias (solo administradores) -->
+  <main id="viewTraslados" style="display:none;">
+    <div class="page-header">
+      <p class="page-title">Traslados</p>
+      <p class="page-subtitle">Envío de dinero entre cuentas de la empresa. No es un gasto: mueve el saldo de una cuenta a otra.</p>
+    </div>
+
+    <div class="card">
+      <p class="card-title">Registrar traslado</p>
+      <div class="field-group">
+        <div class="field-row">
+          <div class="field">
+            <label for="tOrigen">Sale de <span class="req">*</span></label>
+            <select id="tOrigen">
+              <option value="" disabled selected>Seleccionar</option>
+              <option value="banco_millennium">Millennium Co · Cuenta bancaria</option>
+              <option value="banco_ampac">AMPAC SAS · Cuenta bancaria</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="tDestino">Entra a <span class="req">*</span></label>
+            <select id="tDestino">
+              <option value="" disabled selected>Seleccionar</option>
+              <option value="viaticos">Viáticos</option>
+              <option value="caja_menor">Caja Menor</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="tMonto">Monto <span class="req">*</span></label>
+            <input type="text" id="tMonto" placeholder="$ 0" autocomplete="off" inputmode="numeric" />
+          </div>
+          <div class="field">
+            <label for="tNota">Nota (opcional)</label>
+            <input type="text" id="tNota" placeholder="Ej: viáticos cuadrilla norte" />
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:18px;">
+        <p class="card-title">Comprobante de la transferencia <span class="req">*</span></p>
+        <div class="upload-zone" id="tZona">
+          <div class="upload-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <p class="upload-text"><span>Haz clic o arrastra</span> el soporte de Bancolombia</p>
+          <p class="upload-hint">PDF, JPG, PNG — máx. 15 MB c/u</p>
+          <input type="file" id="tArchivo" accept=".pdf,.jpg,.jpeg,.png" multiple hidden />
+        </div>
+        <div id="tPreview"></div>
+      </div>
+
+      <button type="button" class="btn-submit" id="btnTraslado" style="margin-top:20px;">
+        <span id="btnTrasladoTexto">Registrar traslado</span>
+        <div class="spinner" id="spinnerTraslado" style="display:none;"></div>
+      </button>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <p class="card-title" style="margin:0;">Traslados registrados</p>
+        <button type="button" class="btn-clear" id="btnRecargarTraslados">Actualizar</button>
+      </div>
+      <div id="trasladosCargando" style="display:none;padding:24px 0;text-align:center;color:var(--text-muted);font-size:0.86rem;">
+        Cargando…
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="tabla-usuarios" id="tablaTraslados">
+          <thead>
+            <tr><th>Fecha</th><th>Sale de</th><th>Entra a</th><th>Monto</th><th>Registró</th><th>Nota</th><th></th></tr>
+          </thead>
+          <tbody id="cuerpoTraslados"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
   <!-- Cargar / corregir el saldo de una cuenta (solo administradores) -->
   <div class="modal-fondo" id="modalSaldo" style="display:none;">
     <div class="modal-caja">
@@ -3097,7 +3186,9 @@
     const viewSearch         = document.getElementById('viewSearch');
     const viewAprobaciones   = document.getElementById('viewAprobaciones');
     const viewConfig         = document.getElementById('viewConfig');
-    const vistasPorNombre    = { form: viewForm, search: viewSearch, aprobaciones: viewAprobaciones, config: viewConfig };
+    const viewTraslados      = document.getElementById('viewTraslados');
+    const vistasPorNombre    = { form: viewForm, search: viewSearch, aprobaciones: viewAprobaciones,
+                                 config: viewConfig, traslados: viewTraslados };
 
     navTabs.forEach(tab => {
       tab.addEventListener('click', () => {
@@ -3110,7 +3201,8 @@
           // Si el panel de revisión ya estaba activo, refresca la lista al volver a entrar
           if (document.getElementById('subTabRevisar').classList.contains('active')) buscarSolicitudes();
         }
-        if (tab.dataset.view === 'config') cargarUsuarios();
+        if (tab.dataset.view === 'config')    cargarUsuarios();
+        if (tab.dataset.view === 'traslados') cargarTraslados();
       });
     });
 
@@ -4255,6 +4347,7 @@
     const loginPie       = document.getElementById('loginPie');
     const headerSesion   = document.getElementById('headerSesion');
     const navConfig      = document.getElementById('navConfig');
+    const navTraslados   = document.getElementById('navTraslados');
 
     const ETIQUETA_SECCION = {
       pagos:            'Registro de Pagos',
@@ -4793,7 +4886,9 @@
         op.hidden = !puede(seccionDeTipoFront(op.value));
       });
 
-      navConfig.style.display = sesion.rol === 'admin' ? '' : 'none';
+      // Mover dinero entre cuentas de la empresa es un acto administrativo.
+      navConfig.style.display    = sesion.rol === 'admin' ? '' : 'none';
+      navTraslados.style.display = sesion.rol === 'admin' ? '' : 'none';
 
       // Se precargan los campos que el sistema ya conoce, para no hacérselos
       // escribir. Quedan editables: alguien puede registrar en nombre de otro.
@@ -5149,6 +5244,110 @@
         btn.disabled = false; spinner.style.display = 'none'; texto.textContent = 'Guardar saldo';
       }
     });
+
+    // ═══════════════════════════════════════════════════════════════
+    // TRASLADOS ENTRE CUENTAS PROPIAS
+    //
+    // Enviar dinero del banco al fondo de viáticos NO es un gasto: la plata no
+    // sale de la empresa, cambia de bolsillo. El gasto ocurre después, cuando
+    // quien está en campo lo usa y carga su recibo. Por eso vive aparte de los
+    // pagos y solo mueve saldo de una cuenta a otra.
+    // ═══════════════════════════════════════════════════════════════
+
+    const uploadTraslado = initUploadZone('tZona', 'tArchivo', 'tPreview');
+    initFormateadorValor('tMonto');
+
+    document.getElementById('btnTraslado').addEventListener('click', async () => {
+      const origen  = document.getElementById('tOrigen').value;
+      const destino = document.getElementById('tDestino').value;
+      const monto   = document.getElementById('tMonto').value.replace(/\./g, '').trim();
+
+      if (!origen || !destino) {
+        showToast('error', 'Faltan datos', 'Elegí de qué cuenta sale y a cuál entra.');
+        return;
+      }
+      if (!monto || isNaN(Number(monto)) || Number(monto) <= 0) {
+        showToast('error', 'Monto inválido', 'Escribí el monto transferido.');
+        return;
+      }
+      if (uploadTraslado.getFiles().length === 0) {
+        showToast('error', 'Comprobante requerido', 'Adjuntá el soporte de la transferencia.');
+        return;
+      }
+
+      const btn     = document.getElementById('btnTraslado');
+      const spinner = document.getElementById('spinnerTraslado');
+      const texto   = document.getElementById('btnTrasladoTexto');
+      btn.disabled = true; spinner.style.display = 'block'; texto.textContent = 'Registrando…';
+
+      try {
+        const archivos = [];
+        for (const file of uploadTraslado.getFiles()) {
+          archivos.push({ nombre: file.name, tipo: file.type || 'application/octet-stream', datos: await fileToBase64(file) });
+        }
+
+        const r = await postAppsScript({
+          action: 'registrar_traslado',
+          origen: origen, destino: destino, monto: monto,
+          nota: document.getElementById('tNota').value.trim(),
+          archivos: archivos
+        });
+
+        if (r.status === 'success') {
+          showToast('success', 'Traslado registrado', 'Los saldos ya quedaron actualizados.');
+          document.getElementById('tOrigen').selectedIndex  = 0;
+          document.getElementById('tDestino').selectedIndex = 0;
+          document.getElementById('tMonto').value = '';
+          document.getElementById('tNota').value  = '';
+          uploadTraslado.reset();
+          cargarTraslados();
+          cargarSaldos(true);   // el saldo lo recalcula el servidor
+        } else {
+          showToast('error', 'No se pudo registrar', r.message || 'Intentá de nuevo.');
+        }
+      } catch (err) {
+        showToast('error', 'Error de conexión', 'No pudimos registrar el traslado.');
+      } finally {
+        btn.disabled = false; spinner.style.display = 'none'; texto.textContent = 'Registrar traslado';
+      }
+    });
+
+    async function cargarTraslados() {
+      const cargando = document.getElementById('trasladosCargando');
+      const cuerpo   = document.getElementById('cuerpoTraslados');
+      cargando.style.display = '';
+      cuerpo.innerHTML = '';
+      try {
+        const r = await postAppsScript({ action: 'consultar_traslados' }, 60000);
+        if (r.status !== 'success') {
+          showToast('error', 'No se pudo cargar', r.message || 'Intentá de nuevo.');
+          return;
+        }
+        if (!r.traslados.length) {
+          cuerpo.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:26px;color:var(--text-muted);">Todavía no hay traslados registrados.</td></tr>';
+          return;
+        }
+        cuerpo.innerHTML = r.traslados.map(t =>
+          '<tr>' +
+            '<td data-etiqueta="Fecha" style="white-space:nowrap;">' + escapeHtml(t.fecha) + '</td>' +
+            '<td data-etiqueta="Sale de">' + escapeHtml(t.origen) + '</td>' +
+            '<td data-etiqueta="Entra a">' + escapeHtml(t.destino) + '</td>' +
+            '<td data-etiqueta="Monto" style="font-variant-numeric:tabular-nums;font-weight:600;color:var(--text);">' + formatoPesos(t.monto) + '</td>' +
+            '<td data-etiqueta="Registró">' + escapeHtml(t.quien || '—') + '</td>' +
+            '<td data-etiqueta="Nota">' + escapeHtml(t.nota || '—') + '</td>' +
+            '<td data-etiqueta="">' + (t.url
+              ? '<a href="' + escapeHtml(String(t.url).split('\n')[0]) + '" target="_blank" rel="noopener" style="color:var(--primary);font-size:0.8rem;">Comprobante</a>'
+              : '—') + '</td>' +
+          '</tr>'
+        ).join('');
+      } catch (err) {
+        showToast('error', 'Error de conexión', 'No pudimos traer los traslados.');
+      } finally {
+        cargando.style.display = 'none';
+      }
+    }
+
+    document.getElementById('btnRecargarTraslados').addEventListener('click', cargarTraslados);
 
     arrancarSesion();
   </script>

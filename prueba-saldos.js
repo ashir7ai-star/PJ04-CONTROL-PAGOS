@@ -37,9 +37,12 @@ const ENC_PAGOS = ['FECHA REGISTRO', 'EMPRESA', 'TIPO FACTURA', 'REGISTRADO POR'
                    'NOMBRE DE PAGO', 'PROVEEDOR', 'FECHA DE PAGO', 'VALOR FACTURA'];
 const ENC_SALDOS = ['FECHA', 'CUENTA', 'SALDO BASE', 'CONCEPTO', 'REGISTRADO POR'];
 
-// pagos: [[fechaRegistro, empresa, tipo, valor], ...]
-// saldos: [[fecha, cuenta, base], ...]
-function montar(pagos, saldos, modoLogin) {
+const ENC_TRAS = ['FECHA', 'ORIGEN', 'DESTINO', 'MONTO', 'REGISTRADO POR', 'NOTA', 'URL COMPROBANTE'];
+
+// pagos:     [[fechaRegistro, empresa, tipo, valor], ...]
+// saldos:    [[fecha, cuenta, base], ...]
+// traslados: [[fecha, origen, destino, monto], ...]
+function montar(pagos, saldos, modoLogin, traslados) {
   const filasPagos = [ENC_PAGOS].concat((pagos || []).map(p =>
     [p[0], p[1], p[2], 'quien', 'nombre', 'prov', '2026-01-01', p[3]]));
 
@@ -47,9 +50,11 @@ function montar(pagos, saldos, modoLogin) {
     'PAGOS REGISTRADOS': hojaFalsa('PAGOS REGISTRADOS', filasPagos),
     'SALDOS':            hojaFalsa('SALDOS', [ENC_SALDOS].concat((saldos || []).map(s =>
                            [s[0], s[1], s[2], 'carga inicial', 'admin']))),
-    'USUARIOS':          hojaFalsa('USUARIOS', [['CORREO','NOMBRE','TELEFONO','ROL','SECCIONES','ESTADO','FECHA REGISTRO','ULTIMO ACCESO']])
+    'USUARIOS':          hojaFalsa('USUARIOS', [['CORREO','NOMBRE','TELEFONO','ROL','SECCIONES','ESTADO','FECHA REGISTRO','ULTIMO ACCESO']]),
+    'TRASLADOS':         hojaFalsa('TRASLADOS', [ENC_TRAS].concat((traslados || []).map(t =>
+                           [t[0], t[1], t[2], t[3], 'admin', '', 'url'])))
   };
-  const orden = ['PAGOS REGISTRADOS', 'SALDOS', 'USUARIOS'];
+  const orden = ['PAGOS REGISTRADOS', 'SALDOS', 'USUARIOS', 'TRASLADOS'];
 
   const ctx = {
     console,
@@ -63,7 +68,12 @@ function montar(pagos, saldos, modoLogin) {
       }),
       flush: () => {}
     },
-    DriveApp: { getFoldersByName: () => ({ hasNext: () => false }), createFolder: () => ({}), getFileById: () => ({ makeCopy: () => {} }) },
+    DriveApp: {
+      getFoldersByName: () => ({ hasNext: () => false }),
+      createFolder: () => ({ createFile: () => ({ setSharing: () => {}, getUrl: () => 'https://drive/x' }) }),
+      getFileById: () => ({ makeCopy: () => {} }),
+      Access: { ANYONE_WITH_LINK: 'a' }, Permission: { VIEW: 'v' }
+    },
     MailApp: { sendEmail: () => {} },
     Logger: { log: () => {} },
     CacheService: { getScriptCache: () => ({ get: () => null, put: () => {} }) },
@@ -76,6 +86,7 @@ function montar(pagos, saldos, modoLogin) {
                ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
       },
       base64Encode: x => String(x), computeDigest: (a, b) => b,
+      base64Decode: x => String(x),
       DigestAlgorithm: { SHA_256: 's' }, newBlob: () => ({})
     }
   };
@@ -254,12 +265,91 @@ console.log('\n=== Quién puede VER cada saldo ===');
       JSON.stringify(claves(malformado)));
 }
 
+console.log('\n=== Traslados: el dinero se mueve, no se gasta ===');
+{
+  // Caso real: se manda 1.000.000 del banco Millennium al fondo de Viáticos,
+  // y después alguien en campo gasta 300.000 de viáticos.
+  const g = montar(
+    [['20/01/2026 10:00', 'AMPAC SAS', 'viaticos', 300000]],
+    [['01/01/2026 00:00', 'banco_millennium', 5000000],
+     ['01/01/2026 00:00', 'banco_ampac',      2000000],
+     ['01/01/2026 00:00', 'viaticos',          100000],
+     ['01/01/2026 00:00', 'caja_menor',         50000]],
+    'off',
+    [['15/01/2026 09:00', 'banco_millennium', 'viaticos', 1000000]]
+  );
+  const r = g.consultarSaldos_({ rol: 'admin' });
+
+  chk('el banco de origen queda con 1.000.000 menos',
+      saldoDe(r, 'banco_millennium').saldo === 4000000, saldoDe(r, 'banco_millennium').saldo);
+  chk('viáticos suma lo recibido y resta lo gastado (100k + 1M − 300k)',
+      saldoDe(r, 'viaticos').saldo === 800000, saldoDe(r, 'viaticos').saldo);
+  chk('el otro banco no se toca',
+      saldoDe(r, 'banco_ampac').saldo === 2000000, saldoDe(r, 'banco_ampac').saldo);
+  chk('el traslado se informa como enviado en el origen',
+      saldoDe(r, 'banco_millennium').enviado === 1000000);
+  chk('y como recibido en el destino',
+      saldoDe(r, 'viaticos').recibido === 1000000);
+
+  // Lo esencial: la plata no se duplica ni se evapora. El total sigue siendo
+  // la suma de las bases menos lo realmente gastado.
+  const total = r.cuentas.reduce((s, c) => s + c.saldo, 0);
+  chk('el total del sistema solo bajó por el gasto real (300.000)',
+      total === (5000000 + 2000000 + 100000 + 50000) - 300000, total);
+}
+
+console.log('\n=== Traslados: la regla de corte por fecha ===');
+{
+  const g = montar([], [
+    ['10/01/2026 12:00', 'banco_millennium', 5000000],
+    ['10/01/2026 12:00', 'viaticos',          100000]
+  ], 'off', [
+    ['05/01/2026 09:00', 'banco_millennium', 'viaticos', 700000],   // ANTES de la base
+    ['20/01/2026 09:00', 'banco_millennium', 'viaticos', 400000]    // DESPUÉS
+  ]);
+  const r = g.consultarSaldos_({ rol: 'admin' });
+  chk('un traslado anterior a la base no se vuelve a contar',
+      saldoDe(r, 'banco_millennium').saldo === 4600000, saldoDe(r, 'banco_millennium').saldo);
+  chk('ni se suma dos veces en el destino',
+      saldoDe(r, 'viaticos').saldo === 500000, saldoDe(r, 'viaticos').saldo);
+}
+
+console.log('\n=== Traslados: qué se rechaza ===');
+{
+  const g = montar([], [], 'off');
+  const ok = { origen: 'banco_ampac', destino: 'viaticos', monto: '500000', archivos: [{ nombre: 'c.pdf', datos: 'x' }] };
+  const con = (cambios) => g.registrarTraslado_(Object.assign({}, ok, cambios));
+
+  chk('un traslado válido se acepta', g.registrarTraslado_(ok).status === 'success');
+  chk('sin comprobante se rechaza',        con({ archivos: [] }).status === 'error');
+  chk('monto cero se rechaza',             con({ monto: '0' }).status === 'error');
+  chk('monto negativo se rechaza',         con({ monto: '-100' }).status === 'error');
+  chk('origen y destino iguales se rechaza', con({ destino: 'banco_ampac' }).status === 'error');
+  chk('fondo → banco se rechaza',          con({ origen: 'viaticos', destino: 'banco_ampac' }).status === 'error');
+  chk('banco → banco se rechaza',          con({ destino: 'banco_millennium' }).status === 'error');
+  chk('cuenta inexistente se rechaza',     con({ destino: 'inventada' }).status === 'error');
+}
+
+console.log('\n=== Traslados: solo administradores ===');
+{
+  const g = montar([], [], 'estricto');
+  let bloqueado = false;
+  try {
+    g.registrarTraslado_({ origen: 'banco_ampac', destino: 'viaticos', monto: '1', archivos: [{}] });
+  } catch (e) { bloqueado = true; }
+  chk('sin sesión válida no se puede trasladar', bloqueado);
+}
+
 console.log('\n=== La hoja SALDOS no se cuenta como pagos ===');
 {
   const g = montar([], [['01/01/2026 00:00', 'banco_ampac', 1000000]]);
   const nombres = g.hojasDePagos_().map(h => h.getName());
   chk('SALDOS queda fuera de las hojas de pagos', nombres.indexOf('SALDOS') === -1, JSON.stringify(nombres));
   chk('USUARIOS queda fuera',                     nombres.indexOf('USUARIOS') === -1, JSON.stringify(nombres));
+  // Si TRASLADOS entrara acá, sus filas aparecerían en los reportes diario y
+  // mensual como si fueran pagos: el mismo dinero contado dos veces.
+  chk('TRASLADOS queda fuera (un traslado NO es un gasto)',
+      nombres.indexOf('TRASLADOS') === -1, JSON.stringify(nombres));
 }
 
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
