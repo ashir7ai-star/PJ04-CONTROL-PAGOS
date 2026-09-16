@@ -4776,6 +4776,15 @@
     }
 
     function pintarSaldos(r) {
+      // A un usuario sin cuentas asignadas no se le muestra un panel vacío:
+      // se oculta la sección entera.
+      const seccion = document.getElementById('seccionSaldos');
+      if (!r.cuentas || !r.cuentas.length) {
+        seccion.style.display = 'none';
+        return;
+      }
+      seccion.style.display = '';
+
       const sinConfigurar = r.cuentas.filter(c => !c.configurado).length;
 
       saldosNota.textContent = sinConfigurar === 0

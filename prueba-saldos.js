@@ -205,6 +205,55 @@ console.log('\n=== Ajustar el saldo: permisos y validación ===');
   chk('el ajuste queda como fila nueva en el historial', filas.length === 2, 'filas=' + filas.length);
 }
 
+console.log('\n=== Quién puede VER cada saldo ===');
+{
+  // Reportado en producción el 2026-09-16: a un usuario no administrador le
+  // aparecían los saldos bancarios de las dos empresas. Los bancos son solo
+  // para admins; un usuario común ve únicamente los fondos de sus secciones.
+  const saldos = [
+    ['01/01/2026 00:00', 'banco_millennium', 1000000],
+    ['01/01/2026 00:00', 'banco_ampac',      2000000],
+    ['01/01/2026 00:00', 'viaticos',          500000],
+    ['01/01/2026 00:00', 'caja_menor',        300000]
+  ];
+  const g = montar([], saldos, 'estricto');
+  const claves = r => r.cuentas.map(c => c.clave).sort();
+
+  const admin = g.consultarSaldos_({ rol: 'admin', secciones: ['pagos','viaticos','caja_menor','impuestos','seguridad_social','nomina'] });
+  chk('el admin ve las cuatro cuentas', claves(admin).length === 4, JSON.stringify(claves(admin)));
+  chk('el admin puede editar', admin.puedeEditar === true);
+
+  const soloViaticos = g.consultarSaldos_({ rol: 'usuario', secciones: ['viaticos'] });
+  chk('usuario de viáticos ve SOLO viáticos',
+      JSON.stringify(claves(soloViaticos)) === JSON.stringify(['viaticos']), JSON.stringify(claves(soloViaticos)));
+  chk('NO recibe los saldos bancarios',
+      JSON.stringify(soloViaticos).indexOf('banco_') === -1, 'se filtró un banco en la respuesta');
+  chk('un usuario común no puede editar', soloViaticos.puedeEditar === false);
+
+  const gastos = g.consultarSaldos_({ rol: 'usuario', secciones: ['viaticos', 'caja_menor'] });
+  chk('usuario de viáticos + caja menor ve esos dos',
+      JSON.stringify(claves(gastos)) === JSON.stringify(['caja_menor','viaticos']), JSON.stringify(claves(gastos)));
+  chk('sigue sin ver bancos', JSON.stringify(gastos).indexOf('banco_') === -1);
+
+  // Alguien con permiso sobre pagos pero SIN ser admin tampoco ve los bancos
+  const dePagos = g.consultarSaldos_({ rol: 'usuario', secciones: ['pagos', 'nomina'] });
+  chk('usuario de pagos (no admin) no ve ningún saldo', claves(dePagos).length === 0, JSON.stringify(claves(dePagos)));
+
+  chk('a un usuario común no se le informa el conteo global sin asignar',
+      soloViaticos.sinCuenta === 0);
+
+  // Este es el caso que realmente ejercita el filtro por tipo de cuenta.
+  // Los otros pasaban igual sin él, porque ninguna sección se llama como una
+  // cuenta bancaria y por lo tanto la coincidencia nunca podía darse. Acá se
+  // fuerza esa situación (datos malformados, o un cambio futuro que agregue
+  // una sección con ese nombre) para comprobar que los bancos siguen siendo
+  // exclusivos de administradores.
+  const malformado = g.consultarSaldos_({ rol: 'usuario', secciones: ['banco_millennium', 'banco_ampac', 'viaticos'] });
+  chk('aunque le asignen un banco como sección, un no-admin NO ve saldos bancarios',
+      JSON.stringify(claves(malformado)) === JSON.stringify(['viaticos']),
+      JSON.stringify(claves(malformado)));
+}
+
 console.log('\n=== La hoja SALDOS no se cuenta como pagos ===');
 {
   const g = montar([], [['01/01/2026 00:00', 'banco_ampac', 1000000]]);

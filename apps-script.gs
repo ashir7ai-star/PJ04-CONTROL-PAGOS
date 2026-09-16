@@ -1408,7 +1408,22 @@ function consultarSaldos_(ctx) {
     });
   });
 
-  const cuentas = Object.keys(CUENTAS).map(clave => {
+  // Qué cuentas puede VER esta persona. Se filtra acá, en el servidor: si solo
+  // se ocultaran en la pantalla, los saldos de las cuentas bancarias igual
+  // viajarían al navegador de cualquier usuario.
+  //
+  // Regla (definida por el usuario): los saldos de los BANCOS son solo para
+  // administradores. Un usuario común ve únicamente los fondos (Viáticos y
+  // Caja Menor) y solo aquellos cuya sección tenga asignada.
+  const esAdministrador = MODO_LOGIN === 'off' || esAdmin_(contexto);
+  const visibles = Object.keys(CUENTAS).filter(clave => {
+    if (esAdministrador) return true;
+    if (CUENTAS[clave].grupo !== 'fondo') return false;
+    // La clave de la cuenta coincide con la de la sección ('viaticos', 'caja_menor')
+    return contexto.secciones.indexOf(clave) !== -1;
+  });
+
+  const cuentas = visibles.map(clave => {
     const cfg  = CUENTAS[clave];
     const base = bases[clave] || null;
     return {
@@ -1428,8 +1443,10 @@ function consultarSaldos_(ctx) {
 
   return {
     status:      'success',
-    puedeEditar: MODO_LOGIN === 'off' || esAdmin_(contexto),
-    sinCuenta:   sinCuenta,   // pagos que no descuentan de ninguna bolsa (ventas, empresa desconocida)
+    puedeEditar: esAdministrador,
+    // Los registros sin cuenta asignada son información de cuadre global:
+    // solo le sirve (y solo le corresponde) a un administrador.
+    sinCuenta:   esAdministrador ? sinCuenta : 0,
     cuentas:     cuentas
   };
 }
