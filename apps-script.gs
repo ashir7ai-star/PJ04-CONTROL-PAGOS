@@ -470,6 +470,11 @@ function doGet(e) {
   const accion = e.parameter.action;
   try {
     // e.parameter sirve como "body" para que un GET también pueda traer idToken.
+    // Sin autenticación a propósito: el frontend necesita saber si tiene que
+    // pedir login ANTES de tener una sesión. No revela ningún dato.
+    if (accion === 'estado_login') {
+      return respuestaJson_({ status: 'success', modo: MODO_LOGIN, clientId: CLIENT_ID_GOOGLE });
+    }
     if (accion === 'consultar_solicitudes') return respuestaJson_(consultarSolicitudes_());
     if (accion === 'consultar_pagos')       return respuestaJson_(consultarPagos_(contextoDe_(e.parameter)));
     return respuestaJson_({ status: 'error', message: 'Acción no reconocida: ' + accion });
@@ -787,7 +792,7 @@ function notificarSolicitante_(solicitud, estado, comentario) {
 
 // Client ID de OAuth (Google Cloud Console → Credentials → OAuth 2.0 Client ID,
 // tipo "Web application"). El mismo valor va en index.html.
-const CLIENT_ID_GOOGLE = 'PENDIENTE.apps.googleusercontent.com';
+const CLIENT_ID_GOOGLE = '165996240052-u1qhq59gag42uvuojlgk54m0ojd1hp2g.apps.googleusercontent.com';
 
 // Interruptor de encendido del control de acceso. Existe para poder desplegar y
 // probar SIN riesgo de dejar afuera a todo el mundo de un sistema que está en
