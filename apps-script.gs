@@ -850,6 +850,7 @@ function doGet(e) {
       return respuestaJson_({
         status: 'success',
         modo: MODO_LOGIN,
+        revision: REVISION_BACKEND,
         clientId: CLIENT_ID_GOOGLE,
         // Las claves de sección no son un dato sensible (son nombres de
         // categoría que ya se ven en pantalla) y sirven para verificar desde
@@ -1229,6 +1230,12 @@ const CLIENT_ID_GOOGLE = '165996240052-u1qhq59gag42uvuojlgk54m0ojd1hp2g.apps.goo
 // cuenta de Google registrada y activa. Verificado antes de activarlo: 6
 // usuarios cargados, todos activos, 4 administradores, ninguno sin secciones.
 const MODO_LOGIN = 'estricto';
+
+// Marca de versión del backend. Se sube con cada cambio que haya que
+// desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
+// código está realmente publicado, en vez de deducirlo por síntomas — no saber
+// eso ya costó varias rondas de despliegues a ciegas.
+const REVISION_BACKEND = '2026-09-16-c · fechas mezcladas dia/mes y mes/dia';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [

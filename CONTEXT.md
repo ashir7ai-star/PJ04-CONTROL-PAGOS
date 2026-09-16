@@ -461,6 +461,10 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-16**: 🔎 **`REVISION_BACKEND`: marca de versión del código desplegado.** Viaja en `estado_login`, así que se puede verificar **desde afuera** qué código está realmente publicado con un solo `curl`, en vez de deducirlo por síntomas. No saber esto costó varias rondas de despliegues a ciegas.
+  - **Al cambiar el backend, subir también esta marca.** Es la forma de confirmar que un despliegue tomó.
+  - 📌 Los identificadores de despliegue tienen caracteres fáciles de confundir (`I` mayúscula, `l` minúscula, `1`, `O`/`0`): **no transcribirlos desde una captura**, pedir la URL copiada.
+
 - **2026-09-16**: 🔴 **El servidor ahora desambigua las fechas, sin depender de normalizar la hoja.** El arreglo anterior solo cubría las celdas guardadas como *fecha real*; las que son **texto** pasaban intactas y seguían llegando mal.
   - `formatearValorDeCelda_()` ahora también procesa el **texto**: `textoFechaAIso_()` lo convierte a `yyyy-MM-dd HH:mm` aplicando la regla de imposibilidad — **un registro no puede ser del futuro**, así que si día/mes da una fecha futura y mes/día una pasada, la fila venía en mes/día.
   - Con esto la app queda correcta **con solo redesplegar**; normalizar la hoja (`normalizarFechasRegistro`) pasa a ser opcional y solo limpia los datos de origen.
