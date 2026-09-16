@@ -324,6 +324,22 @@ Definido en `SECCIONES` dentro de [apps-script.gs](apps-script.gs). `hojaDeSecci
 
 Aprobaciones **no** tiene carpeta propia a propósito: es un visto bueno visual temporal, no un registro contable.
 
+## 🌐 PENDIENTE: mudar a `pagos.energy-millennium.com`
+Decidido con el usuario el 2026-09-16. **Bloqueado**: no tiene acceso al panel de Wix en este momento. Retomar cuando lo tenga.
+
+**Por qué ese dominio:** `energy-millennium.com` ya es de la empresa, así que no hay que comprar nada. El DNS está en **Wix** (`ns4/ns5.wixdns.net`). Se descartó EasyPanel (el resultado no sería más profesional que github.io y suma un servidor que mantener para un sitio estático) y la organización de GitHub (sigue diciendo "github.io").
+
+**Ya hecho (2026-09-16):** la app **dejó de depender de la ruta** `/PJ04-CONTROL-PAGOS/`. `sw.js`, `manifest.json` y el registro del Service Worker usan rutas relativas, así que funciona igual en la dirección actual que en la nueva. Sin esto, mudarla exigía que el DNS y el despliegue ocurrieran en el mismo instante y cualquier desfase dejaba el sistema caído.
+
+**Pasos que faltan, en este orden:**
+1. **Wix** → Dominios → energy-millennium.com → Editar registros DNS → agregar **CNAME**: host `pagos`, apunta a `ashir7ai-star.github.io` (sin `https://` y sin la ruta).
+2. Verificar que resuelva (`nslookup pagos.energy-millennium.com`). Puede tardar horas.
+3. **Google Cloud Console** → Clients → cliente OAuth → *Authorized JavaScript origins*: agregar `https://pagos.energy-millennium.com`. **Dejar también el origen viejo** durante la transición, o el login se cae.
+4. Recién entonces: archivo `CNAME` en la raíz del repo con `pagos.energy-millennium.com` (o GitHub → Settings → Pages → Custom domain, que además provisiona el certificado HTTPS).
+5. Actualizar `URL_APP` en [apps-script.gs](apps-script.gs) (hoy apunta a la dirección vieja; solo se usa en los enlaces de los correos) y redesplegar.
+
+⚠️ **Las PWA ya instaladas habrá que reinstalarlas**: una PWA queda atada a la dirección donde se instaló. La vieja seguirá andando por redirección, pero conviene reinstalar desde la nueva.
+
 ## 📁 Carpetas de Drive: se pueden mover, NO renombrar
 `carpetaDeSeccion_()` busca la carpeta **por nombre en todo el Drive** (`DriveApp.getFoldersByName`), sin importar dónde esté. Consecuencias:
 - ✅ **Mover las carpetas a una carpeta madre es seguro.** El script las sigue encontrando y los archivos ya subidos no se tocan (los enlaces del Sheet apuntan al ID del archivo, no a su ubicación).
