@@ -395,7 +395,8 @@
 
     @media (max-width: 520px) {
       .field-row { grid-template-columns: 1fr; }
-      .tipo-label { font-size: 0.68rem; }
+      /* El tamaño del texto de los tipos de pago se define en el bloque de
+         celular (<=640px), junto con el resto del botón compacto. */
     }
 
     .field { display: flex; flex-direction: column; gap: 5px; }
@@ -1618,6 +1619,16 @@
 
       .card { padding: 18px 16px; }
 
+      /* Dos tipos de pago por fila también en celular: con ocho opciones, una
+         por fila obligaba a desplazarse muchísimo antes de llegar al
+         formulario. Se compacta el botón para que los dos entren cómodos en
+         vez de bajar a una sola columna. */
+      .tipo-selector { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 20px; }
+      .tipo-btn      { padding: 12px 6px 10px; }
+      .tipo-icon     { width: 30px; height: 30px; border-radius: 9px; margin-bottom: 6px; }
+      .tipo-icon svg { width: 16px; height: 16px; }
+      .tipo-label    { font-size: 0.71rem; line-height: 1.25; }
+
       .login-card { padding: 34px 24px 28px; }
       .login-card h2 { font-size: 1.22rem; }
 
@@ -1639,9 +1650,6 @@
 
       .page-title { font-size: 1.32rem; }
       .card { padding: 16px 14px; }
-
-      /* Con muy poco ancho, un tipo por fila se lee mejor que dos apretados */
-      .tipo-selector { grid-template-columns: 1fr; }
 
       .filter-actions { flex-direction: column; }
       .filter-actions button { width: 100%; }
