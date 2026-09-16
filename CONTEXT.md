@@ -2,7 +2,21 @@
 
 > Documento vivo. Se actualiza cada vez que se hace un cambio relevante para que cualquier sesión (o persona) pueda retomar el proyecto sin perder contexto.
 
+## 🧭 PENDIENTE: cargar los saldos (orden acordado con el usuario)
+**No cargar los saldos todavía.** El usuario primero va a registrar en el sistema todos los comprobantes atrasados: compras y pagos que ya se hicieron en la vida real pero que aún no están cargados.
+
+**Por qué ese orden importa:** el saldo solo descuenta los pagos registrados **después** de la base. Si se cargara el saldo primero y después se metieran los comprobantes atrasados, el sistema los restaría a todos y el saldo quedaría por debajo del real — aunque el banco ya los había descontado. Haciéndolo al revés, la base nace cuadrada.
+
+**Secuencia correcta:**
+1. Registrar en el sistema todos los pagos/compras atrasados.
+2. Recién entonces, con los extractos a la vista, cargar los cuatro saldos desde el lápiz de cada tarjeta.
+3. A partir de ahí, cada pago nuevo descuenta solo.
+
+Conviene cargar las cuatro cuentas el mismo día y no registrar pagos mientras se hace.
+
 ## Última actualización
+**2026-09-16** — ✅ **VERSIÓN ESTABLE** (tag `v1.2-saldos`). Incluye la **Fase 2 operativa** (login con Google, hoja `USUARIOS` con roles ya cargados a mano por el usuario, sección Configuración, sesión que se recuerda entre recargas) y el **panel de saldos** por cuenta. `MODO_LOGIN` sigue en **`'suave'`**: quien inicia sesión ve solo lo suyo, pero quien no la inicia todavía entra. Pasar a `'estricto'` cuando el usuario lo indique. Pendientes anotados arriba: **cargar los saldos** (después de meter los comprobantes atrasados) y **mudar el dominio** (bloqueado por acceso a Wix). `sw.js` → `control-pagos-v44`.
+
 **2026-09-15** — ✅ **VERSIÓN ESTABLE, Fase 1 completa y en producción** (tag de git `v1.0-fase1`). n8n quedó fuera del sistema por completo: "Nuevo Pago" y "Consultar Pagos" usan el mismo **Google Apps Script Web App** que ya usaba Aprobaciones. Cada tipo de pago tiene **su propia hoja en el Sheet y su propia carpeta en Drive**, con dos tipos nuevos (**Seguridad Social** y **Pago Nómina**). La migración de datos históricos **ya se ejecutó y se concilió**. `sw.js` → `control-pagos-v32`. Lo siguiente es la **Fase 2: login con Google + hoja `USUARIOS`**.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
