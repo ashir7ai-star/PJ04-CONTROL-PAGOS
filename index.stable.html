@@ -3410,8 +3410,13 @@
         return new Date(+y, +m - 1, +d);
       }
       if (str.includes('/')) {
-        const [d, m, y] = str.split('/');
-        return new Date(+y, +m - 1, +d);
+        let [d, m, y] = str.split('/').map(Number);
+        // Un mes > 12 no existe: ese texto venía en mes/día. Sin esta guarda,
+        // '9/15/2026' se convertía en el mes 15, o sea marzo del año siguiente
+        // — una fecha inventada que además se salía de los filtros por rango y
+        // hacía desaparecer registros del reporte sin ningún aviso.
+        if (m > 12 && d <= 12) { const t = d; d = m; m = t; }
+        return new Date(y, m - 1, d);
       }
       return new Date(str);
     }
@@ -3428,7 +3433,12 @@
       const texto = String(valor).trim();
 
       const m = texto.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
-      if (m) return new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0));
+      if (m) {
+        let dia = +m[1], mes = +m[2];
+        // Misma guarda que en parseFecha: un mes > 12 delata que venía mes/día.
+        if (mes > 12 && dia <= 12) { const t = dia; dia = mes; mes = t; }
+        return new Date(+m[3], mes - 1, dia, +(m[4] || 0), +(m[5] || 0));
+      }
 
       const iso = texto.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{1,2}):(\d{2}))?/);
       if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3], +(iso[4] || 0), +(iso[5] || 0));

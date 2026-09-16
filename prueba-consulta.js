@@ -56,6 +56,11 @@ function backend() {
 
   const ctx = {
     console,
+    // Date TIENE que ser el mismo del proceso. Sin esto el sandbox se crea uno
+    // propio, `valor instanceof Date` da falso para cualquier fecha que le pase
+    // la prueba, y la distinción entre "fecha real de Sheets" y "texto" —que es
+    // justo donde estaba el error— quedaba sin poder comprobarse.
+    Date,
     SpreadsheetApp: { getActiveSpreadsheet: () => ({
       getSheets: () => orden.map(n => hojas[n]),
       getSheetByName: n => hojas[n] || null,
@@ -247,33 +252,75 @@ console.log('\n=== Orden: del último registrado al primero ===');
       conHuecos.length === 2 && conHuecos[0] === 'con registro', conHuecos);
 }
 
-// ── Fechas: los dos formatos mezclados en el Sheet ────────────────────────
-console.log('\n=== Fechas: día/mes y mes/día conviven en la misma columna ===');
+// ── Fechas: el formato se decide con la evidencia de TODA la columna ──
+console.log('\n=== Fechas: el formato de la columna se prueba, no se supone ===');
 {
-  // Caso real: las filas viejas (n8n) quedaron en mes/día y las del sistema en
-  // día/mes. "09/12/2026" es 12 de septiembre en una lectura y 9 de diciembre
-  // en la otra; leído mal, un pago de septiembre se va al futuro y queda
-  // primero, rompiendo el orden sin que nada falle.
-  const f = (v) => g.formatearValorDeCelda_('FECHA REGISTRO', v);
+  // Lo que enseñó el caso real: el criterio viejo resolvía CADA CELDA por
+  // separado con la regla "un registro no puede ser del futuro". Eso le daba
+  // dos lecturas distintas a la misma columna y, peor, convertía en silencio
+  // cualquier pago de un mes futuro en uno anterior. La hoja resultó ser
+  // uniformemente día/mes, así que esa regla corrompía datos buenos.
+  //
+  // Ahora basta UN valor con el primer número > 12 para probar que la columna
+  // es día/mes. Es una prueba, no una suposición.
+  const colFR = (...valores) =>
+    g.inferirFormatosDeColumna_(['FECHA REGISTRO'], [['FECHA REGISTRO']].concat(valores.map(v => [v])));
 
-  chk('"09/12/2026 14:31" (mes/día) → 12 de septiembre', f('09/12/2026 14:31') === '2026-09-12 14:31', f('09/12/2026 14:31'));
-  chk('"15/09/2026 18:40" (día/mes) → 15 de septiembre', f('15/09/2026 18:40') === '2026-09-15 18:40', f('15/09/2026 18:40'));
-  chk('"09/11/2026 22:58" → 11 de septiembre',           f('09/11/2026 22:58') === '2026-09-11 22:58', f('09/11/2026 22:58'));
+  chk('"15/09/2026" prueba que la columna es día/mes', colFR('15/09/2026 18:40')[0] === 'dmy');
+  chk('"9/15/2026" prueba que la columna es mes/día',  colFR('9/15/2026')[0] === 'mdy');
+  chk('sin números > 12 no hay prueba', colFR('09/12/2026 14:31')[0] === null);
+  chk('con pruebas de los dos formatos la columna queda sin regla única',
+      colFR('15/09/2026', '9/15/2026')[0] === null);
+
+  const f = (v, fmt) => g.formatearValorDeCelda_('FECHA REGISTRO', v, fmt);
+
+  // El caso que rompía todo: en una columna probadamente día/mes, un
+  // "09/12/2026" es 9 de DICIEMBRE. El criterio viejo lo volvía 12 de
+  // septiembre solo por ser diciembre una fecha futura.
+  chk('columna día/mes: "09/12/2026 14:31" -> 9 de diciembre',
+      f('09/12/2026 14:31', 'dmy') === '2026-12-09 14:31', f('09/12/2026 14:31', 'dmy'));
+  chk('columna mes/día: "09/12/2026 14:31" -> 12 de septiembre',
+      f('09/12/2026 14:31', 'mdy') === '2026-09-12 14:31', f('09/12/2026 14:31', 'mdy'));
+  chk('sin prueba se usa día/mes, que es lo que escribe el sistema',
+      f('09/12/2026 14:31', null) === '2026-12-09 14:31', f('09/12/2026 14:31', null));
+
+  // Un número > 12 manda sobre el formato de la columna: no puede ser un mes.
+  chk('"15/09/2026 18:40" -> 15 de septiembre aunque la columna diga mes/día',
+      f('15/09/2026 18:40', 'mdy') === '2026-09-15 18:40', f('15/09/2026 18:40', 'mdy'));
+
+  // FECHA DE PAGO: antes NO se tocaba y el texto mes/día llegaba crudo al
+  // navegador, que lo leía como día/mes. "9/15/2026" se volvía el mes 15
+  // —marzo del año siguiente— y el registro desaparecía de los filtros.
+  const fp = (v, fmt) => g.formatearValorDeCelda_('FECHA DE PAGO', v, fmt);
+  chk('FECHA DE PAGO "9/15/2026" -> 2026-09-15', fp('9/15/2026', 'mdy') === '2026-09-15', fp('9/15/2026', 'mdy'));
+  chk('FECHA DE PAGO no inventa hora',           fp('15/09/2026', 'dmy') === '2026-09-15', fp('15/09/2026', 'dmy'));
+  chk('FECHA DE PAGO ya en año-mes-día pasa igual', fp('2026-09-15', null) === '2026-09-15');
 
   // No romper lo que ya estaba bien
-  chk('una fecha día/mes ya pasada se respeta', f('11/09/2026 22:58') === '2026-09-11 22:58', f('11/09/2026 22:58'));
-  chk('lo que ya viene en año-mes-día pasa igual', f('2026-09-15 18:40') === '2026-09-15 18:40');
-  chk('FECHA DE PAGO no se toca',
-      g.formatearValorDeCelda_('FECHA DE PAGO', '2026-09-15') === '2026-09-15');
-  chk('un texto que no es fecha no se inventa', f('sin fecha') === 'sin fecha');
-  chk('un número no se toca', g.formatearValorDeCelda_('VALOR FACTURA', 1000) === 1000);
+  chk('lo que ya viene en año-mes-día pasa igual', f('2026-09-15 18:40', null) === '2026-09-15 18:40');
+  chk('un texto que no es fecha no se inventa',      f('sin fecha', null) === 'sin fecha');
+  chk('un número no se toca', g.formatearValorDeCelda_('VALOR FACTURA', 1000, null) === 1000);
 
-  // Y el orden resultante: el último registrado tiene que quedar primero
+  // Las fechas REALES de Sheets no dependen de ningún formato.
+  const real = new Date(2026, 8, 15, 18, 40);
+  chk('una fecha real se formatea con hora en FECHA REGISTRO',
+      g.formatearValorDeCelda_('FECHA REGISTRO', real, null) === '2026-09-15 18:40');
+  chk('una fecha real se formatea sin hora en FECHA DE PAGO',
+      g.formatearValorDeCelda_('FECHA DE PAGO', real, null) === '2026-09-15');
+
+  // La causa raíz: guardar fechas como texto. Si el sistema vuelve a escribir
+  // cadenas, la columna de la tabla las marca "Invalid" y volvemos a adivinar.
+  chk('fecha_pago del navegador se guarda como fecha REAL',
+      g.fechaDeTextoISO_('2026-09-15') instanceof Date);
+  chk('fecha_pago vacía no inventa una fecha', g.fechaDeTextoISO_('') === '');
+  chk('fecha_pago irreconocible se conserva tal cual', g.fechaDeTextoISO_('quince de sept') === 'quince de sept');
+
+  // Y el orden resultante: el último registrado tiene que quedar primero.
   const filas = [
-    { 'FECHA REGISTRO': f('09/12/2026 14:31'), 'NOMBRE DE PAGO': 'Hidratación Topacio', 'FECHA DE PAGO': '2026-09-12', 'PROVEEDOR': 'x', 'VALOR FACTURA': 1 },
-    { 'FECHA REGISTRO': f('15/09/2026 18:40'), 'NOMBRE DE PAGO': 'HIDRATACIÓN',         'FECHA DE PAGO': '2026-09-15', 'PROVEEDOR': 'x', 'VALOR FACTURA': 1 },
-    { 'FECHA REGISTRO': f('15/09/2026 14:50'), 'NOMBRE DE PAGO': 'DESAYUNO',            'FECHA DE PAGO': '2026-09-15', 'PROVEEDOR': 'x', 'VALOR FACTURA': 1 },
-    { 'FECHA REGISTRO': f('09/11/2026 22:58'), 'NOMBRE DE PAGO': 'peaje',               'FECHA DE PAGO': '2026-09-12', 'PROVEEDOR': 'x', 'VALOR FACTURA': 1 }
+    { 'FECHA REGISTRO': f('09/12/2026 14:31', 'dmy'), 'NOMBRE DE PAGO': 'diciembre',    'FECHA DE PAGO': '2026-12-09', 'PROVEEDOR': 'x', 'VALOR FACTURA': 1 },
+    { 'FECHA REGISTRO': f('15/09/2026 18:40', 'dmy'), 'NOMBRE DE PAGO': 'HIDRATACION',  'FECHA DE PAGO': '2026-09-15', 'PROVEEDOR': 'x', 'VALOR FACTURA': 1 },
+    { 'FECHA REGISTRO': f('15/09/2026 14:50', 'dmy'), 'NOMBRE DE PAGO': 'DESAYUNO',     'FECHA DE PAGO': '2026-09-15', 'PROVEEDOR': 'x', 'VALOR FACTURA': 1 },
+    { 'FECHA REGISTRO': f('11/09/2026 22:58', 'dmy'), 'NOMBRE DE PAGO': 'peaje',        'FECHA DE PAGO': '2026-09-11', 'PROVEEDOR': 'x', 'VALOR FACTURA': 1 }
   ];
 
   const html2 = fs.readFileSync('index.html', 'utf8');
@@ -293,11 +340,18 @@ console.log('\n=== Fechas: día/mes y mes/día conviven en la misma columna ==='
   const ctx2 = { document: { getElementById: () => ({ get value() { return ''; }, _flatpickr: { selectedDates: [] } }) },
                  vistaRestringida: null, TIPOS_GASTOS: [], console, Date };
   vm.createContext(ctx2);
-  vm.runInContext(trozos2 + '; this.filtrarRows = filtrarRows;', ctx2);
+  vm.runInContext(trozos2 + '; this.filtrarRows = filtrarRows; this.parseFecha = parseFecha;', ctx2);
 
   const orden = ctx2.filtrarRows(filas).map(r => r['NOMBRE DE PAGO']);
   chk('el último registrado queda primero, como en el Sheet',
-      JSON.stringify(orden) === JSON.stringify(['HIDRATACIÓN', 'DESAYUNO', 'Hidratación Topacio', 'peaje']), orden);
+      JSON.stringify(orden) === JSON.stringify(['diciembre', 'HIDRATACION', 'DESAYUNO', 'peaje']), orden);
+
+  // Guarda del navegador: aunque llegara un mes/día crudo, no puede terminar
+  // en un mes inexistente. Sin esto, '9/15/2026' daba marzo de 2027.
+  const pf = ctx2.parseFecha('9/15/2026');
+  chk('el navegador no acepta un mes > 12',
+      pf.getFullYear() === 2026 && pf.getMonth() === 8 && pf.getDate() === 15,
+      pf && pf.toDateString());
 }
 
 // ── Alta completa de cada tipo de pago ────────────────────────────────────

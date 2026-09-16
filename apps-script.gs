@@ -273,13 +273,13 @@ function registrarPago_(body) {
   const hoja = hojaDeSeccion_(seccion);
 
   agregarFilaPorEncabezados_(hoja, {
-    'FECHA REGISTRO': Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'),
+    'FECHA REGISTRO': new Date(),
     'EMPRESA':        body.empresa || '',
     'TIPO FACTURA':   body.tipo_factura || '',
     'REGISTRADO POR': body.registrado_por || '',
     'NOMBRE DE PAGO': body.nombre_pago || '',
     'PROVEEDOR':      body.proveedor || '',
-    'FECHA DE PAGO':  body.fecha_pago || '',
+    'FECHA DE PAGO':  fechaDeTextoISO_(body.fecha_pago),
     'VALOR FACTURA':  body.monto || '',
     'NOTAS':          body.notas || '',
     'URL ARCHIVO':    subirArchivosASeccion_(body.archivos, seccion),
@@ -304,32 +304,98 @@ function registrarPago_(body) {
 // 00:00 y quedaban empatados. Las columnas de fecha+hora se formatean con hora.
 const COLUMNAS_CON_HORA = ['FECHA REGISTRO', 'FECHA SOLICITUD', 'FECHA DECISION', 'ULTIMO ACCESO'];
 
-function formatearValorDeCelda_(encabezado, valor) {
-  const esDeHora = COLUMNAS_CON_HORA.indexOf(String(encabezado).trim().toUpperCase()) !== -1;
+// Columnas de fecha SIN hora. Están acá para que su texto también se
+// desambigüe. FECHA DE PAGO tenía dos formatos conviviendo — '9/15/2026' de la
+// época de n8n y '2026-09-15' del sistema actual — y el de mes/día llegaba
+// CRUDO al navegador, que lo leía como día/mes: '9/15/2026' se convertía en el
+// mes 15, o sea marzo del año siguiente. Esa fecha inventada se salía de
+// cualquier filtro por rango y hacía desaparecer registros del reporte.
+const COLUMNAS_SOLO_FECHA = ['FECHA DE PAGO'];
+
+// Convierte la fecha que manda el navegador ('yyyy-MM-dd', que es lo que
+// entrega un <input type="date">) a una FECHA REAL de Sheets.
+//
+// Guardar fechas como texto fue la causa de fondo de todo este problema: la
+// hoja no puede ordenarlas ni validarlas, la columna de la tabla las marca como
+// "Invalid", y al leerlas hay que adivinar si el primer número es el día o el
+// mes. Una fecha real no tiene formato: no se puede malinterpretar.
+//
+// Si el texto no es una fecha reconocible se devuelve tal cual. Perder el dato
+// del usuario sería peor que guardarlo en un formato incómodo.
+function fechaDeTextoISO_(texto) {
+  const t = String(texto || '').trim();
+  if (!t) return '';
+  const m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return texto;
+  const fecha = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return isNaN(fecha.getTime()) ? texto : fecha;
+}
+
+function tipoDeColumnaFecha_(encabezado) {
+  const h = String(encabezado).trim().toUpperCase();
+  if (COLUMNAS_CON_HORA.indexOf(h)   !== -1) return 'hora';
+  if (COLUMNAS_SOLO_FECHA.indexOf(h) !== -1) return 'fecha';
+  return null;
+}
+
+// Decide el formato de cada columna de fecha mirando TODA la columna, no celda
+// por celda.
+//
+// Un solo registro con el primer número > 12 demuestra que la columna es
+// día/mes; uno con el segundo > 12 demuestra mes/día. Eso es una PRUEBA, no una
+// suposición, y es lo que arregla el defecto de fondo: el criterio anterior
+// resolvía cada celda por su cuenta y podía darle dos lecturas distintas a la
+// misma columna, sin que nada fallara ni avisara.
+function inferirFormatosDeColumna_(encabezados, filas) {
+  const formatos = [];
+  encabezados.forEach((h, i) => {
+    if (!tipoDeColumnaFecha_(h)) { formatos[i] = null; return; }
+
+    let dmy = 0, mdy = 0;
+    for (let f = 1; f < filas.length; f++) {
+      const v = filas[f][i];
+      if (!v || v instanceof Date) continue;
+      const m = String(v).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (!m) continue;
+      const a = Number(m[1]), b = Number(m[2]);
+      if      (a > 12) dmy++;
+      else if (b > 12) mdy++;
+    }
+
+    // Con pruebas de los dos formatos la columna está de verdad mezclada: no
+    // hay una sola regla válida y se resuelve celda por celda.
+    formatos[i] = (dmy && mdy) ? null : (dmy ? 'dmy' : (mdy ? 'mdy' : null));
+  });
+  return formatos;
+}
+
+function formatearValorDeCelda_(encabezado, valor, formato) {
+  const tipo = tipoDeColumnaFecha_(encabezado);
 
   // Se envía en formato año-mes-día, que NO se puede interpretar de dos
   // maneras. Con dd/MM/yyyy, un "09/12/2026" es 12 de septiembre para unos y
   // 9 de diciembre para otros — y esa confusión rompió el orden cronológico.
   // El navegador lo muestra en dd/MM/yyyy, que es como se lee acá.
   if (valor instanceof Date) {
-    return esDeHora
-      ? Utilities.formatDate(valor, ZONA_HORARIA, 'yyyy-MM-dd HH:mm')
-      : Utilities.formatDate(valor, ZONA_HORARIA, 'yyyy-MM-dd');
+    return Utilities.formatDate(valor, ZONA_HORARIA,
+      tipo === 'hora' ? 'yyyy-MM-dd HH:mm' : 'yyyy-MM-dd');
   }
 
-  // La celda también puede ser TEXTO, y ahí conviven los dos formatos: las
-  // filas viejas (n8n) quedaron en mes/día y las del sistema en día/mes.
-  // Se desambigua acá, en el servidor, para que el navegador reciba SIEMPRE
-  // algo que no se pueda malinterpretar — sin depender de que alguien haya
-  // normalizado la hoja a mano.
-  if (esDeHora) return textoFechaAIso_(valor);
+  // La celda también puede ser TEXTO: el sistema escribió fechas como cadena
+  // durante mucho tiempo. Se desambigua acá, en el servidor, para que el
+  // navegador reciba SIEMPRE algo que no se pueda malinterpretar.
+  if (tipo) return textoFechaAIso_(valor, tipo, formato);
 
   return valor;
 }
 
-// Convierte un texto de fecha a 'yyyy-MM-dd HH:mm'. Si el texto no parece una
+// Convierte un texto de fecha a 'yyyy-MM-dd [HH:mm]'. Si el texto no parece una
 // fecha, se devuelve igual: es preferible mostrar el dato crudo a inventarlo.
-function textoFechaAIso_(valor) {
+//
+// `formato` viene de inferirFormatosDeColumna_ y es la lectura probada para esa
+// columna. Cuando no hay prueba, se usa día/mes, que es lo que escribe el
+// sistema y cómo se leen las fechas en Colombia.
+function textoFechaAIso_(valor, tipo, formato) {
   const t = String(valor || '').trim();
   if (!t) return valor;
 
@@ -341,21 +407,17 @@ function textoFechaAIso_(valor) {
 
   const a = Number(m[1]), b = Number(m[2]), anio = Number(m[3]);
   const hh = Number(m[4] || 0), mm = Number(m[5] || 0);
-  const margen = Date.now() + 86400000;
 
-  // Interpretación normal: día/mes, que es lo que escribe el sistema.
-  let fecha = new Date(anio, b - 1, a, hh, mm);
+  let dia, mes;
+  if      (a > 12)             { dia = a; mes = b; }   // el primero solo puede ser día
+  else if (b > 12)             { dia = b; mes = a; }   // el segundo solo puede ser día
+  else if (formato === 'mdy')  { dia = b; mes = a; }
+  else                         { dia = a; mes = b; }
 
-  // Un registro NO puede ser del futuro. Si día/mes da una fecha futura y
-  // mes/día da una pasada, la fila venía en mes/día. No es una suposición:
-  // es la única lectura posible.
-  if (fecha.getTime() > margen && a <= 12) {
-    const alterna = new Date(anio, a - 1, b, hh, mm);
-    if (alterna.getTime() <= margen) fecha = alterna;
-  }
-
+  const fecha = new Date(anio, mes - 1, dia, hh, mm);
   if (isNaN(fecha.getTime())) return valor;
-  return Utilities.formatDate(fecha, ZONA_HORARIA, 'yyyy-MM-dd HH:mm');
+  return Utilities.formatDate(fecha, ZONA_HORARIA,
+    tipo === 'hora' ? 'yyyy-MM-dd HH:mm' : 'yyyy-MM-dd');
 }
 
 function consultarPagos_(ctx) {
@@ -365,12 +427,15 @@ function consultarPagos_(ctx) {
     const valores = hoja.getDataRange().getValues();
     if (valores.length < 2) return;
     const encabezados = valores[0];
+    // El formato de fecha se decide UNA vez por hoja, con la evidencia de toda
+    // la columna, y recién después se convierte fila por fila.
+    const formatos = inferirFormatosDeColumna_(encabezados, valores);
     valores.slice(1).forEach(fila => {
       if (!fila.some(v => v !== '')) return;
       const obj = {};
       encabezados.forEach((h, i) => {
         const v = fila[i];
-        obj[h] = formatearValorDeCelda_(h, v);
+        obj[h] = formatearValorDeCelda_(h, v, formatos[i]);
       });
       resultado.push(obj);
     });
@@ -436,6 +501,7 @@ function revisarFechasRegistro() {
     const col = valores[0].indexOf('FECHA REGISTRO');
     if (col === -1) return;
     const colValor = valores[0].indexOf('VALOR');
+    const formatos = inferirFormatosDeColumna_(valores[0], valores);
 
     let dReal = 0, dTexto = 0, dAmbiguo = 0, dVacio = 0;
     const formas = {};   // forma -> { n, ejemplo }
@@ -453,7 +519,7 @@ function revisarFechasRegistro() {
         crudo:        crudo,
         tipo:         (v instanceof Date) ? 'fecha real' : 'texto',
         valor:        colValor === -1 ? '' : String(fila[colValor]),
-        interpretado: formatearValorDeCelda_('FECHA REGISTRO', v)
+        interpretado: formatearValorDeCelda_('FECHA REGISTRO', v, formatos[col])
       });
 
       if (v instanceof Date) { dReal++; fechasReales++; return; }
@@ -523,15 +589,21 @@ function revisarFechasRegistro() {
   return resumen;
 }
 
-// Convierte TODAS las FECHA REGISTRO a fechas reales de Sheets, para que no
-// quede ninguna ambigüedad de formato. Hace respaldo del Sheet antes de tocar.
+// Convierte a FECHAS REALES de Sheets todas las columnas de fecha que hoy son
+// texto (FECHA REGISTRO y FECHA DE PAGO). Hace respaldo del Sheet antes de tocar.
 //
-// `simular` en true solo informa qué haría, sin modificar nada. SIEMPRE correr
+// Por qué importa: mientras sean texto, la columna de la tabla las marca como
+// "Invalid", la hoja no puede ordenarlas, y al leerlas hay que deducir si el
+// primer numero es el dia o el mes. Una fecha real no tiene formato y no se
+// puede malinterpretar.
+//
+// `simular` en true solo informa que haria, sin modificar nada. SIEMPRE correr
 // primero con true.
 //
-// Sobre las ambiguas: el sistema SIEMPRE escribió dd/MM/yyyy, así que se
-// interpretan así. Si el resultado diera una fecha futura —imposible para un
-// registro— se avisa en vez de convertirla a ciegas.
+// Como decide dia/mes vs mes/dia: con la EVIDENCIA de toda la columna. Un solo
+// valor con el primer numero > 12 prueba que la columna es dia/mes. Si la
+// columna tiene pruebas de los dos formatos, no se toca: se avisa y se deja
+// como esta, porque convertir a ciegas grabaria el error en la hoja.
 function normalizarFechasRegistro(simular) {
   const soloSimular = (simular !== false);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -542,57 +614,61 @@ function normalizarFechasRegistro(simular) {
     DriveApp.getFileById(ss.getId()).makeCopy(nombre);
   }
 
-  const lineas = [soloSimular ? 'SIMULACRO — no se modificó nada.' : 'NORMALIZACIÓN APLICADA', ''];
-  const ahora = new Date();
-  let convertidas = 0, yaEstaban = 0, sospechosas = 0;
+  const lineas = [soloSimular ? 'SIMULACRO - no se modifico nada.' : 'NORMALIZACION APLICADA', ''];
+  let convertidas = 0, yaEstaban = 0, sinTocar = 0;
 
   hojasDePagos_().forEach(hoja => {
     const valores = hoja.getDataRange().getValues();
     if (valores.length < 2) return;
-    const col = valores[0].indexOf('FECHA REGISTRO');
-    if (col === -1) return;
+    const encabezados = valores[0];
+    const formatos = inferirFormatosDeColumna_(encabezados, valores);
 
     let hConv = 0, hOk = 0;
-    for (let i = 1; i < valores.length; i++) {
-      const v = valores[i][col];
-      if (v === '' || v === null) continue;
-      if (v instanceof Date) { hOk++; yaEstaban++; continue; }
 
-      const t = String(v).trim();
-      const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/);
-      if (!m) continue;
+    encabezados.forEach((h, col) => {
+      const tipo = tipoDeColumnaFecha_(h);
+      if (!tipo) return;
 
-      const a = Number(m[1]), b = Number(m[2]);
-      const anio = Number(m[3]), hh = Number(m[4] || 0), mm = Number(m[5] || 0);
-      const margen = ahora.getTime() + 86400000;
+      // ¿La columna tiene pruebas contradictorias? inferirFormatosDeColumna_
+      // devuelve null tanto cuando no hay pruebas como cuando hay de las dos,
+      // así que se vuelve a contar para poder distinguirlas y avisar.
+      let dmy = 0, mdy = 0;
+      for (let i = 1; i < valores.length; i++) {
+        const v = valores[i][col];
+        if (!v || v instanceof Date) continue;
+        const m = String(v).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (!m) continue;
+        if      (Number(m[1]) > 12) dmy++;
+        else if (Number(m[2]) > 12) mdy++;
+      }
+      if (dmy && mdy) {
+        lineas.push('   !! ' + hoja.getName() + ' / ' + h + ': la columna tiene los DOS ' +
+                    'formatos mezclados (' + dmy + ' dia/mes y ' + mdy + ' mes/dia). ' +
+                    'NO se toca: hay que revisarla a mano.');
+        return;
+      }
 
-      // Interpretación normal: día/mes, que es lo que siempre escribió el sistema.
-      let fecha = new Date(anio, b - 1, a, hh, mm);
-      let nota  = '';
+      for (let i = 1; i < valores.length; i++) {
+        const v = valores[i][col];
+        if (v === '' || v === null) continue;
+        if (v instanceof Date) { hOk++; yaEstaban++; continue; }
 
-      // Un registro NO puede ser del futuro. Si día/mes da una fecha futura y
-      // mes/día da una pasada, entonces esa fila venía en mes/día (son las de
-      // la época de n8n). No es una suposición: es la única lectura posible.
-      if (fecha.getTime() > margen) {
-        const alterna = new Date(anio, a - 1, b, hh, mm);
-        if (a <= 12 && b <= 31 && alterna.getTime() <= margen) {
-          fecha = alterna;
-          nota  = ' (venía en mes/día)';
-        } else {
-          sospechosas++;
-          lineas.push('   ⚠️ ' + hoja.getName() + ' fila ' + (i + 1) + ': "' + t +
-                      '" da una fecha futura en cualquiera de las dos lecturas. Revisar a mano.');
-          continue;
+        const iso = formatearValorDeCelda_(h, v, formatos[col]);
+        const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?$/);
+        if (!m) { sinTocar++; continue; }   // no se reconocio: se deja el dato crudo
+
+        const fecha = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]),
+                               Number(m[4] || 0), Number(m[5] || 0));
+        if (isNaN(fecha.getTime())) { sinTocar++; continue; }
+
+        hConv++; convertidas++;
+        if (String(v).trim() !== String(iso)) {
+          lineas.push('   . ' + hoja.getName() + ' / ' + h + ' fila ' + (i + 1) +
+                      ': "' + String(v).trim() + '" -> ' + iso);
         }
+        if (!soloSimular) hoja.getRange(i + 1, col + 1).setValue(fecha);
       }
-
-      hConv++; convertidas++;
-      if (nota) {
-        lineas.push('   · ' + hoja.getName() + ' fila ' + (i + 1) + ': "' + t + '" → ' +
-                    Utilities.formatDate(fecha, ZONA_HORARIA, 'yyyy-MM-dd HH:mm') + nota);
-      }
-      if (!soloSimular) hoja.getRange(i + 1, col + 1).setValue(fecha);
-    }
+    });
 
     if (hConv || hOk) {
       lineas.push(hoja.getName() + ': ' + hConv + ' convertida(s), ' + hOk + ' ya estaban bien.');
@@ -600,8 +676,8 @@ function normalizarFechasRegistro(simular) {
   });
 
   lineas.push('');
-  lineas.push('Total a convertir: ' + convertidas + '  ·  ya correctas: ' + yaEstaban +
-              (sospechosas ? '  ·  sospechosas: ' + sospechosas : ''));
+  lineas.push('Total a convertir: ' + convertidas + '  .  ya correctas: ' + yaEstaban +
+              (sinTocar ? '  .  sin reconocer (se dejan igual): ' + sinTocar : ''));
   if (soloSimular) {
     lineas.push('');
     lineas.push('Para aplicarlo de verdad: normalizarFechasRegistro(false)');
@@ -1080,7 +1156,7 @@ function crearSolicitud_(body) {
     'TIPO DE PAGO':    body.tipo_factura || '',
     'NOMBRE DEL PAGO': body.nombre_pago || '',
     'PROVEEDOR':       body.proveedor || '',
-    'FECHA DE PAGO':   body.fecha_pago || '',
+    'FECHA DE PAGO':   fechaDeTextoISO_(body.fecha_pago),
     'VALOR':           body.monto || '',
     'SOLICITADO POR':  body.solicitado_por || '',
     // El correo sale de la SESIÓN VERIFICADA, no de lo que se escriba en el
@@ -1157,13 +1233,14 @@ function consultarSolicitudes_(body) {
   if (valores.length < 2) return [];
 
   const encabezados = valores[0];
+  const formatos = inferirFormatosDeColumna_(encabezados, valores);
   const todas = valores.slice(1)
     .filter(fila => fila.some(v => v !== ''))
     .map(fila => {
       const obj = {};
       encabezados.forEach((h, i) => {
         const v = fila[i];
-        obj[h] = formatearValorDeCelda_(h, v);
+        obj[h] = formatearValorDeCelda_(h, v, formatos[i]);
       });
       return obj;
     });
@@ -1211,7 +1288,7 @@ function decidirSolicitud_(body) {
     // Quién revisó sale de la SESIÓN VERIFICADA, no de lo que diga el cliente:
     // si no, cualquiera podría firmar la aprobación con el nombre de otro.
     'REVISADO POR':   ctx.autenticado ? (ctx.nombre || ctx.correo) : (body.revisado_por || ''),
-    'FECHA DECISION': Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'),
+    'FECHA DECISION': new Date(),
     'COMENTARIO':     body.comentario || ''
   };
   Object.keys(cambios).forEach(campo => {
@@ -1299,7 +1376,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-16-c · fechas mezcladas dia/mes y mes/dia';
+const REVISION_BACKEND = '2026-09-16-d · fechas reales + formato por columna';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -1322,7 +1399,7 @@ function hojaUsuarios_() {
     CORREOS_ADMIN.forEach(correo => {
       hoja.appendRow([
         correo, '', '', 'admin', 'todas', 'activo',
-        Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'), ''
+        new Date(), ''
       ]);
     });
   }
@@ -1667,7 +1744,7 @@ function iniciarSesion_(body) {
   try {
     const col = ENCABEZADOS_USUARIOS.indexOf('ULTIMO ACCESO') + 1;
     hojaUsuarios_().getRange(usuario._fila, col)
-      .setValue(Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'));
+      .setValue(new Date());
   } catch (err) { /* no vale la pena fallar el login por esto */ }
 
   return {
@@ -1772,7 +1849,7 @@ function arranque_(body) {
   try {
     const col = ENCABEZADOS_USUARIOS.indexOf('ULTIMO ACCESO') + 1;
     hojaUsuarios_().getRange(usuario._fila, col)
-      .setValue(Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'));
+      .setValue(new Date());
   } catch (err) { /* no vale la pena fallar el arranque por esto */ }
 
   return base;
@@ -1795,7 +1872,7 @@ function registrarUsuario_(body) {
 
   hojaUsuarios_().appendRow([
     perfil.correo, nombre, telefono, 'usuario', '', 'pendiente',
-    Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'), ''
+    new Date(), ''
   ]);
 
   notificarSolicitudDeAcceso_(perfil.correo, nombre, telefono);
@@ -1886,7 +1963,7 @@ function guardarUsuario_(body) {
     String(body.nombre || (existente ? existente['NOMBRE'] : '')),
     String(body.telefono || (existente ? existente['TELEFONO'] : '')),
     rol, pedidas, estado,
-    existente ? existente['FECHA REGISTRO'] : Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'),
+    existente ? existente['FECHA REGISTRO'] : new Date(),
     existente ? existente['ULTIMO ACCESO'] : ''
   ];
 
@@ -2271,7 +2348,7 @@ function registrarTraslado_(body) {
   }
 
   hojaTraslados_().appendRow([
-    Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'),
+    new Date(),
     origen,
     destino,
     monto,
@@ -2320,7 +2397,7 @@ function ajustarSaldo_(body) {
   // Cada ajuste se agrega como una fila nueva: queda el historial completo de
   // quién puso qué saldo y cuándo. Nunca se pisa una fila anterior.
   hojaSaldos_().appendRow([
-    Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm'),
+    new Date(),
     cuenta,
     monto,
     String(body.concepto || ''),

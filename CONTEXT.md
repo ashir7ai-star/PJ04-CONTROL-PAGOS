@@ -26,7 +26,7 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 ## Última actualización
 **2026-09-16** — ✅ **VERSIÓN ESTABLE** (tag `v1.4-sesiones`). Acceso restringido con **sesiones propias de 30 días** (el token de Google ya no limita la sesión a 1 hora). Incluye la sección **Traslados** entre cuentas propias, la sección **Compra Materiales**, los **saldos por cuenta** con visibilidad por rol, **privacidad de solicitudes** por usuario, el **arranque en una sola petición** y la lista de usuarios rediseñada.
 
-`APPS_SCRIPT_URL` → despliegue **`AKfycbxDRCP3efj…`**. `sw.js` → `control-pagos-v70`. `MODO_LOGIN` = `'estricto'`.
+`APPS_SCRIPT_URL` → despliegue **`AKfycbxDRCP3efj…`**. `sw.js` → `control-pagos-v71`. `MODO_LOGIN` = `'estricto'`.
 
 **Pendientes:** cargar los cuatro saldos (después de registrar los comprobantes atrasados), mudar el dominio a `pagos.energy-millennium.com` (bloqueado por acceso a Wix), y el botón "Agregar factura" de Consultar Pagos, que nunca se construyó.
 
@@ -461,6 +461,14 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-16**: 🎯 **Causa raiz de las fechas: el sistema las guardaba como TEXTO.** Lo destapo una captura del Sheet: la hoja es una **Tabla** de Google con la columna FECHA REGISTRO tipada como *date time*, y varias celdas salian marcadas **"Invalid: this value does not match the column type"**. Eran las que escribia la app. De ahi salia todo lo demas.
+  - **Que se rompia.** `FECHA DE PAGO` tenia dos formatos conviviendo: `9/15/2026` (mes/dia, epoca n8n) y `2026-09-15` (el sistema actual). El de mes/dia **no se convertia** y llegaba crudo al navegador, que lo leia como dia/mes: `9/15/2026` se volvia el **mes 15**, o sea **marzo del año siguiente**. Esa fecha inventada se salia de cualquier filtro por rango y **hacia desaparecer registros del reporte**, sin error ni aviso.
+  - **El defecto de diseño.** La regla "un registro no puede ser del futuro" decidia **celda por celda**. Podia darle dos lecturas distintas a la misma columna y, peor, convertia en silencio un pago de diciembre en uno de septiembre. El simulacro de `normalizarFechasRegistro` probo que la hoja era **uniformemente dia/mes**: esa regla estaba corrompiendo datos buenos.
+  - **Arreglo en tres frentes.** (1) **Se escriben fechas REALES**, no cadenas: 9 sitios de escritura mas `FECHA DE PAGO` via `fechaDeTextoISO_`. Una fecha real no tiene formato y no se puede malinterpretar. (2) **El formato se decide por COLUMNA con evidencia** (`inferirFormatosDeColumna_`): un solo valor con el primer numero > 12 *prueba* que la columna es dia/mes; con pruebas de los dos, no se aplica regla unica. (3) **Guarda en el navegador**: un mes > 12 se corrige en vez de producir una fecha inventada.
+  - `normalizarFechasRegistro` ahora cubre **las dos columnas** y **se niega a tocar** una columna con formatos mezclados, en vez de convertir a ciegas y grabar el error en la hoja.
+  - **La prueba no podia comprobar el bug**: el sandbox `vm` no compartia `Date`, asi que `valor instanceof Date` siempre daba falso y la distincion fecha-real/texto —el corazon del error— era inverificable. Corregido. **20 comprobaciones nuevas**, y las **5 mutaciones** correspondientes se detectan todas.
+  - ⚠️ **Leccion:** tres rondas se perdieron depurando el *sintoma* (el orden) en vez del *tipo de dato*. Cuando una fecha se comporta raro, lo primero es preguntar si la celda es una fecha real o una cadena. `sw.js` -> `control-pagos-v71`. `REVISION_BACKEND` -> `2026-09-16-d`.
+
 - **2026-09-16**: 🔬 **Dos diagnosticos para cerrar el problema de fechas.** El sintoma ("sigue mal") no distinguia entre *el backend no convierte* y *el navegador corre una copia vieja*, asi que se hizo visible cada uno por separado:
   - **Endpoint `probar_fecha`** (sin autenticar, solo lectura): `?action=probar_fecha&valor=09/12/2026 14:31` devuelve `recibido`, `interpretado` y `revision`. Prueba la conversion **aislada**: sin Sheet, sin sesion y sin app de por medio. Si `interpretado` sale bien, el backend no es el culpable.
   - **Linea "Servidor: <revision>" en Configuracion.** `arranque` ahora devuelve `revision` y la app la muestra. Asi el desfase app<->backend se ve **sin abrir la consola**, que es donde se perdieron varias rondas.
