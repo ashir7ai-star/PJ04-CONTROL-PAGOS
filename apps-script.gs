@@ -152,8 +152,14 @@ const SECCIONES = {
   nomina:           { hoja: 'Pago Nomina',      carpeta: 'PJ04 NOMINA',           tipos: ['nomina'] }
 };
 
-// Hojas que NO son de pagos (no entran en consultas ni reportes)
-const HOJAS_NO_PAGOS = [NOMBRE_HOJA_SOLICITUDES, 'USUARIOS'];
+// Hojas que NO son de pagos (no entran en consultas ni reportes).
+// Es función y no constante a propósito: NOMBRE_HOJA_SOLICITUDES se declara más
+// abajo (bloque B), y un `const` aquí arriba lo leería antes de inicializarse
+// ("Cannot access ... before initialization"). Dentro de una función se evalúa
+// recién al llamarla, cuando todo el archivo ya está cargado.
+function hojasNoPagos_() {
+  return [NOMBRE_HOJA_SOLICITUDES, 'USUARIOS'];
+}
 
 function hojaPrincipal_() {
   return SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
@@ -180,7 +186,7 @@ function hojaDeSeccion_(seccion) {
 // Todas las hojas que contienen pagos (la principal + las de sección que existan).
 function hojasDePagos_() {
   return SpreadsheetApp.getActiveSpreadsheet().getSheets()
-    .filter(h => HOJAS_NO_PAGOS.indexOf(h.getName()) === -1);
+    .filter(h => hojasNoPagos_().indexOf(h.getName()) === -1);
 }
 
 function seccionDeTipo_(tipo) {
