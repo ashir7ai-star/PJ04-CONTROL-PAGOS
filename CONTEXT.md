@@ -24,9 +24,17 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
-**2026-09-16** — ✅ **VERSIÓN ESTABLE** (tag `v1.4-sesiones`). Acceso restringido con **sesiones propias de 30 días** (el token de Google ya no limita la sesión a 1 hora). Incluye la sección **Traslados** entre cuentas propias, la sección **Compra Materiales**, los **saldos por cuenta** con visibilidad por rol, **privacidad de solicitudes** por usuario, el **arranque en una sola petición** y la lista de usuarios rediseñada.
+**2026-09-16** — ✅ **VERSIÓN ESTABLE** (tag `v1.5-fechas`). **Las fechas quedaron correctas y no pueden volver a ensuciarse.** Confirmado por el usuario contra su Excel de viáticos.
 
-`APPS_SCRIPT_URL` → despliegue **`AKfycbxDRCP3efj…`**. `sw.js` → `control-pagos-v71`. `MODO_LOGIN` = `'estricto'`.
+Lo que se arregló, sobre datos reales: **35 fechas de registro mal convertidas** (27 que habían quedado en el futuro y 8 que delató su fecha de pago) y **74 celdas de texto pasadas a fechas reales**. La hoja quedó con **228 celdas de fecha, todas reales**: cero texto, cero `Invalid` en la Tabla.
+
+La causa raíz era que el sistema **guardaba las fechas como texto**. Ya no: se escriben como fechas reales (`new Date()` y `fechaDeTextoISO_`), y al leer, el formato se decide **por columna con evidencia** (`inferirFormatosDeColumna_`), nunca celda por celda.
+
+Mantenimiento desde el editor: `PASO_1_VER_que_se_va_a_corregir` → `PASO_2_CORREGIR_las_fechas` → `PASO_3_PASAR_todo_a_fechas_reales`. Sin parámetros, porque el botón Ejecutar no puede pasarlos.
+
+Incluye todo lo de `v1.4-sesiones`: sesiones propias de 30 días, Traslados, Compra Materiales, saldos por cuenta, privacidad de solicitudes y arranque en una sola petición.
+
+`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-16-j`. `sw.js` → `control-pagos-v71`. `MODO_LOGIN` = `'estricto'`.
 
 **Pendientes:** cargar los cuatro saldos (después de registrar los comprobantes atrasados), mudar el dominio a `pagos.energy-millennium.com` (bloqueado por acceso a Wix), y el botón "Agregar factura" de Consultar Pagos, que nunca se construyó.
 
