@@ -716,7 +716,8 @@ function normalizarFechasRegistro(simular) {
               (sinTocar ? '  .  sin reconocer (se dejan igual): ' + sinTocar : ''));
   if (soloSimular) {
     lineas.push('');
-    lineas.push('Para aplicarlo de verdad: normalizarFechasRegistro(false)');
+    lineas.push('Para aplicarlo de verdad: elegir PASO_3_PASAR_todo_a_fechas_reales ' +
+                'en la lista del editor y Ejecutar.');
   }
 
   const resumen = lineas.join('\n');
@@ -890,10 +891,15 @@ function repararFechasFuturas(simular, incluirSospechosas) {
   lineas.push('Comparar a ojo las fechas de pago listadas arriba contra la realidad.');
   if (soloSimular) {
     lineas.push('');
-    lineas.push('Para aplicarlo de verdad:            repararFechasFuturas(false)');
+    // El pie tiene que nombrar EXACTAMENTE lo que aplica esta misma corrida.
+    // Nombrar una funcion que corrige menos filas de las que se acaban de
+    // listar hace que el usuario aplique algo distinto de lo que reviso.
+    lineas.push('Para aplicar estas ' + corregidas + ' correcciones:');
+    lineas.push('   elegir PASO_2_CORREGIR_las_fechas en la lista del editor y Ejecutar.');
     if (sospechosas && !tambienSospechosas) {
-      lineas.push('Para incluir tambien las ?? :        repararFechasFuturas(false, true)');
-      lineas.push('   (ver primero el simulacro con:    repararFechasFuturas(true, true) )');
+      lineas.push('');
+      lineas.push('OJO: hay ' + sospechosas + ' fila(s) marcadas ?? que esta corrida NO corrige.');
+      lineas.push('   Para verlas incluidas: PASO_1_VER_que_se_va_a_corregir.');
     }
   }
 
@@ -1590,7 +1596,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-16-i · fechas: pasos 1-2-3';
+const REVISION_BACKEND = '2026-09-16-j · fechas: pasos 1-2-3';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [

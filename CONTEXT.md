@@ -461,6 +461,10 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-16**: 📌 **El pie de un simulacro tiene que nombrar lo que aplica ESA corrida.** `PASO_1` listaba **35** correcciones y cerraba con `Para aplicarlo de verdad: repararFechasFuturas(false)` — que no es ejecutable desde el menu del editor y ademas **corrige solo 27**. Quien lo siguiera habria aplicado algo **distinto de lo que acababa de revisar**, sobre registros contables.
+  - Ahora el pie dice el numero exacto de esa corrida y nombra `PASO_2_CORREGIR_las_fechas`; si quedan filas `??` sin incluir, lo avisa. Lo mismo en `normalizarFechasRegistro`, que ahora apunta a `PASO_3`.
+  - **3 comprobaciones nuevas**, una de ellas verifica que el texto **no nombre llamadas con parametros** — el error de fondo que se repitio tres veces. `REVISION_BACKEND` -> `2026-09-16-j`.
+
 - **2026-09-16**: 🛠️ **`PASO_1` / `PASO_2` / `PASO_3`: las tres funciones que se corren con un clic.** El boton "Ejecutar" del editor de Apps Script **no puede pasar parametros**, asi que instrucciones como `repararFechasFuturas(false, true)` o `normalizarFechasRegistro(false)` eran **imposibles de ejecutar desde el menu**. Se le estuvo pidiendo al usuario algo que no se podia hacer.
   - `PASO_1_VER_que_se_va_a_corregir()` (solo mira) → `PASO_2_CORREGIR_las_fechas()` → `PASO_3_PASAR_todo_a_fechas_reales()`. Sin parametros, aparecen en la lista del editor.
   - ⚠️ **Regla para cualquier funcion de mantenimiento nueva:** si se corre desde el editor, tiene que ser **sin parametros**. Un `simular` booleano es comodo para escribir el codigo pero inutilizable desde la GUI, y ademas una envoltura que invierta ese booleano escribiria en la hoja cuando el usuario solo queria mirar — por eso hay 6 comprobaciones y 3 mutaciones que vigilan justamente eso.

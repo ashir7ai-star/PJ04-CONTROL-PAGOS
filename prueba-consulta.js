@@ -430,7 +430,14 @@ console.log('\n=== Fechas de registro en el futuro: se detectan y se corrigen ==
   chk('NO la corrige sola (las dos lecturas son posibles)', datos2[1][0] === malPeroPasada);
   chk('una fila coherente con su pago no se marca',
       sim2.indexOf('sospechosas por su fecha de pago: 2') === -1);
-  chk('ofrece la forma de incluirlas', sim2.indexOf('repararFechasFuturas(false, true)') !== -1);
+  // El pie del simulacro tiene que nombrar lo que aplica ESA misma corrida.
+  // Si nombra algo que corrige menos filas de las listadas, el usuario aplica
+  // una cosa distinta de la que reviso — y son registros contables.
+  chk('el pie nombra el PASO que se ejecuta desde el editor',
+      sim2.indexOf('PASO_2_CORREGIR_las_fechas') !== -1);
+  chk('no nombra llamadas con parametros, que el editor no puede ejecutar',
+      sim2.indexOf('repararFechasFuturas(false') === -1, sim2);
+  chk('avisa que esta corrida NO incluye las ??', sim2.indexOf('NO corrige') !== -1);
 
   // Corregir las sospechosas hay que PEDIRLO: es una decisión distinta, porque
   // ahí las dos lecturas caen en el pasado y la regla del futuro no decide.
