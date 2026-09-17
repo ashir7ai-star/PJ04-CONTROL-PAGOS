@@ -756,7 +756,7 @@ function repararFechasFuturas(simular) {
   const margen = new Date();
   margen.setDate(margen.getDate() + 1);   // un dia de holgura por zonas horarias
 
-  let corregidas = 0, irreparables = 0, revisadas = 0;
+  let corregidas = 0, irreparables = 0, revisadas = 0, sospechosas = 0;
 
   hojasDePagos_().forEach(hoja => {
     const valores = hoja.getDataRange().getValues();
@@ -771,7 +771,35 @@ function repararFechasFuturas(simular) {
       const v = valores[i][colFR];
       if (!(v instanceof Date)) continue;
       revisadas++;
-      if (v.getTime() <= margen.getTime()) continue;
+
+      // Las que NO quedaron en el futuro escapan a la regla, pero pueden estar
+      // igual de mal: una fila que era "08/05/2026" (5 de agosto en mes/día) se
+      // convirtio en 8 de mayo, que tambien es pasado y no levanta sospecha.
+      //
+      // Se detectan con la FECHA DE PAGO, que no participo en la conversion: un
+      // registro se escribe cerca del pago, no meses despues. Si intercambiar
+      // dia y mes lo acerca muchisimo al pago, esa fila hay que mirarla. NO se
+      // corrige sola: acá las dos lecturas son posibles y solo quien conoce la
+      // operacion puede decidir.
+      if (v.getTime() <= margen.getTime()) {
+        const fpv = (colFP === -1) ? null : valores[i][colFP];
+        const dv = v.getDate(), mv = v.getMonth() + 1;
+        if (fpv instanceof Date && dv <= 12) {
+          const alt  = new Date(v.getFullYear(), dv - 1, mv, v.getHours(), v.getMinutes());
+          const dias = t => Math.abs(t - fpv.getTime()) / 86400000;
+          if (dias(v.getTime()) > 45 && dias(alt.getTime()) < 7) {
+            sospechosas++;
+            lineas.push('   ?? ' + hoja.getName() + ' fila ' + (i + 1) + ': ' +
+                        Utilities.formatDate(v, ZONA_HORARIA, 'yyyy-MM-dd HH:mm') +
+                        ' esta lejos de su fecha de pago (' +
+                        Utilities.formatDate(fpv, ZONA_HORARIA, 'yyyy-MM-dd') +
+                        '), pero intercambiando dia y mes daria ' +
+                        Utilities.formatDate(alt, ZONA_HORARIA, 'yyyy-MM-dd HH:mm') +
+                        '. Revisar a mano: no se corrige sola.');
+          }
+        }
+        continue;
+      }
 
       const dia = v.getDate(), mes = v.getMonth() + 1;
 
@@ -812,7 +840,8 @@ function repararFechasFuturas(simular) {
   lineas.push('');
   lineas.push('Fechas reales revisadas: ' + revisadas +
               '  .  corregidas: ' + corregidas +
-              (irreparables ? '  .  para revisar a mano: ' + irreparables : ''));
+              (irreparables ? '  .  para revisar a mano: ' + irreparables : '') +
+              (sospechosas  ? '  .  sospechosas por su fecha de pago: ' + sospechosas : ''));
   lineas.push('');
   lineas.push('REVISAR: la columna FECHA DE PAGO no se toca (un pago si puede ser futuro).');
   lineas.push('Comparar a ojo las fechas de pago listadas arriba contra la realidad.');
@@ -1514,7 +1543,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-16-f · reparacion de fechas futuras';
+const REVISION_BACKEND = '2026-09-16-g · reparacion de fechas + sospechosas';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [

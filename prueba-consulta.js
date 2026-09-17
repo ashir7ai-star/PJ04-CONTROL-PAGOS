@@ -412,6 +412,24 @@ console.log('\n=== Fechas de registro en el futuro: se detectan y se corrigen ==
   chk('una futura con dia > 12 no se toca (no puede ser un mes)', datos[4][0] === imposible);
   chk('FECHA DE PAGO no se toca nunca (un pago si puede ser futuro)',
       datos[1][6] === pasadaOk && datos[4][6] === pasadaOk);
+
+  // Las mal convertidas que NO quedaron en el futuro: "08/05/2026" (5 de agosto
+  // en mes/dia) se volvio 8 de mayo, que tambien es pasado y no levanta
+  // sospecha. Se delatan por estar lejos de su fecha de pago.
+  const malPeroPasada = new Date(2026, 4, 8, 9, 0);    // 8 de mayo (era 5 de agosto)
+  const pagoReal      = new Date(2026, 7, 5);          // 5 de agosto
+  const datos2 = [ENC2,
+    [malPeroPasada, 'AMPAC SAS', 'viaticos', 'q', 'sospechosa', 'p', pagoReal, 100],
+    [new Date(2026, 7, 5, 9, 0), 'AMPAC SAS', 'viaticos', 'q', 'coherente', 'p', pagoReal, 200]
+  ];
+  const ctx4 = backendCon({ 'Viaticos': hojaFalsa('Viaticos', datos2) });
+  const sim2 = ctx4.repararFechasFuturas(true);
+
+  chk('detecta la mal convertida que quedo en el pasado', sim2.indexOf('sospechosas por su fecha de pago: 1') !== -1, sim2);
+  chk('y dice que daria al intercambiar dia y mes',       sim2.indexOf('2026-08-05 09:00') !== -1);
+  chk('NO la corrige sola (las dos lecturas son posibles)', datos2[1][0] === malPeroPasada);
+  chk('una fila coherente con su pago no se marca',
+      sim2.indexOf('sospechosas por su fecha de pago: 2') === -1);
 }
 
 // ── Alta completa de cada tipo de pago ────────────────────────────────────
