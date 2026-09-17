@@ -430,6 +430,21 @@ console.log('\n=== Fechas de registro en el futuro: se detectan y se corrigen ==
   chk('NO la corrige sola (las dos lecturas son posibles)', datos2[1][0] === malPeroPasada);
   chk('una fila coherente con su pago no se marca',
       sim2.indexOf('sospechosas por su fecha de pago: 2') === -1);
+  chk('ofrece la forma de incluirlas', sim2.indexOf('repararFechasFuturas(false, true)') !== -1);
+
+  // Corregir las sospechosas hay que PEDIRLO: es una decisión distinta, porque
+  // ahí las dos lecturas caen en el pasado y la regla del futuro no decide.
+  const sim3 = ctx4.repararFechasFuturas(true, true);
+  chk('pidiéndolo, el simulacro dice que la corregiria', sim3.indexOf('SE CORRIGE') !== -1);
+  chk('pero el simulacro sigue sin tocar la hoja', datos2[1][0] === malPeroPasada);
+
+  ctx4.repararFechasFuturas(false, true);
+  const z = datos2[1][0];
+  chk('pidiéndolo y aplicando, la sospechosa queda sobre su fecha de pago',
+      z instanceof Date && z.getMonth() === 7 && z.getDate() === 5, z && z.toString());
+  chk('y conserva la hora', z.getHours() === 9 && z.getMinutes() === 0);
+  chk('la fila coherente sigue intacta',
+      datos2[2][0].getMonth() === 7 && datos2[2][0].getDate() === 5);
 }
 
 // ── Alta completa de cada tipo de pago ────────────────────────────────────

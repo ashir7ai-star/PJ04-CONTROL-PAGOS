@@ -742,8 +742,14 @@ function normalizarFechasRegistro(simular) {
 // OJO con FECHA DE PAGO: un pago SÍ puede estar fechado en el futuro, así que
 // esa columna NO se toca. Se listan sus valores en las filas corregidas para
 // que se revisen a ojo contra la realidad.
-function repararFechasFuturas(simular) {
+// `incluirSospechosas` en true corrige TAMBIÉN las que no quedaron en el futuro
+// pero que la fecha de pago delata (las marcadas con ?? ). Va aparte y hay que
+// pedirlo a propósito, porque ahí las dos lecturas caen en el pasado: la regla
+// "no puede ser futuro" no decide, y lo que decide es la coherencia con el pago.
+// Correr primero sin el parámetro, mirar las líneas ?? y recién entonces usarlo.
+function repararFechasFuturas(simular, incluirSospechosas) {
   const soloSimular = (simular !== false);
+  const tambienSospechosas = (incluirSospechosas === true);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
   if (!soloSimular) {
@@ -795,7 +801,12 @@ function repararFechasFuturas(simular) {
                         Utilities.formatDate(fpv, ZONA_HORARIA, 'yyyy-MM-dd') +
                         '), pero intercambiando dia y mes daria ' +
                         Utilities.formatDate(alt, ZONA_HORARIA, 'yyyy-MM-dd HH:mm') +
-                        '. Revisar a mano: no se corrige sola.');
+                        (tambienSospechosas ? '. SE CORRIGE (pedido a proposito).'
+                                            : '. Revisar a mano: no se corrige sola.'));
+            if (tambienSospechosas) {
+              hCorr++; corregidas++;
+              if (!soloSimular) hoja.getRange(i + 1, colFR + 1).setValue(alt);
+            }
           }
         }
         continue;
@@ -847,7 +858,11 @@ function repararFechasFuturas(simular) {
   lineas.push('Comparar a ojo las fechas de pago listadas arriba contra la realidad.');
   if (soloSimular) {
     lineas.push('');
-    lineas.push('Para aplicarlo de verdad: repararFechasFuturas(false)');
+    lineas.push('Para aplicarlo de verdad:            repararFechasFuturas(false)');
+    if (sospechosas && !tambienSospechosas) {
+      lineas.push('Para incluir tambien las ?? :        repararFechasFuturas(false, true)');
+      lineas.push('   (ver primero el simulacro con:    repararFechasFuturas(true, true) )');
+    }
   }
 
   const resumen = lineas.join('\n');
@@ -1543,7 +1558,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-16-g · reparacion de fechas + sospechosas';
+const REVISION_BACKEND = '2026-09-16-h · reparacion de fechas completa';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
