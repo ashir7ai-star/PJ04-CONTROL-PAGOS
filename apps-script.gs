@@ -724,6 +724,108 @@ function normalizarFechasRegistro(simular) {
   return resumen;
 }
 
+// ─── Reparación: fechas de registro que quedaron en el FUTURO ───────
+//
+// Qué paso (caso real, 2026-09-16): 40 filas migradas tenían FECHA REGISTRO en
+// TEXTO y en formato mes/día ("09/12/2026" = 12 de septiembre). Al convertir esa
+// columna a fecha real, Sheets las leyó como día/mes y las guardó como 9 de
+// DICIEMBRE. Quedaron en el futuro, se ordenan primero y empujan hacia abajo a
+// los pagos recientes de verdad.
+//
+// Por qué esto SÍ se puede corregir solo, a diferencia del texto ambiguo: una
+// fecha de REGISTRO no puede ser del futuro — la escribe el sistema en el
+// momento de registrar. Si intercambiar día y mes da una fecha pasada, esa es
+// la única lectura posible. No es una suposición.
+//
+// `simular` en true solo informa qué haría. SIEMPRE correr primero con true.
+//
+// OJO con FECHA DE PAGO: un pago SÍ puede estar fechado en el futuro, así que
+// esa columna NO se toca. Se listan sus valores en las filas corregidas para
+// que se revisen a ojo contra la realidad.
+function repararFechasFuturas(simular) {
+  const soloSimular = (simular !== false);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  if (!soloSimular) {
+    const nombre = 'RESPALDO ANTES DE REPARAR FECHAS FUTURAS ' +
+      Utilities.formatDate(new Date(), ZONA_HORARIA, 'yyyy-MM-dd HH.mm');
+    DriveApp.getFileById(ss.getId()).makeCopy(nombre);
+  }
+
+  const lineas = [soloSimular ? 'SIMULACRO - no se modifico nada.' : 'REPARACION APLICADA', ''];
+  const margen = new Date();
+  margen.setDate(margen.getDate() + 1);   // un dia de holgura por zonas horarias
+
+  let corregidas = 0, irreparables = 0, revisadas = 0;
+
+  hojasDePagos_().forEach(hoja => {
+    const valores = hoja.getDataRange().getValues();
+    if (valores.length < 2) return;
+    const colFR = valores[0].indexOf('FECHA REGISTRO');
+    if (colFR === -1) return;
+    const colFP = valores[0].indexOf('FECHA DE PAGO');
+    const colVal = valores[0].indexOf('VALOR');
+
+    let hCorr = 0;
+    for (let i = 1; i < valores.length; i++) {
+      const v = valores[i][colFR];
+      if (!(v instanceof Date)) continue;
+      revisadas++;
+      if (v.getTime() <= margen.getTime()) continue;
+
+      const dia = v.getDate(), mes = v.getMonth() + 1;
+
+      // Si el dia es > 12 no puede haber sido un mes: el intercambio es
+      // imposible y hay algo mas raro. Se avisa y no se toca.
+      if (dia > 12) {
+        irreparables++;
+        lineas.push('   !! ' + hoja.getName() + ' fila ' + (i + 1) + ': ' +
+                    Utilities.formatDate(v, ZONA_HORARIA, 'yyyy-MM-dd HH:mm') +
+                    ' esta en el futuro y NO se arregla intercambiando dia y mes. Revisar a mano.');
+        continue;
+      }
+
+      const alterna = new Date(v.getFullYear(), dia - 1, mes, v.getHours(), v.getMinutes());
+      if (alterna.getTime() > margen.getTime()) {
+        irreparables++;
+        lineas.push('   !! ' + hoja.getName() + ' fila ' + (i + 1) + ': ' +
+                    Utilities.formatDate(v, ZONA_HORARIA, 'yyyy-MM-dd HH:mm') +
+                    ' queda en el futuro con las dos lecturas. Revisar a mano.');
+        continue;
+      }
+
+      hCorr++; corregidas++;
+      const fp = (colFP === -1) ? '' : valores[i][colFP];
+      lineas.push('   . ' + hoja.getName() + ' fila ' + (i + 1) + ': ' +
+                  Utilities.formatDate(v, ZONA_HORARIA, 'yyyy-MM-dd HH:mm') + ' -> ' +
+                  Utilities.formatDate(alterna, ZONA_HORARIA, 'yyyy-MM-dd HH:mm') +
+                  '   [$' + (colVal === -1 ? '' : valores[i][colVal]) +
+                  ' · fecha de pago sin tocar: ' +
+                  ((fp instanceof Date) ? Utilities.formatDate(fp, ZONA_HORARIA, 'yyyy-MM-dd') : String(fp)) + ']');
+
+      if (!soloSimular) hoja.getRange(i + 1, colFR + 1).setValue(alterna);
+    }
+
+    if (hCorr) lineas.push(hoja.getName() + ': ' + hCorr + ' corregida(s).');
+  });
+
+  lineas.push('');
+  lineas.push('Fechas reales revisadas: ' + revisadas +
+              '  .  corregidas: ' + corregidas +
+              (irreparables ? '  .  para revisar a mano: ' + irreparables : ''));
+  lineas.push('');
+  lineas.push('REVISAR: la columna FECHA DE PAGO no se toca (un pago si puede ser futuro).');
+  lineas.push('Comparar a ojo las fechas de pago listadas arriba contra la realidad.');
+  if (soloSimular) {
+    lineas.push('');
+    lineas.push('Para aplicarlo de verdad: repararFechasFuturas(false)');
+  }
+
+  const resumen = lineas.join('\n');
+  Logger.log(resumen);
+  return resumen;
+}
+
 // ─── Diagnóstico: ¿es seguro borrar una carpeta de Drive? ─────────────────
 //
 // SOLO LECTURA. Revisa todos los pagos registrados y dice cuántos apuntan a
@@ -1412,7 +1514,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-16-e · fechas reales + formato por columna + zonas';
+const REVISION_BACKEND = '2026-09-16-f · reparacion de fechas futuras';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [

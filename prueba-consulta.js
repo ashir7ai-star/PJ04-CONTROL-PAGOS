@@ -26,7 +26,14 @@ function hojaFalsa(nombre, filas) {
     getDataRange: () => ({ getValues: () => d.map(f => f.slice()) }),
     getLastRow: () => d.length,
     getLastColumn: () => (d[0] ? d[0].length : 0),
-    getRange: () => ({ getValues: () => [d[0]], setValues: () => ({ setFontWeight: () => {} }) }),
+    // setValue tiene que escribir DE VERDAD en la fila y columna pedidas: es lo
+    // único que permite comprobar que una reparación corrige la celda correcta
+    // y no toca ninguna otra.
+    getRange: (fila, col) => ({
+      getValues: () => [d[0]],
+      setValues: () => ({ setFontWeight: () => {} }),
+      setValue: v => { if (d[fila - 1]) d[fila - 1][col - 1] = v; }
+    }),
     appendRow: r => d.push(r),
     setFrozenRows: () => {}
   };
@@ -35,7 +42,7 @@ function hojaFalsa(nombre, filas) {
 const pago = (fecha, empresa, tipo, valor, nombre) =>
   [fecha, empresa, tipo, 'quien', nombre || 'pago', 'proveedor', '2026-01-01', valor];
 
-function backend() {
+function backend(hojasExtra) {
   const hojas = {
     'PAGOS REGISTRADOS': hojaFalsa('PAGOS REGISTRADOS', [ENC,
       pago('01/02/2026 10:00', 'AMPAC SAS',     'compra',          100000, 'compra ampac'),
@@ -52,6 +59,9 @@ function backend() {
     'SALDOS':   hojaFalsa('SALDOS',   [['FECHA', 'CUENTA', 'SALDO BASE', 'CONCEPTO', 'REGISTRADO POR']]),
     'USUARIOS': hojaFalsa('USUARIOS', [['CORREO', 'NOMBRE', 'TELEFONO', 'ROL', 'SECCIONES', 'ESTADO', 'FECHA REGISTRO', 'ULTIMO ACCESO']])
   };
+  // Permite reemplazar hojas por unas a medida: sin esto no se puede probar
+  // una funcion que ESCRIBE, que es justo donde mas caro sale un error.
+  Object.keys(hojasExtra || {}).forEach(n => { hojas[n] = hojasExtra[n]; });
   const orden = Object.keys(hojas);
 
   const ctx = {
@@ -101,6 +111,7 @@ function backend() {
 }
 
 const g = backend();
+const backendCon = hojasExtra => backend(hojasExtra);
 const tipos = filas => filas.map(f => f['TIPO FACTURA']).sort();
 
 console.log('\n=== El servidor entrega solo las hojas permitidas ===');
@@ -352,6 +363,55 @@ console.log('\n=== Fechas: el formato de la columna se prueba, no se supone ==='
   chk('el navegador no acepta un mes > 12',
       pf.getFullYear() === 2026 && pf.getMonth() === 8 && pf.getDate() === 15,
       pf && pf.toDateString());
+}
+
+// ── Reparación de las fechas de registro que quedaron en el futuro ───
+console.log('\n=== Fechas de registro en el futuro: se detectan y se corrigen ===');
+{
+  // Caso real (2026-09-16): 40 filas migradas tenían FECHA REGISTRO en texto
+  // mes/día ("09/12/2026" = 12 de septiembre). Al convertir la columna a fecha
+  // real, Sheets las leyó como día/mes y las guardó como 9 de DICIEMBRE.
+  // Quedaron en el futuro, se ordenaron primero, y taparon los pagos recientes.
+  const hoy = new Date();
+  const futura   = new Date(hoy.getFullYear(), hoy.getMonth() + 3, 9, 14, 31);  // dia 9
+  const pasadaOk = new Date(hoy.getFullYear(), hoy.getMonth(), 1, 8, 0);
+  const imposible = new Date(hoy.getFullYear(), hoy.getMonth() + 3, 25, 9, 0);  // dia 25: no puede ser mes
+
+  const ENC2 = ['FECHA REGISTRO', 'EMPRESA', 'TIPO FACTURA', 'REGISTRADO POR',
+                'NOMBRE DE PAGO', 'PROVEEDOR', 'FECHA DE PAGO', 'VALOR'];
+  const datos = [ENC2,
+    [futura,    'AMPAC SAS', 'viaticos', 'q', 'corregible', 'p', pasadaOk, 100],
+    [pasadaOk,  'AMPAC SAS', 'viaticos', 'q', 'ya esta bien', 'p', pasadaOk, 200],
+    ['15/09/2026 18:40', 'AMPAC SAS', 'viaticos', 'q', 'texto', 'p', pasadaOk, 300],
+    [imposible, 'AMPAC SAS', 'viaticos', 'q', 'irreparable', 'p', pasadaOk, 400]
+  ];
+
+  const hoja = hojaFalsa('Viaticos', datos);
+  const ctx3 = backendCon({ 'Viaticos': hoja });
+
+  const sim = ctx3.repararFechasFuturas(true);
+  chk('el simulacro no modifica la hoja', datos[1][0] === futura);
+  chk('el simulacro anuncia la fila corregible', sim.indexOf('corregible') === -1 ? sim.indexOf('fila 2') !== -1 : true, '');
+  chk('el simulacro avisa de la irreparable', sim.indexOf('Revisar a mano') !== -1);
+  // El motivo TIENE que distinguirse: "el dia no puede ser un mes" y "queda en
+  // el futuro con las dos lecturas" son problemas distintos, y quien lo revise
+  // a mano necesita saber cual de los dos tiene enfrente.
+  chk('dice POR QUE es irreparable (el dia no puede ser un mes)',
+      sim.indexOf('NO se arregla intercambiando dia y mes') !== -1);
+
+  ctx3.repararFechasFuturas(false);
+  const y = datos[1][0];
+  chk('la fecha futura se corrige intercambiando dia y mes',
+      y instanceof Date && y.getDate() === futura.getMonth() + 1 && y.getMonth() === futura.getDate() - 1,
+      y && y.toString());
+  chk('conserva la hora exacta',
+      y.getHours() === 14 && y.getMinutes() === 31, y && y.getHours() + ':' + y.getMinutes());
+  chk('la fecha corregida ya no esta en el futuro', y.getTime() <= Date.now() + 86400000);
+  chk('una fecha pasada no se toca',   datos[2][0] === pasadaOk);
+  chk('una celda de TEXTO no se toca', datos[3][0] === '15/09/2026 18:40');
+  chk('una futura con dia > 12 no se toca (no puede ser un mes)', datos[4][0] === imposible);
+  chk('FECHA DE PAGO no se toca nunca (un pago si puede ser futuro)',
+      datos[1][6] === pasadaOk && datos[4][6] === pasadaOk);
 }
 
 // ── Alta completa de cada tipo de pago ────────────────────────────────────
