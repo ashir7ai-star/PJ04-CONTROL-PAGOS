@@ -723,6 +723,74 @@ console.log('\n=== Un traslado del MISMO DIA se suma al fondo ===');
       saldoDe(r6, 'banco_millennium').saldo === 8800000, saldoDe(r6, 'banco_millennium').saldo);
 }
 
+console.log('\n=== Un reintento NO puede duplicar un pago ===');
+{
+  // Fallo real (2026-09-17): en el celular la peticion salio dos veces y el
+  // pago quedo registrado DOS veces — dos filas identicas, el mismo minuto.
+  // Apps Script entrega la respuesta de un POST en dos saltos (302), asi que
+  // en red movil inestable el servidor guarda bien y la respuesta se pierde;
+  // ahi la red, o la persona, reintenta.
+  const filas = (g) => g.SpreadsheetApp.getActiveSpreadsheet()
+                        .getSheetByName('PAGOS REGISTRADOS')._datos;
+
+  const pago = (id) => ({
+    tipo_factura: 'compra', empresa: 'AMPAC SAS', monto: '119900',
+    nombre_pago: 'Almuerzo', proveedor: 'RESTAURANTE', fecha_pago: '2026-09-17',
+    fecha_envio: id, archivos: []
+  });
+
+  const g = montar([], []);
+  const antes = filas(g).length;
+
+  const r1 = g.registrarPago_(pago('id-abc-123'));
+  chk('el primer envio se guarda', r1.status === 'success' && !r1.duplicado, JSON.stringify(r1.duplicado));
+  chk('y agrega UNA fila', filas(g).length === antes + 1, filas(g).length - antes);
+
+  // El reintento: misma peticion, mismo id.
+  g.olvidarTodasLasHojas_();
+  const r2 = g.registrarPago_(pago('id-abc-123'));
+  chk('el reintento responde exito (no un error confuso)', r2.status === 'success', r2.message);
+  chk('avisa que era repetido', r2.duplicado === true, JSON.stringify(r2.duplicado));
+  chk('y NO agrega una segunda fila', filas(g).length === antes + 1, filas(g).length - antes);
+
+  // Dos pagos DISTINTOS con los mismos datos son legitimos: se distinguen por
+  // id, no por contenido. Bloquearlos seria perder plata registrada de verdad.
+  g.olvidarTodasLasHojas_();
+  const r3 = g.registrarPago_(pago('id-xyz-999'));
+  chk('un pago identico pero con otro id SI se guarda',
+      r3.status === 'success' && !r3.duplicado, JSON.stringify(r3.duplicado));
+  chk('ahora si hay dos filas', filas(g).length === antes + 2, filas(g).length - antes);
+
+  // Sin id no se puede afirmar que sea duplicado: se guarda. Bloquear un pago
+  // bueno es peor que dejar pasar uno repetido — el repetido se ve, el
+  // bloqueado se pierde.
+  g.olvidarTodasLasHojas_();
+  const sinId = Object.assign(pago(''), { fecha_envio: '' });
+  const r4 = g.registrarPago_(sinId);
+  chk('un pago sin id se guarda igual', r4.status === 'success' && !r4.duplicado, JSON.stringify(r4));
+
+  // La guarda de id vacio, directo: registrarPago_ nunca la alcanza porque
+  // reemplaza el id vacio por una marca de tiempo, pero si alguien la invierte
+  // cualquier fila contaria como duplicado y se bloquearian pagos buenos.
+  const hojaPagos2 = g.SpreadsheetApp.getActiveSpreadsheet().getSheetByName('PAGOS REGISTRADOS');
+  g.olvidarTodasLasHojas_();
+  chk('un id vacio NO cuenta como duplicado',
+      g.filaConIdRegistro_(hojaPagos2, '') === false, g.filaConIdRegistro_(hojaPagos2, ''));
+  chk('un id que no existe tampoco',
+      g.filaConIdRegistro_(hojaPagos2, 'jamas-usado') === false);
+  chk('pero uno que si existe se reconoce',
+      g.filaConIdRegistro_(hojaPagos2, 'id-abc-123') === true);
+
+  // Y lo que importa para la plata: el saldo no se descuenta dos veces.
+  const g5 = montar([], [['01/01/2026 00:00', 'banco_ampac', 1000000]]);
+  g5.registrarPago_(pago('id-unico'));
+  g5.olvidarTodasLasHojas_();
+  g5.registrarPago_(pago('id-unico'));
+  const saldo = saldoDe(g5.consultarSaldos_({ rol: 'admin', secciones: [] }, true), 'banco_ampac');
+  chk('el saldo se descuenta UNA sola vez', saldo.saldo === 880100, saldo.saldo);
+  chk('y cuenta un solo pago', saldo.pagos === 1, saldo.pagos);
+}
+
 console.log('\n=== Quién puede VER cada saldo ===');
 {
   // Reportado en producción el 2026-09-16: a un usuario no administrador le

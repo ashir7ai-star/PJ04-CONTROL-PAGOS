@@ -42,7 +42,7 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 
 📌 **En gestión del usuario:** conexión con Bancolombia (Cash Management → Extractos Especiales vía H2H, o API Market) para llenar la columna `DIFERENCIA` automáticamente.
 
-`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-17-e`. `sw.js` → `control-pagos-v77`. `MODO_LOGIN` = `'estricto'`.
+`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-17-e`. `sw.js` → `control-pagos-v78`. `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -471,6 +471,16 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-17**: 🛡️ **Un reintento ya no puede duplicar un pago.** Un usuario registró pagos desde el celular, la app se quedó cargando y "no aparecieron"... pero **sí se habían guardado, dos veces**: dos filas idénticas de HOSPEDAJE el mismo minuto (10:05) y dos de Almuerzo (14:03 y 14:11).
+  - **Diagnóstico, con mediciones y no por síntomas.** El backend está sano: `GET` responde bien, y replicando lo que hace el navegador (POST → 302 → GET al `googleusercontent`) la entrega funcionó **3 de 3**. O sea que **no era el Service Worker ni el despliegue**: es la red móvil. Apps Script entrega la respuesta de un POST en **dos saltos**, así que en una conexión inestable el servidor **guarda bien** y lo que se pierde es la respuesta — y ahí la red, o la persona, reintenta.
+  - ⚠️ **El primer intento de diagnosticar dio un falso positivo:** `curl -L --post302` devolvía una página de error de Drive, lo que parecía confirmar "el POST está roto". Era artefacto de la prueba — esa URL de entrega solo acepta GET. **Reproducir mal es peor que no reproducir.**
+  - **Arreglo — idempotencia:** el navegador genera un id por PAGO (no por envío) y lo conserva mientras ese pago no se confirme, así un reintento llega con el **mismo** id; el servidor lo reconoce por `ID REGISTRO` y responde éxito **sin escribir de nuevo**. Se compara por id y **nunca por contenido**: dos pagos iguales el mismo día son legítimos.
+  - **`asegurarColumnas_(hoja, ENCABEZADOS_PAGOS)` antes de escribir.** Sin columna `ID REGISTRO` el id no se guarda en ningún lado y la protección sería **letra muerta, en silencio**. Lo descubrió la prueba: fallaba porque la hoja simulada no tenía esa columna.
+  - **Sin id, se guarda.** Bloquear un pago bueno es peor que dejar pasar uno repetido: el repetido se ve, el bloqueado se pierde.
+  - El mensaje de error ya no afirma que no se registró — porque puede haberse registrado — e invita a reintentar, que ahora es inofensivo.
+  - **16 comprobaciones nuevas y 6 mutaciones verificadas.** `sw.js` -> `control-pagos-v78`. `REVISION_BACKEND` -> `2026-09-17-f`.
+  - 📌 **Pendiente del usuario:** borrar a mano las 2 filas duplicadas (HOSPEDAJE 10:05 y Almuerzo 14:03 ó 14:11).
+
 - **2026-09-17**: 🐛 **REGRESIÓN PROPIA, corregida: los traslados del mismo día no sumaban.** El usuario trasladó 100.000 de Millennium a Viáticos y el fondo no subió. Se reprodujo y se verificó contra el código anterior: **el traslado se ignoraba en los DOS lados** — ni restaba del banco ni sumaba al fondo.
   - **La causó el cambio de ayer.** Antes `FECHA` era el instante del registro y siempre caía después del saldo base. Al dejar que el usuario **eligiera la fecha**, pasó a ser un **día a las 00:00** — y comparado contra una base cargada a las 08:00 de ese mismo día, el traslado quedaba "antes" del corte. Los traslados del mismo día son la mayoría.
   - ⚠️ **Ninguna prueba lo detectó**, porque todas usaban fechas de meses distintos. **Una funcionalidad nueva puede romper otra por el borde que ninguna prueba mira** — acá, la precisión de la fecha.

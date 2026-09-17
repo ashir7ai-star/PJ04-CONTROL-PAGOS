@@ -3185,6 +3185,19 @@
     // se lee desde funciones definidas más arriba en el archivo.
     var ultimaMedicion = null;
 
+    // Identificador de UN pago, no de un envío. Se genera al apretar
+    // "Registrar" y se conserva mientras ese pago no se haya guardado, así un
+    // reintento —de la red o de la persona— llega con el MISMO id y el servidor
+    // lo reconoce como repetido en vez de escribirlo otra vez.
+    function nuevoIdOperacion() {
+      try {
+        if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+      } catch (err) { /* navegadores viejos */ }
+      return new Date().toISOString() + '-' + Math.random().toString(36).slice(2, 10);
+    }
+
+    var idPagoPendiente = null;
+
     async function postAppsScript(payload, timeoutMs = 120000) {
       const esLectura = ACCIONES_DE_LECTURA.indexOf(payload && payload.action) !== -1;
       try {
@@ -4197,6 +4210,11 @@
 
       setLoading(true);
 
+      // Un id por PAGO. Si ya hay uno pendiente es porque el intento anterior
+      // no llegó a confirmarse: se reusa, y así el servidor reconoce que es el
+      // mismo pago en vez de escribirlo de nuevo.
+      if (!idPagoPendiente) idPagoPendiente = nuevoIdOperacion();
+
       try {
         const archivos = [];
         for (const file of uploadNuevoPago.getFiles()) {
@@ -4219,12 +4237,19 @@
             : document.getElementById('fechaPago').value,
           monto:          document.getElementById('monto').value.replace(/\./g, ''),
           notas:          document.getElementById('notas').value.trim(),
-          fecha_envio:    new Date().toISOString(),
+          fecha_envio:    idPagoPendiente,
           archivos:       archivos
         });
 
         if (result.status === 'success') {
-          showToast('success', '¡Pago registrado!', 'Los archivos fueron guardados y los datos registrados correctamente.');
+          // Guardado: el id deja de estar pendiente. El próximo pago genera uno
+          // nuevo, así dos pagos iguales el mismo día no se bloquean entre sí.
+          idPagoPendiente = null;
+          showToast('success',
+            result.duplicado ? 'Ese pago ya estaba registrado' : '¡Pago registrado!',
+            result.duplicado
+              ? 'Se había guardado en el intento anterior. No se duplicó.'
+              : 'Los archivos fueron guardados y los datos registrados correctamente.');
           resetForm();
           // El saldo lo calcula el servidor a partir de las hojas: no hay un
           // contador local que pueda quedar desincronizado. Y viene ya
@@ -4235,7 +4260,13 @@
         }
       } catch (err) {
         console.error(err);
-        showToast('error', 'Error al enviar', 'No se pudo conectar con el sistema. Intenta de nuevo.');
+        // Un fallo acá NO significa que el pago no se haya guardado: el
+        // servidor pudo grabarlo y perderse solo la respuesta. Por eso el
+        // mensaje no afirma que no se registró, e invita a reintentar sin
+        // miedo — el id pendiente hace que el reintento no duplique.
+        showToast('error', 'No pudimos confirmar el envío',
+          mensajeDeError(err) + ' Volvé a darle "Enviar Pago": si ya se había ' +
+          'guardado, el sistema lo reconoce y no lo duplica.');
       } finally {
         setLoading(false);
       }
@@ -4249,6 +4280,8 @@
     }
 
     function resetForm() {
+      // El pago se guardó (o se descartó): el próximo empieza con id nuevo.
+      idPagoPendiente = null;
       form.reset();
       tipoHidden.value = '';
       tipoBtns.forEach(b => b.classList.remove('active'));

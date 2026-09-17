@@ -324,6 +324,33 @@ function registrarPago_(body) {
 
   const hoja = hojaDeSeccion_(seccion);
 
+  // Sin columna ID REGISTRO no hay forma de reconocer un reintento: el id no se
+  // guardaría en ningún lado y la protección contra duplicados sería letra
+  // muerta, en silencio. Se asegura antes de tocar nada.
+  asegurarColumnas_(hoja, ENCABEZADOS_PAGOS);
+
+  // IDEMPOTENCIA: la misma petición NUNCA puede escribir dos filas.
+  //
+  // Caso real (2026-09-17): en el celular la petición se envió dos veces y el
+  // pago quedó registrado dos veces. Apps Script entrega la respuesta de un
+  // POST en DOS saltos (302 a googleusercontent), así que en una red móvil
+  // inestable pasa seguido: el servidor GUARDA bien, la respuesta se pierde, y
+  // el navegador —o la persona— reintenta. Sin esta guarda, cada reintento es
+  // un pago duplicado en la contabilidad.
+  //
+  // Se compara por ID REGISTRO, que el navegador genera UNA vez por pago y
+  // repite en cada reintento. No se compara por contenido: dos pagos iguales el
+  // mismo día son legítimos y no se deben bloquear.
+  const idRegistro = String(body.fecha_envio || '').trim() || new Date().toISOString();
+  if (filaConIdRegistro_(hoja, idRegistro)) {
+    return {
+      status:    'success',
+      duplicado: true,
+      seccion:   seccion,
+      saldos:    consultarSaldos_(ctx)
+    };
+  }
+
   agregarFilaPorEncabezados_(hoja, {
     'FECHA REGISTRO': new Date(),
     'EMPRESA':        body.empresa || '',
@@ -335,7 +362,7 @@ function registrarPago_(body) {
     'VALOR FACTURA':  body.monto || '',
     'NOTAS':          body.notas || '',
     'URL ARCHIVO':    subirArchivosASeccion_(body.archivos, seccion),
-    'ID REGISTRO':    body.fecha_envio || new Date().toISOString()
+    'ID REGISTRO':    idRegistro
   });
 
   // Un pago cambia el saldo: lo calculado que hubiera guardado ya no vale.
@@ -359,6 +386,13 @@ function registrarPago_(body) {
 // texto), formatearla con 'yyyy-MM-dd' DESCARTA LA HORA. En FECHA REGISTRO eso
 // arruina el orden cronológico: todos los registros del mismo día llegaban con
 // 00:00 y quedaban empatados. Las columnas de fecha+hora se formatean con hora.
+// Las columnas de una hoja de pagos. Se usan para asegurarse de que existan
+// antes de escribir: una hoja sin 'ID REGISTRO' no puede detectar reintentos.
+const ENCABEZADOS_PAGOS = [
+  'FECHA REGISTRO', 'EMPRESA', 'TIPO FACTURA', 'REGISTRADO POR', 'NOMBRE DE PAGO',
+  'PROVEEDOR', 'FECHA DE PAGO', 'VALOR FACTURA', 'NOTAS', 'URL ARCHIVO', 'ID REGISTRO'
+];
+
 const COLUMNAS_CON_HORA = ['FECHA REGISTRO', 'FECHA SOLICITUD', 'FECHA DECISION', 'ULTIMO ACCESO'];
 
 // Columnas de fecha SIN hora. Están acá para que su texto también se
@@ -1358,6 +1392,25 @@ function hojaSolicitudes_() {
 
 // Escribe una fila usando los encabezados reales de la hoja, así el orden de
 // las columnas puede cambiar sin romper nada.
+// ¿Ya hay una fila con este ID REGISTRO? Es lo que hace que un reintento sea
+// inofensivo. Devuelve false si la hoja no tiene esa columna: sin ID no se
+// puede afirmar que sea duplicado, y bloquear un pago bueno es peor que dejar
+// pasar uno repetido (el repetido se ve; el bloqueado se pierde).
+function filaConIdRegistro_(hoja, id) {
+  const buscado = String(id || '').trim();
+  if (!buscado) return false;
+
+  const valores = valoresDeHoja_(hoja);
+  if (valores.length < 2) return false;
+  const col = valores[0].map(h => String(h).trim()).indexOf('ID REGISTRO');
+  if (col === -1) return false;
+
+  for (let i = 1; i < valores.length; i++) {
+    if (String(valores[i][col]).trim() === buscado) return true;
+  }
+  return false;
+}
+
 function agregarFilaPorEncabezados_(hoja, datos) {
   const encabezados = hoja.getRange(1, 1, 1, hoja.getLastColumn()).getValues()[0];
   const fila = encabezados.map(h => (datos[h] !== undefined ? datos[h] : ''));
@@ -1673,7 +1726,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-17-e · traslado del mismo dia suma';
+const REVISION_BACKEND = '2026-09-17-f · sin pagos duplicados';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
