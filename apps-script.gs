@@ -1673,7 +1673,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-17-d · saldos en cache';
+const REVISION_BACKEND = '2026-09-17-e · traslado del mismo dia suma';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -2554,16 +2554,17 @@ function calcularSaldosCrudos_() {
   // cuenta— y se evalúa por separado para cada lado, porque cada cuenta tiene
   // su propia fecha de base.
   trasladosTodos_().forEach(t => {
-    if (!t.fecha || !t.monto) return;
+    const momento = momentoDeTraslado_(t);
+    if (!momento || !t.monto) return;
 
     const salida = bases[t.origen];
-    if (salida && t.fecha.getTime() > salida.fecha.getTime()) {
+    if (salida && momento.getTime() > salida.fecha.getTime()) {
       acumulado[t.origen].enviado   += t.monto;
       acumulado[t.origen].traslados += 1;
     }
 
     const entrada = bases[t.destino];
-    if (entrada && t.fecha.getTime() > entrada.fecha.getTime()) {
+    if (entrada && momento.getTime() > entrada.fecha.getTime()) {
       acumulado[t.destino].recibido  += t.monto;
       acumulado[t.destino].traslados += 1;
     }
@@ -2752,6 +2753,26 @@ function asegurarColumnasTraslados_(hoja) {
   asegurarColumnas_(hoja, ENCABEZADOS_TRASLADOS);
 }
 
+// El MOMENTO con el que un traslado se compara contra el saldo base.
+//
+// ⚠️ Acá estuvo el error: la fecha del traslado es solo un DÍA (00:00). Si se
+// compara así contra una base cargada a las 14:00 de ese mismo día, el traslado
+// queda "antes" y NO se suma — aunque se haya hecho después. Eso rompió todos
+// los traslados del mismo día, que son la mayoría.
+//
+// Reglas, de la más precisa a la menos:
+//   1. Si se registró el MISMO día en que se hizo, el instante del registro es
+//      la mejor aproximación del momento real, y tiene hora exacta.
+//   2. Si es un traslado viejo cargado después, solo se conoce el día: se toma
+//      el FINAL de ese día. Así cuenta contra una base cargada ese mismo día
+//      más temprano, y no cuenta contra una base de un día posterior —que ya
+//      lo incluye.
+function momentoDeTraslado_(t) {
+  if (!t.fecha) return null;
+  if (t.fechaRegistro && mismoDia_(t.fecha, t.fechaRegistro)) return t.fechaRegistro;
+  return new Date(t.fecha.getFullYear(), t.fecha.getMonth(), t.fecha.getDate(), 23, 59, 59);
+}
+
 function trasladosTodos_() {
   const valores = valoresDeHoja_(hojaTraslados_());
   if (valores.length < 2) return [];
@@ -2763,6 +2784,7 @@ function trasladosTodos_() {
     monto:   enc.indexOf('MONTO'),
     quien:   enc.indexOf('REGISTRADO POR'),
     realizo: enc.indexOf('REALIZADO POR'),
+    registro: enc.indexOf('FECHA REGISTRO'),
     nota:    enc.indexOf('NOTA'),
     url:     enc.indexOf('URL COMPROBANTE')
   };
@@ -2780,6 +2802,9 @@ function trasladosTodos_() {
       // Los traslados cargados antes de que existiera esta columna no tienen
       // autor. Se muestra vacio en vez de inventar que lo hizo quien lo cargo.
       realizo:    c.realizo === -1 ? '' : String(f[c.realizo] || ''),
+      // Cuándo se cargó en el sistema. Es lo que permite ubicar en el tiempo un
+      // traslado del mismo día con precisión de minutos, no solo de fecha.
+      fechaRegistro: c.registro === -1 ? null : fechaHoraDeRegistro_(f[c.registro]),
       nota:       String(f[c.nota] || ''),
       url:        String(f[c.url] || '')
     }));

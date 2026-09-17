@@ -611,6 +611,118 @@ console.log('\n=== El cache de saldos: rapido, pero NUNCA viejo ===');
       saldoAmpac(g5, true) === 600000, saldoAmpac(g5, true));
 }
 
+console.log('\n=== Un traslado del MISMO DIA se suma al fondo ===');
+{
+  // Fallo real reportado (2026-09-17): se hizo un traslado de Millennium a
+  // Viaticos por 100.000 y el saldo de Viaticos no subio.
+  //
+  // Causa: la fecha del traslado es un DIA (00:00). Comparada contra una base
+  // cargada a las 08:00 de ese mismo dia, el traslado quedaba "antes" y no se
+  // contaba NI en el origen NI en el destino. Se rompio al hacer que el usuario
+  // pudiera elegir la fecha: antes esa fecha era el instante del registro.
+  const p2 = n => String(n).padStart(2, '0');
+  const hoy = new Date();
+  const hoyTxt = (h, m) => p2(hoy.getDate()) + '/' + p2(hoy.getMonth() + 1) + '/' +
+                           hoy.getFullYear() + ' ' + p2(h) + ':' + p2(m);
+  const hoyISO = hoy.getFullYear() + '-' + p2(hoy.getMonth() + 1) + '-' + p2(hoy.getDate());
+  const ayer = new Date(hoy.getTime() - 86400000);
+  const ayerISO = ayer.getFullYear() + '-' + p2(ayer.getMonth() + 1) + '-' + p2(ayer.getDate());
+  const ayerTxt = (h, m) => p2(ayer.getDate()) + '/' + p2(ayer.getMonth() + 1) + '/' +
+                            ayer.getFullYear() + ' ' + p2(h) + ':' + p2(m);
+
+  const trasladar = (g, destino, monto, fecha) => g.registrarTraslado_({
+    origen: 'banco_millennium', destino: destino, monto: String(monto),
+    fecha: fecha, realizado_por: 'nathan@ylevigroup.com',
+    archivos: [{ nombre: 'c.pdf', datos: 'x' }]
+  });
+  const ver = (g) => g.consultarSaldos_({ rol: 'admin', secciones: [] }, true);
+
+  // 1) El caso reportado, tal cual.
+  const g = montar([], [
+    [hoyTxt(8, 0), 'viaticos',          500000],
+    [hoyTxt(8, 0), 'banco_millennium', 9000000]
+  ]);
+  trasladar(g, 'viaticos', 100000, hoyISO);
+  const r = ver(g);
+  chk('el traslado SUMA al fondo de Viaticos',
+      saldoDe(r, 'viaticos').saldo === 600000, saldoDe(r, 'viaticos').saldo);
+  chk('y RESTA del banco de origen',
+      saldoDe(r, 'banco_millennium').saldo === 8900000, saldoDe(r, 'banco_millennium').saldo);
+  chk('la plata no se crea ni se destruye al moverse',
+      saldoDe(r, 'viaticos').saldo + saldoDe(r, 'banco_millennium').saldo === 9500000,
+      saldoDe(r, 'viaticos').saldo + saldoDe(r, 'banco_millennium').saldo);
+
+  // 2) Lo mismo para Caja Menor: la regla no puede depender de la cuenta.
+  const g2 = montar([], [
+    [hoyTxt(8, 0), 'caja_menor',        300000],
+    [hoyTxt(8, 0), 'banco_millennium', 9000000]
+  ]);
+  trasladar(g2, 'caja_menor', 50000, hoyISO);
+  const r2 = ver(g2);
+  chk('un traslado a Caja Menor tambien suma',
+      saldoDe(r2, 'caja_menor').saldo === 350000, saldoDe(r2, 'caja_menor').saldo);
+
+  // 3) Un traslado VIEJO contra una base cargada DESPUES no se suma: esa base
+  //    ya lo refleja. Sumarlo seria contar la misma plata dos veces.
+  const g3 = montar([], [
+    [hoyTxt(8, 0), 'viaticos',          500000],
+    [hoyTxt(8, 0), 'banco_millennium', 9000000]
+  ]);
+  trasladar(g3, 'viaticos', 100000, ayerISO);
+  chk('un traslado anterior a la base NO se vuelve a sumar',
+      saldoDe(ver(g3), 'viaticos').saldo === 500000, saldoDe(ver(g3), 'viaticos').saldo);
+
+  // 4) Un traslado de ayer contra una base de ayer TEMPRANO si cuenta.
+  const g4 = montar([], [
+    [ayerTxt(6, 0), 'viaticos',          500000],
+    [ayerTxt(6, 0), 'banco_millennium', 9000000]
+  ]);
+  trasladar(g4, 'viaticos', 100000, ayerISO);
+  chk('un traslado del dia de la base, pero posterior, si se suma',
+      saldoDe(ver(g4), 'viaticos').saldo === 600000, saldoDe(ver(g4), 'viaticos').saldo);
+
+  // 5) Las filas VIEJAS (antes de que existiera la columna FECHA REGISTRO)
+  //    guardaban en FECHA el instante del registro. Tienen que seguir contando.
+  const g5 = montar([], [
+    [hoyTxt(8, 0), 'viaticos',          500000],
+    [hoyTxt(8, 0), 'banco_millennium', 9000000]
+  ], 'off', [[hoyTxt(10, 30), 'banco_millennium', 'viaticos', 100000]]);
+  chk('los traslados viejos (sin FECHA REGISTRO) siguen contando',
+      saldoDe(ver(g5), 'viaticos').saldo === 600000, saldoDe(ver(g5), 'viaticos').saldo);
+
+  // 5b) El orden inverso: primero se registra el traslado, y DESPUES se carga
+  //     el saldo real del banco (que ya lo refleja). No puede sumarse otra vez.
+  //     Este es el caso donde importa usar el instante del registro y no el
+  //     final del dia: con "final del dia" el traslado quedaria despues de la
+  //     base y se contaria dos veces.
+  const enUnMinuto = new Date(Date.now() + 60000);
+  const g5b = montar([], [
+    [p2(enUnMinuto.getDate()) + '/' + p2(enUnMinuto.getMonth() + 1) + '/' +
+     enUnMinuto.getFullYear() + ' ' + p2(enUnMinuto.getHours()) + ':' + p2(enUnMinuto.getMinutes()),
+     'viaticos', 600000],
+    [hoyTxt(8, 0), 'banco_millennium', 9000000]
+  ]);
+  trasladar(g5b, 'viaticos', 100000, hoyISO);
+  chk('si el saldo real se carga DESPUES del traslado, no se suma dos veces',
+      saldoDe(ver(g5b), 'viaticos').saldo === 600000, saldoDe(ver(g5b), 'viaticos').saldo);
+
+  // 6) Todo junto: Viaticos y Compra Materiales comparten bolsa, y encima
+  //    entra un traslado. Es el escenario completo que describio el usuario.
+  const g6 = montar([
+    [hoyTxt(9, 0),  'AMPAC SAS', 'viaticos',          100000],
+    [hoyTxt(9, 30), 'AMPAC SAS', 'compra_materiales',  80000]
+  ], [
+    [hoyTxt(8, 0), 'viaticos',          500000],
+    [hoyTxt(8, 0), 'banco_millennium', 9000000]
+  ]);
+  trasladar(g6, 'viaticos', 200000, hoyISO);
+  const r6 = ver(g6);
+  chk('Viaticos: 500.000 + 200.000 traslado - 100.000 viatico - 80.000 materiales',
+      saldoDe(r6, 'viaticos').saldo === 520000, saldoDe(r6, 'viaticos').saldo);
+  chk('y el banco solo pierde el traslado, no los gastos del fondo',
+      saldoDe(r6, 'banco_millennium').saldo === 8800000, saldoDe(r6, 'banco_millennium').saldo);
+}
+
 console.log('\n=== Quién puede VER cada saldo ===');
 {
   // Reportado en producción el 2026-09-16: a un usuario no administrador le
