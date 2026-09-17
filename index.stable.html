@@ -3134,6 +3134,10 @@
       'listar_usuarios', 'iniciar_sesion', 'estado_login'
     ];
 
+    // Medición de la última respuesta del servidor. Se declara con var porque
+    // se lee desde funciones definidas más arriba en el archivo.
+    var ultimaMedicion = null;
+
     async function postAppsScript(payload, timeoutMs = 120000) {
       const esLectura = ACCIONES_DE_LECTURA.indexOf(payload && payload.action) !== -1;
       try {
@@ -3179,11 +3183,35 @@
           throw new Error(describirRespuestaNoJson(texto, response.status));
         }
 
+        // Lo que el servidor dice que tardó y cuántas hojas tuvo que leer.
+        // Se guarda para mostrarlo en Configuración: sin un número medido,
+        // "la app está lenta" no se puede atribuir a servidor, red o navegador,
+        // y se terminan optimizando cosas que no eran el problema.
+        if (datos && typeof datos.ms === 'number') {
+          ultimaMedicion = { ms: datos.ms, hojas: datos.hojasLeidas, accion: payload.action };
+        }
+
         manejarErrorDeSesion(datos);
         return datos;
       } finally {
         clearTimeout(alarma);
       }
+    }
+
+    // Traduce un error de red a algo que le sirva a quien lo lee.
+    //
+    // Antes todo caía en "Error de conexión", que no distingue un tiempo
+    // agotado de una sesión vencida ni de un error del servidor. Con ese
+    // mensaje único no hay forma de saber qué arreglar — ni para el usuario,
+    // ni para nosotros cuando nos lo reporta.
+    function mensajeDeError(err) {
+      if (!err) return 'Error desconocido. Intentá de nuevo.';
+      if (err.name === 'AbortError') {
+        return 'El servidor tardó demasiado en responder. Volvé a intentar; ' +
+               'si se repite, avisá para revisarlo.';
+      }
+      if (!navigator.onLine) return 'No hay conexión a internet.';
+      return err.message || 'Error desconocido. Intentá de nuevo.';
     }
 
     // Traduce una respuesta que no es JSON a algo accionable.
@@ -4151,10 +4179,10 @@
         if (result.status === 'success') {
           showToast('success', '¡Pago registrado!', 'Los archivos fueron guardados y los datos registrados correctamente.');
           resetForm();
-          // El saldo lo calcula el servidor a partir de las hojas, así que
-          // alcanza con volver a pedirlo: no hay un contador local que pueda
-          // quedar desincronizado si algo falla en el medio.
-          cargarSaldos(true);
+          // El saldo lo calcula el servidor a partir de las hojas: no hay un
+          // contador local que pueda quedar desincronizado. Y viene ya
+          // calculado en esta misma respuesta, así que no hay que volver a pedirlo.
+          cargarSaldos(true, result.saldos);
         } else {
           throw new Error(result.message || 'Respuesta inesperada del servidor');
         }
@@ -5146,7 +5174,7 @@
 
         pintarUsuarios(r.usuarios || []);
       } catch (err) {
-        showToast('error', 'Error de conexión', 'No pudimos traer la lista de usuarios.');
+        showToast('error', 'No se pudo traer la lista de usuarios', mensajeDeError(err));
       } finally {
         cargando.style.display = 'none';
       }
@@ -5161,9 +5189,14 @@
       // La versión del backend, visible: si la app y el Apps Script quedan
       // desfasados, los síntomas son confusos y difíciles de atribuir. Verlo
       // acá convierte ese problema en algo obvio de un vistazo.
+      const medido = ultimaMedicion
+        ? ' · última respuesta ' + ultimaMedicion.ms + ' ms (' +
+          ultimaMedicion.hojas + ' hoja' + (ultimaMedicion.hojas === 1 ? '' : 's') + ' leída' +
+          (ultimaMedicion.hojas === 1 ? '' : 's') + ')'
+        : '';
       const pie = sesion.revision
         ? '<div style="margin-top:8px;font-size:0.72rem;color:var(--text-muted);">Servidor: ' +
-          escapeHtml(sesion.revision) + '</div>'
+          escapeHtml(sesion.revision) + escapeHtml(medido) + '</div>'
         : '';
 
       if (modo === 'estricto') {
@@ -5327,7 +5360,7 @@
           showToast('error', 'No se pudo guardar', r.message || 'Intentá de nuevo.');
         }
       } catch (err) {
-        showToast('error', 'Error de conexión', 'No pudimos guardar los cambios.');
+        showToast('error', 'No se pudieron guardar los cambios', mensajeDeError(err));
       } finally {
         btn.disabled = false; spinner.style.display = 'none'; texto.textContent = 'Guardar';
       }
@@ -5361,7 +5394,15 @@
       pintarSaldos(r);
     }
 
-    async function cargarSaldos(silencioso) {
+    // `yaTraidos` son los saldos que el servidor ya mandó dentro de la
+    // respuesta de la operación que se acaba de hacer. Usarlos evita una
+    // segunda petición completa —validar sesión, leer USUARIOS, releer las
+    // hojas de pagos— para mostrar algo que el servidor ya había calculado.
+    async function cargarSaldos(silencioso, yaTraidos) {
+      if (yaTraidos && yaTraidos.status === 'success') {
+        pintarSaldosDesde(yaTraidos);
+        return;
+      }
       if (!silencioso) {
         saldosNota.textContent = 'Cargando saldos…';
         saldosGrid.innerHTML   = '';
@@ -5484,12 +5525,15 @@
         if (r.status === 'success') {
           showToast('success', 'Saldo actualizado', 'De acá en adelante se descuenta con cada pago.');
           cerrarModalSaldo();
-          cargarSaldos(true);
+          cargarSaldos(true, r.saldos);
         } else {
           showToast('error', 'No se pudo guardar', r.message || 'Intentá de nuevo.');
         }
       } catch (err) {
-        showToast('error', 'Error de conexión', 'No pudimos guardar el saldo.');
+        // El mensaje real, no uno genérico: "Error de conexión" a secas no
+        // distingue un tiempo agotado de una sesión vencida o de un error del
+        // servidor, y sin esa diferencia no hay forma de saber qué arreglar.
+        showToast('error', 'No se pudo guardar el saldo', mensajeDeError(err));
       } finally {
         btn.disabled = false; spinner.style.display = 'none'; texto.textContent = 'Guardar saldo';
       }
@@ -5551,12 +5595,12 @@
           document.getElementById('tNota').value  = '';
           uploadTraslado.reset();
           cargarTraslados();
-          cargarSaldos(true);   // el saldo lo recalcula el servidor
+          cargarSaldos(true, r.saldos);   // ya recalculado por el servidor
         } else {
           showToast('error', 'No se pudo registrar', r.message || 'Intentá de nuevo.');
         }
       } catch (err) {
-        showToast('error', 'Error de conexión', 'No pudimos registrar el traslado.');
+        showToast('error', 'No se pudo registrar el traslado', mensajeDeError(err));
       } finally {
         btn.disabled = false; spinner.style.display = 'none'; texto.textContent = 'Registrar traslado';
       }

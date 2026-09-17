@@ -20,6 +20,58 @@
 const DESTINATARIOS = ['nathan@ylevigroup.com', 'joseph@ylevigroup.com', 'contabilidad@energy-millennium.com'];
 const ZONA = 'America/Bogota';
 
+// ─── Cada hoja se lee UNA SOLA VEZ por petición ───────────────────────────
+//
+// De acá salía la lentitud. Cada `getDataRange().getValues()` es un viaje de
+// ida y vuelta al servicio de Sheets, y cuestan entre 100 y 400 ms cada uno.
+// El código los hacía sin darse cuenta: TODA petición leía la hoja USUARIOS
+// entera solo para saber quién sos, y consultar los saldos volvía a leer las
+// 7 hojas de pagos completas. Una sola petición pagaba diez viajes o más, y
+// eso es lo que el usuario percibe como "la app está lenta".
+//
+// El memo vive lo que vive la petición: Apps Script arranca un contexto nuevo
+// en cada ejecución, así que no hay forma de servir datos viejos de una
+// petición anterior. Dentro de una misma petición los datos tienen que ser
+// coherentes de todos modos.
+//
+// ⚠️ Lo que devuelve es el arreglo MEMORIZADO, no una copia: no se debe
+// modificar. Y después de escribir en una hoja hay que llamar a olvidarHoja_,
+// o lo memorizado deja de reflejar la realidad.
+var _valoresDeHoja = {};
+
+function valoresDeHoja_(hoja) {
+  const nombre = hoja.getName();
+  if (!Object.prototype.hasOwnProperty.call(_valoresDeHoja, nombre)) {
+    _valoresDeHoja[nombre] = hoja.getDataRange().getValues();
+  }
+  return _valoresDeHoja[nombre];
+}
+
+function olvidarHoja_(hoja) {
+  if (!hoja) return;
+  delete _valoresDeHoja[typeof hoja === 'string' ? hoja : hoja.getName()];
+}
+
+function olvidarTodasLasHojas_() { _valoresDeHoja = {}; }
+
+// Escribir y olvidar van juntos SIEMPRE. Tenerlos separados es lo que hace que
+// alguien agregue una escritura nueva y se olvide de invalidar, y ese error no
+// se ve: devuelve datos viejos, no un error.
+function agregarFila_(hoja, fila) {
+  hoja.appendRow(fila);
+  olvidarHoja_(hoja);
+}
+
+function escribirRango_(hoja, fila, col, valores) {
+  hoja.getRange(fila, col, valores.length, valores[0].length).setValues(valores);
+  olvidarHoja_(hoja);
+}
+
+function escribirCelda_(hoja, fila, col, valor) {
+  hoja.getRange(fila, col).setValue(valor);
+  olvidarHoja_(hoja);
+}
+
 // Lee TODAS las hojas de pagos y las consolida en un solo listado.
 // Los pagos están repartidos por sección (Viáticos, Caja Menor, etc.), así que
 // leer solo la primera hoja dejaría los reportes incompletos sin avisar.
@@ -29,7 +81,7 @@ function leerDatos_() {
 
   const rows = [];
   hojas.forEach(hoja => {
-    const values = hoja.getDataRange().getValues();
+    const values = valoresDeHoja_(hoja);
     if (values.length < 2) return;
     const encHoja = values[0];
     values.slice(1).forEach(fila => {
@@ -286,7 +338,9 @@ function registrarPago_(body) {
     'ID REGISTRO':    body.fecha_envio || new Date().toISOString()
   });
 
-  return { status: 'success', seccion: seccion };
+  // Los saldos nuevos viajan con la confirmación del pago: el navegador los
+  // muestra sin pedir nada más. Todas las hojas ya se leyeron en esta petición.
+  return { status: 'success', seccion: seccion, saldos: consultarSaldos_(ctx) };
 }
 
 // ─── Consultar pagos (reemplaza el webhook GET de n8n) ────────────────────
@@ -424,7 +478,7 @@ function consultarPagos_(ctx) {
   const contexto  = ctx || contextoDe_(null);
   const resultado = [];
   hojasPermitidas_(contexto).forEach(hoja => {
-    const valores = hoja.getDataRange().getValues();
+    const valores = valoresDeHoja_(hoja);
     if (valores.length < 2) return;
     const encabezados = valores[0];
     // El formato de fecha se decide UNA vez por hoja, con la evidencia de toda
@@ -1227,6 +1281,12 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  // Cada petición arranca sin nada memorizado. Apps Script ya crea un contexto
+  // nuevo por ejecución, pero no depender de eso cuesta una línea y evita que
+  // un cambio de plataforma se transforme en datos viejos servidos como buenos.
+  olvidarTodasLasHojas_();
+  _inicioPeticion = Date.now();
+
   var body;
   try {
     body = JSON.parse(e.postData.contents);
@@ -1258,7 +1318,21 @@ function doPost(e) {
   }
 }
 
+// Momento en que entró la petición. Sirve para devolver cuánto tardó el
+// servidor, medido por el servidor.
+var _inicioPeticion = 0;
+
 function respuestaJson_(obj) {
+  // Cuánto tardó adentro y cuántas hojas hubo que leer. Va en TODA respuesta.
+  //
+  // Sin esto, "la app está lenta" no se puede atribuir: el tiempo puede estar
+  // en el servidor, en la red o en el navegador, y se terminan optimizando
+  // cosas que no eran. `hojasLeidas` es el número que importa, porque cada
+  // hoja leída es un viaje al servicio de Sheets.
+  if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+    obj.ms = _inicioPeticion ? (Date.now() - _inicioPeticion) : null;
+    obj.hojasLeidas = Object.keys(_valoresDeHoja).length;
+  }
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
@@ -1284,7 +1358,7 @@ function hojaSolicitudes_() {
 function agregarFilaPorEncabezados_(hoja, datos) {
   const encabezados = hoja.getRange(1, 1, 1, hoja.getLastColumn()).getValues()[0];
   const fila = encabezados.map(h => (datos[h] !== undefined ? datos[h] : ''));
-  hoja.appendRow(fila);
+  agregarFila_(hoja, fila);
 }
 
 function formatoMoneda_(valor) {
@@ -1449,7 +1523,7 @@ function consultarSolicitudes_(body) {
   const ctx = contextoDe_(body);
 
   const hoja    = hojaSolicitudes_();
-  const valores = hoja.getDataRange().getValues();
+  const valores = valoresDeHoja_(hoja);
   if (valores.length < 2) return [];
 
   const encabezados = valores[0];
@@ -1513,7 +1587,7 @@ function decidirSolicitud_(body) {
   };
   Object.keys(cambios).forEach(campo => {
     const col = encabezados.indexOf(campo);
-    if (col !== -1) hoja.getRange(filaIndex + 1, col + 1).setValue(cambios[campo]);
+    if (col !== -1) escribirCelda_(hoja, filaIndex + 1, col + 1, cambios[campo]);
     solicitud[campo] = cambios[campo];   // para que el correo salga con los datos ya actualizados
   });
 
@@ -1596,7 +1670,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-16-j · fechas: pasos 1-2-3';
+const REVISION_BACKEND = '2026-09-16-k · una lectura por hoja + medicion';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -1627,7 +1701,7 @@ function hojaUsuarios_() {
 }
 
 function usuariosTodos_() {
-  const valores = hojaUsuarios_().getDataRange().getValues();
+  const valores = valoresDeHoja_(hojaUsuarios_());
   if (valores.length < 2) return [];
   const encabezados = valores[0];
   return valores.slice(1).map((fila, i) => {
@@ -1780,7 +1854,7 @@ function correoDeSesion_(token) {
   if (enCache) return enCache === '-' ? null : enCache;
 
   const hoja    = hojaSesiones_();
-  const valores = hoja.getDataRange().getValues();
+  const valores = valoresDeHoja_(hoja);
   const hash    = hashDeToken_(token);
   const ahora   = new Date();
 
@@ -1801,7 +1875,7 @@ function correoDeSesion_(token) {
     const ultimoUso = new Date(valores[i][3]);
     if (ahora.getTime() - ultimoUso.getTime() > 86400000) {
       const nuevoVence = new Date(ahora.getTime() + DIAS_SESION * 86400000);
-      hoja.getRange(i + 1, 4, 1, 2).setValues([[ahora.toISOString(), nuevoVence.toISOString()]]);
+      escribirRango_(hoja, i + 1, 4, [[ahora.toISOString(), nuevoVence.toISOString()]]);
     }
 
     cache.put(clave, correo, 300);
@@ -1820,19 +1894,21 @@ function cerrarSesionPropia_(token) {
   for (let i = valores.length - 1; i >= 1; i--) {
     if (String(valores[i][0]) === hash) hoja.deleteRow(i + 1);
   }
+  olvidarHoja_(hoja);
   try { CacheService.getScriptCache().remove('ses_' + hash); } catch (err) {}
 }
 
 // Las sesiones vencidas no sirven para nada y harían crecer la hoja sin fin.
 function limpiarSesionesVencidas_(hoja) {
   try {
-    const valores = hoja.getDataRange().getValues();
+    const valores = valoresDeHoja_(hoja);
     if (valores.length < 200) return;   // no vale la pena hasta que crezca
     const ahora = Date.now();
     for (let i = valores.length - 1; i >= 1; i--) {
       const vence = new Date(valores[i][4]).getTime();
       if (!vence || vence < ahora) hoja.deleteRow(i + 1);
     }
+    olvidarHoja_(hoja);
   } catch (err) { /* la limpieza nunca debe romper un ingreso */ }
 }
 
@@ -2090,7 +2166,7 @@ function registrarUsuario_(body) {
   if (!nombre)   return { status: 'error', message: 'El nombre es obligatorio.' };
   if (!telefono) return { status: 'error', message: 'El teléfono es obligatorio.' };
 
-  hojaUsuarios_().appendRow([
+  agregarFila_(hojaUsuarios_(), [
     perfil.correo, nombre, telefono, 'usuario', '', 'pendiente',
     new Date(), ''
   ]);
@@ -2187,8 +2263,8 @@ function guardarUsuario_(body) {
     existente ? existente['ULTIMO ACCESO'] : ''
   ];
 
-  if (existente) hoja.getRange(existente._fila, 1, 1, fila.length).setValues([fila]);
-  else           hoja.appendRow(fila);
+  if (existente) escribirRango_(hoja, existente._fila, 1, [fila]);
+  else           agregarFila_(hoja, fila);
 
   if (existente && String(existente['ESTADO']).toLowerCase() === 'pendiente' && estado === 'activo') {
     notificarAccesoAprobado_(correo, fila[1]);
@@ -2408,7 +2484,7 @@ function consultarSaldos_(ctx) {
   });
 
   hojasDePagos_().forEach(hoja => {
-    const valores = hoja.getDataRange().getValues();
+    const valores = valoresDeHoja_(hoja);
     if (valores.length < 2) return;
     const enc      = valores[0];
     const cFecha   = enc.indexOf('FECHA REGISTRO');
@@ -2567,7 +2643,7 @@ function registrarTraslado_(body) {
     return { status: 'error', message: 'Adjuntá el comprobante de la transferencia.' };
   }
 
-  hojaTraslados_().appendRow([
+  agregarFila_(hojaTraslados_(), [
     new Date(),
     origen,
     destino,
@@ -2577,7 +2653,9 @@ function registrarTraslado_(body) {
     subirArchivosACarpeta_(body.archivos, carpetaPorNombre_(CARPETA_TRASLADOS))
   ]);
 
-  return { status: 'success' };
+  // Igual que al ajustar un saldo: los saldos nuevos vuelven en esta respuesta,
+  // así el navegador no tiene que pedir todo otra vez.
+  return { status: 'success', saldos: consultarSaldos_(ctx) };
 }
 
 function consultarTraslados_(body) {
@@ -2616,7 +2694,7 @@ function ajustarSaldo_(body) {
 
   // Cada ajuste se agrega como una fila nueva: queda el historial completo de
   // quién puso qué saldo y cuándo. Nunca se pisa una fila anterior.
-  hojaSaldos_().appendRow([
+  agregarFila_(hojaSaldos_(), [
     new Date(),
     cuenta,
     monto,
@@ -2624,5 +2702,9 @@ function ajustarSaldo_(body) {
     ctx.nombre || ctx.correo || String(body.registrado_por || '')
   ]);
 
-  return { status: 'success' };
+  // Los saldos ya recalculados viajan en ESTA misma respuesta. Antes el
+  // navegador tenía que hacer una segunda petición completa para refrescarlos,
+  // y esa segunda vuelta pagaba de nuevo todo el costo: validar la sesión,
+  // leer USUARIOS y releer las hojas de pagos. Acá ya está todo leído.
+  return { status: 'success', saldos: consultarSaldos_(ctx) };
 }

@@ -34,7 +34,7 @@ Mantenimiento desde el editor: `PASO_1_VER_que_se_va_a_corregir` → `PASO_2_COR
 
 Incluye todo lo de `v1.4-sesiones`: sesiones propias de 30 días, Traslados, Compra Materiales, saldos por cuenta, privacidad de solicitudes y arranque en una sola petición.
 
-`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-16-j`. `sw.js` → `control-pagos-v71`. `MODO_LOGIN` = `'estricto'`.
+`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-16-j`. `sw.js` → `control-pagos-v72`. `MODO_LOGIN` = `'estricto'`.
 
 **Pendientes:** cargar los cuatro saldos (después de registrar los comprobantes atrasados), mudar el dominio a `pagos.energy-millennium.com` (bloqueado por acceso a Wix), y el botón "Agregar factura" de Consultar Pagos, que nunca se construyó.
 
@@ -469,6 +469,14 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-16**: ⚡ **Rendimiento: cada hoja se lee UNA vez por peticion.** El usuario reporto lentitud general — editar un saldo fallaba tras ~30 s, ver usuarios tardaba, sacar un reporte tardaba. La causa no era una funcion lenta sino **viajes repetidos al servicio de Sheets**: cada `getDataRange().getValues()` cuesta 100-400 ms y habia **17 repartidos** por el codigo.
+  - **Lo que pagaba TODA peticion:** leer la hoja USUARIOS entera solo para saber quien llamaba (`usuariosTodos_` no tenia cache), mas la hoja SESIONES, mas —al consultar saldos— las 7 hojas de pagos completas. Diez viajes o mas por peticion.
+  - **Arreglo 1 — memo por peticion** (`valoresDeHoja_`): la misma hoja se lee una sola vez. Escribir invalida (`agregarFila_` / `escribirCelda_` / `escribirRango_` hacen las dos cosas juntas, para que nadie agregue una escritura y se olvide de invalidar — ese error **no da error**, da datos viejos). `doPost` limpia al entrar, asi que no hay forma de servir datos de una peticion anterior.
+  - **Arreglo 2 — se elimina el segundo viaje.** Guardar un saldo, registrar un traslado y registrar un pago **devuelven los saldos ya recalculados** en la misma respuesta. Antes cada uno disparaba una segunda peticion completa (validar sesion + leer USUARIOS + releer las hojas de pagos) solo para mostrar algo que el servidor acababa de calcular.
+  - **Arreglo 3 — se mide.** Toda respuesta trae `ms` y `hojasLeidas`, y Configuracion los muestra: *"Servidor: ... · ultima respuesta 340 ms (3 hojas leidas)"*. Sin un numero medido, "esta lento" no se puede atribuir a servidor, red o navegador — y se optimiza lo que no era.
+  - **Arreglo 4 — los errores dejan de esconderse.** Los `catch` mostraban "Error de conexion" y **descartaban `err.message`**: un tiempo agotado, una sesion vencida y un error del servidor se veian identicos. Ahora `mensajeDeError` distingue el tiempo agotado y la falta de internet, y en los demas casos muestra el mensaje real.
+  - **11 comprobaciones nuevas y 6 mutaciones verificadas.** Para poder medir hubo que darle a `hojaFalsa` un contador de lecturas: **el rendimiento no era comprobable**, y "ahora es mas rapido" sin un numero es una creencia. `sw.js` -> `control-pagos-v72`. `REVISION_BACKEND` -> `2026-09-16-k`.
+
 - **2026-09-16**: 📌 **El pie de un simulacro tiene que nombrar lo que aplica ESA corrida.** `PASO_1` listaba **35** correcciones y cerraba con `Para aplicarlo de verdad: repararFechasFuturas(false)` — que no es ejecutable desde el menu del editor y ademas **corrige solo 27**. Quien lo siguiera habria aplicado algo **distinto de lo que acababa de revisar**, sobre registros contables.
   - Ahora el pie dice el numero exacto de esa corrida y nombra `PASO_2_CORREGIR_las_fechas`; si quedan filas `??` sin incluir, lo avisa. Lo mismo en `normalizarFechasRegistro`, que ahora apunta a `PASO_3`.
   - **3 comprobaciones nuevas**, una de ellas verifica que el texto **no nombre llamadas con parametros** — el error de fondo que se repitio tres veces. `REVISION_BACKEND` -> `2026-09-16-j`.

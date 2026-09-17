@@ -306,6 +306,12 @@ console.log('\n=== Sesiones propias del sistema (duran 30 días) ===');
   // Se lo marca inactivo en la hoja
   const hojaU = g2.SpreadsheetApp.getActiveSpreadsheet().getSheetByName('USUARIOS');
   hojaU._datos[1][5] = 'inactivo';
+
+  // Cada arranque_ es una PETICIÓN distinta, y el servidor lee cada hoja una
+  // sola vez POR PETICIÓN. En producción eso lo garantiza doPost, que limpia lo
+  // memorizado al entrar; acá hay que simular ese límite a mano, porque las
+  // pruebas llaman a las funciones directamente.
+  g2.olvidarTodasLasHojas_();
   const tras = g2.arranque_({ sesionToken: t2 });
   chk('desactivar al usuario corta el acceso aunque la sesión siga vigente',
       !tras.sesion && tras.codigo === 'USUARIO_INACTIVO', tras.codigo);

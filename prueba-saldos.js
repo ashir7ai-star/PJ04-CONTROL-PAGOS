@@ -214,6 +214,26 @@ console.log('\n=== Ajustar el saldo: permisos y validación ===');
   // El ajuste tiene que quedar registrado como fila nueva, sin pisar nada
   const filas = g2.SpreadsheetApp.getActiveSpreadsheet().getSheetByName('SALDOS')._datos;
   chk('el ajuste queda como fila nueva en el historial', filas.length === 2, 'filas=' + filas.length);
+
+  // La respuesta trae los saldos YA recalculados. Sin esto el navegador tiene
+  // que hacer una segunda petición completa —validar sesión, leer USUARIOS,
+  // releer las hojas de pagos— solo para mostrar algo que el servidor acababa
+  // de calcular. Eso era buena parte de la lentitud que se reportó.
+  const g3 = montar([], [], 'off');
+  const resp = g3.ajustarSaldo_({ cuenta: 'banco_ampac', monto: 250000 });
+  chk('la respuesta trae los saldos ya recalculados',
+      !!resp.saldos && resp.saldos.status === 'success' && !!resp.saldos.cuentas);
+  const ampac = (resp.saldos.cuentas || []).filter(c => c.clave === 'banco_ampac')[0];
+  chk('y reflejan el ajuste que se acaba de hacer',
+      !!ampac && ampac.configurado && ampac.base === 250000, ampac && ampac.base);
+
+  // Lo mismo al trasladar plata: el saldo cambia en las dos cuentas.
+  const g4 = montar([], [['01/01/2026 08:00', 'banco_ampac', 1000000, '', 'admin']], 'off');
+  const tras = g4.registrarTraslado_({
+    origen: 'banco_ampac', destino: 'viaticos', monto: 100000,
+    archivos: [{ nombre: 'c.pdf', contenido: 'x' }]
+  });
+  chk('el traslado tambien devuelve los saldos', !!tras.saldos && tras.saldos.status === 'success', tras.message);
 }
 
 console.log('\n=== Quién puede VER cada saldo ===');

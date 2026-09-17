@@ -21,9 +21,14 @@ const ENC = ['FECHA REGISTRO', 'EMPRESA', 'TIPO FACTURA', 'REGISTRADO POR',
 
 function hojaFalsa(nombre, filas) {
   const d = filas;
+  // Cuenta cada lectura completa de la hoja. Es LA medida de rendimiento del
+  // backend: cada una es un viaje al servicio de Sheets, y de ahí salía la
+  // lentitud. Sin contarlas, "ahora es más rápido" no se puede comprobar.
+  let lecturas = 0;
   return {
     getName: () => nombre,
-    getDataRange: () => ({ getValues: () => d.map(f => f.slice()) }),
+    _lecturas: () => lecturas,
+    getDataRange: () => ({ getValues: () => { lecturas++; return d.map(f => f.slice()); } }),
     getLastRow: () => d.length,
     getLastColumn: () => (d[0] ? d[0].length : 0),
     // setValue tiene que escribir DE VERDAD en la fila y columna pedidas: es lo
@@ -480,6 +485,58 @@ console.log('\n=== Fechas de registro en el futuro: se detectan y se corrigen ==
   chk('y es la fecha correcta (15 de septiembre 18:40)',
       datos3[2][0].getMonth() === 8 && datos3[2][0].getDate() === 15 &&
       datos3[2][0].getHours() === 18 && datos3[2][0].getMinutes() === 40, String(datos3[2][0]));
+}
+
+// ── Rendimiento: cada hoja se lee UNA vez por petición ────────────
+console.log('\n=== Rendimiento: viajes al servicio de Sheets ===');
+{
+  // De acá salía la lentitud que reportó el usuario. Cada lectura completa de
+  // una hoja es un viaje de ida y vuelta a Sheets (100-400 ms). El código los
+  // hacía sin darse cuenta: TODA petición leía USUARIOS entera solo para saber
+  // quién llamaba, y consultar saldos volvía a leer las hojas de pagos.
+  const hojaU = hojaFalsa('USUARIOS', [
+    ['CORREO', 'NOMBRE', 'TELEFONO', 'ROL', 'SECCIONES', 'ESTADO', 'FECHA REGISTRO', 'ULTIMO ACCESO'],
+    ['nathan@x.com', 'Nathan', '300', 'admin', 'todas', 'activo', '', '']
+  ]);
+  const ctxP = backendCon({ 'USUARIOS': hojaU });
+
+  ctxP.olvidarTodasLasHojas_();
+  ctxP.usuariosTodos_();
+  ctxP.usuariosTodos_();
+  ctxP.usuariosTodos_();
+  chk('tres consultas a USUARIOS en una peticion = UNA sola lectura',
+      hojaU._lecturas() === 1, hojaU._lecturas());
+
+  // Y despues de escribir, lo memorizado ya no vale: si se sirviera igual,
+  // el usuario guardaria un cambio y la pantalla le mostraria el dato viejo.
+  ctxP.agregarFila_(hojaU, ['ana@x.com', 'Ana', '301', 'usuario', 'viaticos', 'activo', '', '']);
+  const despues = ctxP.usuariosTodos_();
+  chk('escribir invalida lo memorizado: la fila nueva se ve',
+      despues.length === 2 && despues[1]['CORREO'] === 'ana@x.com', despues.length);
+  chk('y para eso hubo que releer la hoja', hojaU._lecturas() === 2, hojaU._lecturas());
+
+  // El limite entre peticiones lo pone doPost. Si dejara de limpiar, una
+  // peticion serviría datos de la anterior — y eso no da error, da datos viejos.
+  hojaU._datos ? null : null;
+  ctxP.usuariosTodos_();
+  chk('dentro de la misma peticion no se relee', hojaU._lecturas() === 2, hojaU._lecturas());
+  ctxP.olvidarTodasLasHojas_();
+  ctxP.usuariosTodos_();
+  chk('una peticion nueva si relee', hojaU._lecturas() === 3, hojaU._lecturas());
+
+  // doPost tiene que limpiar al entrar. Se comprueba de verdad, llamandolo.
+  const antesDoPost = hojaU._lecturas();
+  ctxP.usuariosTodos_();
+  chk('(sigue memorizado)', hojaU._lecturas() === antesDoPost);
+  ctxP.doPost({ postData: { contents: JSON.stringify({ action: 'nada_conocido' }) } });
+  ctxP.usuariosTodos_();
+  chk('doPost limpia lo memorizado al entrar', hojaU._lecturas() === antesDoPost + 1, hojaU._lecturas());
+
+  // Toda respuesta informa cuanto tardo y cuantas hojas leyo. Sin eso, "esta
+  // lento" no se puede atribuir a servidor, red o navegador.
+  const resp = JSON.parse(ctxP.doPost({ postData: { contents: JSON.stringify({ action: 'nada_conocido' }) } }));
+  chk('la respuesta informa el tiempo del servidor', typeof resp.ms === 'number', resp.ms);
+  chk('y cuantas hojas hubo que leer',              typeof resp.hojasLeidas === 'number', resp.hojasLeidas);
 }
 
 // ── Alta completa de cada tipo de pago ────────────────────────────────────
