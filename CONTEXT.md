@@ -36,7 +36,7 @@ Incluye todo lo de `v1.5-fechas`: las 35 fechas corregidas, las 74 celdas pasada
 
 ⚠️ **Pendiente de confirmar en producción:** al momento de marcar este tag, el usuario todavía no había reportado los tiempos reales tras redesplegar. Las pruebas pasan y las mutaciones se detectan, pero **el número de `ms` en Configuración es lo que lo confirma**.
 
-`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-16-m`. `sw.js` → `control-pagos-v75`. `MODO_LOGIN` = `'estricto'`.
+`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-16-m`. `sw.js` → `control-pagos-v76`. `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -465,6 +465,14 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-17**: ⚖️ **Conciliación: la diferencia contra el banco deja de perderse.** El banco cobra 4x1000, comisiones e intereses que el sistema **no ve**, y por eso el saldo se descuadra solo. Hasta ahora, al recargar el saldo base la diferencia **desaparecía en silencio**: el sistema arrancaba de cero desde el número nuevo, la cifra cuadraba, y nadie sabía por qué se había descuadrado ni cuánto se va en costos bancarios.
+  - **Dos columnas nuevas en SALDOS:** `SALDO CALCULADO` (lo que tenía el sistema justo antes) y `DIFERENCIA` (= saldo real − calculado). Negativa = el banco cobró de más; positiva = entró plata no registrada. Como cada ajuste es una fila nueva, queda el **historial de cuánto cuesta el banco al mes**, que antes no existía en ningún lado.
+  - **La comparación se hace ANTES de escribir.** Después ya es tarde: el saldo nuevo pisa el cálculo y la diferencia da cero siempre. Hay una mutación que vigila exactamente eso.
+  - **La primera carga no inventa una conciliación:** `DIFERENCIA` queda vacía, no en 0. Un 0 ahí *afirmaría* que todo cuadraba — una mentira con forma de dato. "Cuadró exacto" y "no había con qué comparar" se distinguen.
+  - **En pantalla:** mientras se escribe el saldo real, el modal muestra en vivo cuánto se aparta de lo calculado (*"Faltan $13.000… suele ser 4x1000, comisiones u otros cobros"*). Verlo **antes** de guardar permite frenar si el número está mal tecleado. Reutiliza `.login-aviso espera`, que ya existía.
+  - **15 comprobaciones nuevas y 7 mutaciones verificadas.** `sw.js` -> `control-pagos-v76`. `REVISION_BACKEND` -> `2026-09-17-c`.
+  - 📌 **Pendiente (el usuario lo gestiona):** conexión con Bancolombia para traer los movimientos reales — **Cash Management → Extractos Especiales con entrega H2H**, o credenciales del **API Market** (`api-portal-external.apps.bancolombia.com`). El **Decreto 0368 de abril 2026** volvió obligatorio el sistema de finanzas abiertas en Colombia, así que esta vía se amplía. Cuando exista, **llena esta misma columna DIFERENCIA automáticamente** en vez de a mano: el diseño no cambia.
+
 - **2026-09-17**: ⚠️ **AJUSTE TEMPORAL — Compra Materiales descuenta de VIÁTICOS, no del banco.** Pedido del usuario: la plata que se manda a Viáticos también se está usando para comprar materiales. **Es provisorio**; más adelante se organiza mejor.
   - **Un solo interruptor para revertirlo:** `CUENTA_COMPRA_MATERIALES` en [apps-script.gs](apps-script.gs). Poner `null` y Compra Materiales vuelve a salir del banco de la empresa. **No hay un segundo lugar que tocar** — la visibilidad del saldo se deriva de ese mismo valor, así que no pueden quedar desalineados.
   - **Por qué importa que no salga del banco:** el dinero ya se le restó al banco cuando se hizo el **traslado** a Viáticos. Cobrarlo otra vez al banco restaría dos veces la misma salida, y además Viáticos mostraría más plata de la que realmente queda. Hay una comprobación que verifica justamente que **el total del sistema solo baje por el gasto real**.

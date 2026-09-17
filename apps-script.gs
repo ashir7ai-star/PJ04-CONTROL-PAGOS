@@ -1670,7 +1670,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-17-b · materiales sale de viaticos';
+const REVISION_BACKEND = '2026-09-17-c · conciliacion del saldo';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -2361,8 +2361,21 @@ function precargarUsuarios() {
 // ══════════════════════════════════════════════════════════════════════════
 
 const NOMBRE_HOJA_SALDOS = 'SALDOS';
+// SALDO CALCULADO y DIFERENCIA son la conciliación: qué tenía calculado el
+// sistema justo antes de que alguien cargara el saldo real, y cuánto se
+// apartaba de la realidad.
+//
+// Sin esas dos columnas la diferencia **se perdía en silencio**: al recargar el
+// saldo, el sistema simplemente arrancaba de cero desde ahí. La cifra cuadraba,
+// pero nadie sabía por qué se había descuadrado ni cuánto se va en 4x1000,
+// comisiones y demás cobros que el banco hace y el sistema no ve.
+//
+// DIFERENCIA = saldo real − saldo calculado.
+//   negativa → el banco cobró más de lo que el sistema sabía (lo habitual)
+//   positiva → entró plata que no está registrada (intereses, un depósito)
 const ENCABEZADOS_SALDOS = [
-  'FECHA', 'CUENTA', 'SALDO BASE', 'CONCEPTO', 'REGISTRADO POR'
+  'FECHA', 'CUENTA', 'SALDO BASE', 'CONCEPTO', 'REGISTRADO POR',
+  'SALDO CALCULADO', 'DIFERENCIA'
 ];
 
 // Las cuatro bolsas de dinero. Caja Menor y Viáticos son compartidas entre las
@@ -2654,15 +2667,19 @@ function administradoresActivos_() {
     .filter(a => a.correo);
 }
 
-function asegurarColumnasTraslados_(hoja) {
+function asegurarColumnas_(hoja, esperados) {
   const valores  = valoresDeHoja_(hoja);
   const actuales = (valores[0] || []).map(h => String(h).trim());
-  const faltan   = ENCABEZADOS_TRASLADOS.filter(h => actuales.indexOf(h) === -1);
+  const faltan   = esperados.filter(h => actuales.indexOf(h) === -1);
   if (!faltan.length) return;
 
   hoja.getRange(1, actuales.length + 1, 1, faltan.length)
       .setValues([faltan]).setFontWeight('bold');
   olvidarHoja_(hoja);
+}
+
+function asegurarColumnasTraslados_(hoja) {
+  asegurarColumnas_(hoja, ENCABEZADOS_TRASLADOS);
 }
 
 function trasladosTodos_() {
@@ -2821,19 +2838,48 @@ function ajustarSaldo_(body) {
   if (!isFinite(monto)) return { status: 'error', message: 'El monto no es un número válido.' };
   if (monto < 0)        return { status: 'error', message: 'El saldo no puede ser negativo.' };
 
+  // CONCILIACIÓN: antes de escribir, cuánto tenía calculado el sistema.
+  //
+  // Esta comparación es el único momento en que la realidad del banco y la del
+  // sistema se tocan. Si no se guarda acá, la diferencia desaparece: al cargar
+  // el saldo nuevo el sistema arranca de cero desde ahí, la cifra cuadra, y
+  // nadie se entera de que faltaban $13.000 de 4x1000 y comisiones.
+  //
+  // Solo tiene sentido si YA había un saldo base para esa cuenta. La primera
+  // carga no se compara contra nada, y poner 0 ahí sería afirmar que todo
+  // cuadraba — una mentira con forma de dato.
+  const antes      = consultarSaldos_(ctx).cuentas.filter(c => c.clave === cuenta)[0];
+  const habiaBase  = !!(antes && antes.configurado);
+  const calculado  = habiaBase ? antes.saldo : '';
+  const diferencia = habiaBase ? (monto - antes.saldo) : '';
+
+  const hoja = hojaSaldos_();
+  // La hoja se creó antes de que existieran estas dos columnas.
+  asegurarColumnas_(hoja, ENCABEZADOS_SALDOS);
+
   // Cada ajuste se agrega como una fila nueva: queda el historial completo de
   // quién puso qué saldo y cuándo. Nunca se pisa una fila anterior.
-  agregarFila_(hojaSaldos_(), [
-    new Date(),
-    cuenta,
-    monto,
-    String(body.concepto || ''),
-    ctx.nombre || ctx.correo || String(body.registrado_por || '')
-  ]);
+  agregarFilaPorEncabezados_(hoja, {
+    'FECHA':           new Date(),
+    'CUENTA':          cuenta,
+    'SALDO BASE':      monto,
+    'CONCEPTO':        String(body.concepto || ''),
+    'REGISTRADO POR':  ctx.nombre || ctx.correo || String(body.registrado_por || ''),
+    'SALDO CALCULADO': calculado,
+    'DIFERENCIA':      diferencia
+  });
 
   // Los saldos ya recalculados viajan en ESTA misma respuesta. Antes el
   // navegador tenía que hacer una segunda petición completa para refrescarlos,
   // y esa segunda vuelta pagaba de nuevo todo el costo: validar la sesión,
   // leer USUARIOS y releer las hojas de pagos. Acá ya está todo leído.
-  return { status: 'success', saldos: consultarSaldos_(ctx) };
+  return {
+    status: 'success',
+    saldos: consultarSaldos_(ctx),
+    // Para que la pantalla pueda decir qué se encontró. `null` cuando era la
+    // primera carga: no es lo mismo que "cuadró exacto".
+    conciliacion: habiaBase
+      ? { calculado: calculado, real: monto, diferencia: diferencia }
+      : null
+  };
 }

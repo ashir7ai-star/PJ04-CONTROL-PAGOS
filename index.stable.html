@@ -3030,6 +3030,11 @@
         </div>
       </div>
 
+      <!-- Conciliación en vivo: la diferencia contra lo que el sistema tenía
+           calculado, mientras se escribe. Verla ANTES de guardar es lo que
+           permite frenar si el número está mal tecleado. -->
+      <div class="login-aviso espera" id="avisoConciliacion" style="margin:18px 0 0;display:none;"></div>
+
       <div class="login-aviso info" style="margin:18px 0 0;">
         Escribí el saldo que tiene la cuenta <strong>en este momento</strong>. A partir de
         ahora se le van a descontar los pagos que se registren. Los pagos anteriores
@@ -5528,8 +5533,43 @@
       });
     }
 
+    // Lo que el sistema tiene calculado para la cuenta que se está editando.
+    // Se guarda al abrir el modal para poder comparar contra lo que se escribe.
+    let saldoCalculadoActual = null;
+
+    // Muestra la diferencia entre el saldo real que se está escribiendo y el que
+    // el sistema calculaba. Esa diferencia son los cobros que el banco hizo y el
+    // sistema no vio: 4x1000, comisiones, intereses.
+    function pintarConciliacionEnVivo() {
+      const aviso = document.getElementById('avisoConciliacion');
+      const crudo = document.getElementById('mSaldoMonto').value.replace(/\./g, '').trim();
+
+      if (saldoCalculadoActual === null || !crudo || isNaN(Number(crudo))) {
+        aviso.style.display = 'none';
+        return;
+      }
+
+      const dif = Number(crudo) - saldoCalculadoActual;
+      aviso.style.display = '';
+
+      if (dif === 0) {
+        aviso.className = 'login-aviso info';
+        aviso.textContent = 'Cuadra exacto con lo que el sistema tenía calculado.';
+        return;
+      }
+
+      aviso.className = 'login-aviso espera';
+      aviso.innerHTML = dif < 0
+        ? 'Faltan <strong>' + formatoPesos(-dif) + '</strong> respecto de lo calculado. ' +
+          'Suele ser 4x1000, comisiones u otros cobros del banco. Queda registrado como diferencia.'
+        : 'Hay <strong>' + formatoPesos(dif) + '</strong> de más respecto de lo calculado. ' +
+          'Puede ser un ingreso no registrado. Queda registrado como diferencia.';
+    }
+
     function abrirModalSaldo(c) {
       cuentaEditando = c.clave;
+      saldoCalculadoActual = c.configurado ? c.saldo : null;
+      document.getElementById('avisoConciliacion').style.display = 'none';
       document.getElementById('modalSaldoTitulo').textContent = c.etiqueta;
       document.getElementById('modalSaldoSub').textContent =
         c.configurado
@@ -5537,6 +5577,7 @@
           : 'Todavía no tiene un saldo cargado.';
       document.getElementById('mSaldoMonto').value    = '';
       document.getElementById('mSaldoConcepto').value = '';
+      document.getElementById('mSaldoMonto').oninput  = pintarConciliacionEnVivo;
       modalSaldo.style.display = 'flex';
       document.getElementById('mSaldoMonto').focus();
     }
@@ -5579,7 +5620,20 @@
         }, 60000);
 
         if (r.status === 'success') {
-          showToast('success', 'Saldo actualizado', 'De acá en adelante se descuenta con cada pago.');
+          // El aviso dice QUÉ se encontró, no solo que se guardó. Si el banco
+          // cobró algo que el sistema no vio, eso es lo que hay que leer.
+          const c = r.conciliacion;
+          if (c && c.diferencia !== 0) {
+            showToast('success', 'Saldo actualizado',
+              (c.diferencia < 0
+                ? 'Se registró una diferencia de ' + formatoPesos(-c.diferencia) + ' de menos'
+                : 'Se registró una diferencia de ' + formatoPesos(c.diferencia) + ' de más') +
+              ' respecto de lo calculado. Quedó guardada en la hoja SALDOS.');
+          } else if (c) {
+            showToast('success', 'Saldo actualizado', 'Cuadró exacto con lo calculado.');
+          } else {
+            showToast('success', 'Saldo cargado', 'De acá en adelante se descuenta con cada pago.');
+          }
           cerrarModalSaldo();
           cargarSaldos(true, r.saldos);
         } else {

@@ -444,6 +444,78 @@ console.log('\n=== Ajuste temporal: Compra Materiales sale de Viaticos ===');
       JSON.stringify(soloCaja.cuentas.map(c => c.clave)));
 }
 
+console.log('\n=== Conciliacion: la diferencia contra el banco queda registrada ===');
+{
+  // El problema real: el banco cobra 4x1000, comisiones e intereses que el
+  // sistema no ve. Al recargar el saldo, esa diferencia se perdia en silencio
+  // — la cifra cuadraba y nadie sabia por que se habia descuadrado.
+  const col = (g, nombre) => {
+    const h = g.SpreadsheetApp.getActiveSpreadsheet().getSheetByName('SALDOS');
+    return h._datos[0].map(String).indexOf(nombre);
+  };
+  const ultimaFila = (g) => {
+    const h = g.SpreadsheetApp.getActiveSpreadsheet().getSheetByName('SALDOS');
+    return h._datos[h._datos.length - 1];
+  };
+
+  // Base 1.000.000 el 01/01. Gastos registrados por 300.000 -> el sistema
+  // calcula 700.000. El banco dice 687.000: faltan 13.000 que nadie registro.
+  const g = montar(
+    [['02/01/2026 10:00', 'AMPAC SAS', 'compra', 300000]],
+    [['01/01/2026 00:00', 'banco_ampac', 1000000]]
+  );
+
+  const r = g.ajustarSaldo_({ cuenta: 'banco_ampac', monto: '687000', concepto: 'extracto 17/09' });
+  chk('el ajuste se acepta', r.status === 'success', r.message);
+  chk('informa la conciliacion', !!r.conciliacion, JSON.stringify(r.conciliacion));
+  chk('sabe que el sistema calculaba 700.000',
+      r.conciliacion.calculado === 700000, r.conciliacion.calculado);
+  chk('la diferencia son los 13.000 que cobro el banco',
+      r.conciliacion.diferencia === -13000, r.conciliacion.diferencia);
+
+  const fila = ultimaFila(g);
+  chk('la hoja SALDOS tiene columna SALDO CALCULADO', col(g, 'SALDO CALCULADO') !== -1);
+  chk('la hoja SALDOS tiene columna DIFERENCIA',      col(g, 'DIFERENCIA') !== -1);
+  chk('la diferencia queda GUARDADA, no solo mostrada',
+      fila[col(g, 'DIFERENCIA')] === -13000, fila[col(g, 'DIFERENCIA')]);
+  chk('y tambien que tenia calculado el sistema',
+      fila[col(g, 'SALDO CALCULADO')] === 700000, fila[col(g, 'SALDO CALCULADO')]);
+  chk('el saldo base guardado es el REAL del banco',
+      fila[col(g, 'SALDO BASE')] === 687000, fila[col(g, 'SALDO BASE')]);
+
+  // Y el saldo queda en el real, no en el calculado.
+  chk('despues del ajuste el saldo es el del banco',
+      saldoDe(r.saldos, 'banco_ampac').saldo === 687000,
+      saldoDe(r.saldos, 'banco_ampac').saldo);
+
+  // Primera carga: no hay contra que comparar. Poner 0 seria AFIRMAR que
+  // cuadraba, que es una mentira con forma de dato.
+  const g2 = montar([], []);
+  const r2 = g2.ajustarSaldo_({ cuenta: 'banco_ampac', monto: '500000' });
+  chk('la primera carga no inventa una conciliacion', r2.conciliacion === null, JSON.stringify(r2.conciliacion));
+  chk('y no escribe un 0 en DIFERENCIA',
+      ultimaFila(g2)[col(g2, 'DIFERENCIA')] === '', JSON.stringify(ultimaFila(g2)[col(g2, 'DIFERENCIA')]));
+
+  // Diferencia a favor: entro plata que no estaba registrada.
+  const g3 = montar([], [['01/01/2026 00:00', 'banco_ampac', 1000000]]);
+  const r3 = g3.ajustarSaldo_({ cuenta: 'banco_ampac', monto: '1005000' });
+  chk('una diferencia a favor se registra en positivo',
+      r3.conciliacion.diferencia === 5000, r3.conciliacion.diferencia);
+
+  // Cuadre exacto: se distingue de "no habia con que comparar".
+  const g4 = montar([], [['01/01/2026 00:00', 'banco_ampac', 1000000]]);
+  const r4 = g4.ajustarSaldo_({ cuenta: 'banco_ampac', monto: '1000000' });
+  chk('cuadre exacto informa diferencia 0, no null',
+      r4.conciliacion && r4.conciliacion.diferencia === 0, JSON.stringify(r4.conciliacion));
+
+  // El historial no se pisa: cada conciliacion es una fila mas.
+  const h = g.SpreadsheetApp.getActiveSpreadsheet().getSheetByName('SALDOS');
+  const antes = h._datos.length;
+  g.ajustarSaldo_({ cuenta: 'banco_ampac', monto: '680000' });
+  chk('cada conciliacion agrega una fila al historial',
+      h._datos.length === antes + 1, h._datos.length);
+}
+
 console.log('\n=== Quién puede VER cada saldo ===');
 {
   // Reportado en producción el 2026-09-16: a un usuario no administrador le
