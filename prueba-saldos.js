@@ -59,7 +59,13 @@ function montar(pagos, saldos, modoLogin, traslados) {
     'PAGOS REGISTRADOS': hojaFalsa('PAGOS REGISTRADOS', filasPagos),
     'SALDOS':            hojaFalsa('SALDOS', [ENC_SALDOS].concat((saldos || []).map(s =>
                            [s[0], s[1], s[2], 'carga inicial', 'admin']))),
-    'USUARIOS':          hojaFalsa('USUARIOS', [['CORREO','NOMBRE','TELEFONO','ROL','SECCIONES','ESTADO','FECHA REGISTRO','ULTIMO ACCESO']]),
+    'USUARIOS':          hojaFalsa('USUARIOS', [
+                           ['CORREO','NOMBRE','TELEFONO','ROL','SECCIONES','ESTADO','FECHA REGISTRO','ULTIMO ACCESO'],
+                           ['nathan@ylevigroup.com','Nathan De Lima','300','admin','todas','activo','',''],
+                           ['joseph@ylevigroup.com','Joseph','301','admin','todas','activo','',''],
+                           ['laura@x.com','Laura','302','usuario','viaticos','activo','',''],
+                           ['viejo@x.com','Admin Inactivo','303','admin','todas','inactivo','','']
+                         ]),
     'TRASLADOS':         hojaFalsa('TRASLADOS', [ENC_TRAS].concat((traslados || []).map(t =>
                            [t[0], t[1], t[2], t[3], 'admin', '', 'url'])))
   };
@@ -249,6 +255,7 @@ console.log('\n=== Ajustar el saldo: permisos y validación ===');
                  '-' + String(hoy.getDate()).padStart(2, '0');
   const tras = g4.registrarTraslado_({
     origen: 'banco_ampac', destino: 'viaticos', monto: 100000, fecha: hoyTxt,
+    realizado_por: 'nathan@ylevigroup.com',
     archivos: [{ nombre: 'c.pdf', contenido: 'x' }]
   });
   chk('el traslado tambien devuelve los saldos', !!tras.saldos && tras.saldos.status === 'success', tras.message);
@@ -262,7 +269,7 @@ console.log('\n=== La fecha del traslado se guarda aparte de cuando se registro 
   const g = montar([], [], 'off');
   g.registrarTraslado_({
     origen: 'banco_ampac', destino: 'viaticos', monto: 100000,
-    fecha: '2026-08-03', nota: 'viejo',
+    fecha: '2026-08-03', nota: 'viejo', realizado_por: 'joseph@ylevigroup.com',
     archivos: [{ nombre: 'c.pdf', datos: 'x' }]
   });
 
@@ -292,7 +299,8 @@ console.log('\n=== La fecha del traslado se guarda aparte de cuando se registro 
   const g2 = montar([], [['10/09/2026 08:00', 'banco_ampac', 1000000, 'base', 'admin']], 'off');
   g2.registrarTraslado_({
     origen: 'banco_ampac', destino: 'viaticos', monto: 100000,
-    fecha: '2026-08-03', archivos: [{ nombre: 'c.pdf', datos: 'x' }]
+    fecha: '2026-08-03', realizado_por: 'nathan@ylevigroup.com',
+    archivos: [{ nombre: 'c.pdf', datos: 'x' }]
   });
   const cuentas = g2.consultarSaldos_({ rol: 'admin', secciones: [] }).cuentas;
   const banco = cuentas.filter(c => c.clave === 'banco_ampac')[0];
@@ -308,7 +316,8 @@ console.log('\n=== La lista de traslados: orden y formato ===');
   const g = montar([], [], 'off');
   const alta = (fecha, monto) => g.registrarTraslado_({
     origen: 'banco_ampac', destino: 'viaticos', monto: String(monto),
-    fecha: fecha, archivos: [{ nombre: 'c.pdf', datos: 'x' }]
+    fecha: fecha, realizado_por: 'nathan@ylevigroup.com',
+    archivos: [{ nombre: 'c.pdf', datos: 'x' }]
   });
 
   alta('2026-09-10', 100);   // se registra primero, pero es el del medio
@@ -326,6 +335,54 @@ console.log('\n=== La lista de traslados: orden y formato ===');
   chk('ninguna fecha sale como texto crudo de Date',
       lista.every(t => String(t.fecha).indexOf('GMT') === -1),
       JSON.stringify(lista.map(t => t.fecha)));
+}
+
+console.log('\n=== Quien HIZO el traslado, aparte de quien lo registro ===');
+{
+  // Son dos personas distintas cuando uno carga el traslado que hizo el otro.
+  // Confundirlas seria atribuirle a alguien un movimiento de dinero que no hizo.
+  const g = montar([], [], 'off');
+  const base = { origen: 'banco_ampac', destino: 'viaticos', monto: '100000',
+                 fecha: '2026-09-10', archivos: [{ nombre: 'c.pdf', datos: 'x' }] };
+  const con = (cambios) => g.registrarTraslado_(Object.assign({}, base, cambios));
+
+  chk('sin autor se rechaza',                con({}).status === 'error');
+  // El mensaje importa: "no es un administrador activo" ante un campo vacío
+  // confunde, porque el problema es que no elegiste a nadie.
+  chk('y dice que hay que elegir, no que el autor sea invalido',
+      con({}).message.indexOf('Elegí qué administrador') !== -1, con({}).message);
+  chk('un correo que no es usuario se rechaza',
+      con({ realizado_por: 'cualquiera@x.com' }).status === 'error');
+  chk('un usuario que NO es admin se rechaza',
+      con({ realizado_por: 'laura@x.com' }).status === 'error');
+  chk('un admin INACTIVO se rechaza',
+      con({ realizado_por: 'viejo@x.com' }).status === 'error');
+  chk('un admin activo se acepta',
+      con({ realizado_por: 'joseph@ylevigroup.com' }).status === 'success');
+
+  const hoja = g.SpreadsheetApp.getActiveSpreadsheet().getSheetByName('TRASLADOS');
+  const enc  = hoja._datos[0].map(String);
+  const fila = hoja._datos[hoja._datos.length - 1];
+  chk('la hoja tiene columna REALIZADO POR', enc.indexOf('REALIZADO POR') !== -1, enc);
+  chk('queda guardado el admin elegido, con su correo',
+      String(fila[enc.indexOf('REALIZADO POR')]).indexOf('joseph@ylevigroup.com') !== -1,
+      String(fila[enc.indexOf('REALIZADO POR')]));
+
+  // Y lo que NO debe pasar: que el autor elegido pise a quien lo registro.
+  chk('REGISTRADO POR sigue saliendo de la sesion, no del formulario',
+      String(fila[enc.indexOf('REGISTRADO POR')]).indexOf('joseph@ylevigroup.com') === -1,
+      String(fila[enc.indexOf('REGISTRADO POR')]));
+
+  // La lista de autores sale de la hoja, no de una constante.
+  const admins = g.administradoresActivos_().map(a => a.correo).sort();
+  chk('la lista de autores son los admins ACTIVOS de la hoja',
+      JSON.stringify(admins) === JSON.stringify(['joseph@ylevigroup.com', 'nathan@ylevigroup.com']),
+      JSON.stringify(admins));
+  chk('consultar_traslados devuelve esa lista para el selector',
+      (g.consultarTraslados_({ rol: 'admin' }).administradores || []).length === 2);
+  chk('y el traslado listado muestra quien lo realizo',
+      String(g.consultarTraslados_({ rol: 'admin' }).traslados[0].realizo).indexOf('Joseph') !== -1,
+      g.consultarTraslados_({ rol: 'admin' }).traslados[0].realizo);
 }
 
 console.log('\n=== Quién puede VER cada saldo ===');
@@ -432,7 +489,8 @@ console.log('\n=== Traslados: qué se rechaza ===');
   const hoyISO = (d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
                        '-' + String(d.getDate()).padStart(2, '0'))(new Date());
   const ok = { origen: 'banco_ampac', destino: 'viaticos', monto: '500000',
-               fecha: hoyISO, archivos: [{ nombre: 'c.pdf', datos: 'x' }] };
+               fecha: hoyISO, realizado_por: 'nathan@ylevigroup.com',
+               archivos: [{ nombre: 'c.pdf', datos: 'x' }] };
   const con = (cambios) => g.registrarTraslado_(Object.assign({}, ok, cambios));
 
   chk('un traslado válido se acepta', g.registrarTraslado_(ok).status === 'success');

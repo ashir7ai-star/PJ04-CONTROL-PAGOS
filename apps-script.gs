@@ -1670,7 +1670,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-16-l · fecha del traslado';
+const REVISION_BACKEND = '2026-09-16-m · traslado: fecha y autor';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -2577,9 +2577,13 @@ const CARPETA_TRASLADOS     = 'PJ04 TRASLADOS';
 // para los saldos. FECHA REGISTRO es cuándo se cargó en el sistema, y puede ser
 // días después. Separarlas es lo que permite registrar un traslado viejo sin
 // mentir sobre ninguna de las dos cosas.
+// REALIZADO POR es el administrador que hizo la transferencia en el banco.
+// REGISTRADO POR es quien la cargó en el sistema, y sale de la sesión
+// verificada: no se puede elegir. Suelen ser la misma persona, pero cuando no
+// lo son, confundirlas seria atribuirle a alguien un movimiento que no hizo.
 const ENCABEZADOS_TRASLADOS = [
   'FECHA', 'ORIGEN', 'DESTINO', 'MONTO', 'REGISTRADO POR', 'NOTA', 'URL COMPROBANTE',
-  'FECHA REGISTRO'
+  'FECHA REGISTRO', 'REALIZADO POR'
 ];
 
 function hojaTraslados_() {
@@ -2599,6 +2603,20 @@ function hojaTraslados_() {
 // La hoja TRASLADOS se creó antes de que existiera 'FECHA REGISTRO'. Escribir
 // por posición en una hoja vieja pondría ese dato en una columna sin nombre, y
 // eso no da error: da una columna muda que nadie sabe leer.
+// Los administradores activos, que son los únicos que pueden figurar como
+// autores de un traslado. Sale de la hoja USUARIOS, no de una lista fija: si
+// mañana cambia quién es administrador, esto lo refleja sin tocar código.
+function administradoresActivos_() {
+  return usuariosTodos_()
+    .filter(u => String(u['ROL'] || '').toLowerCase() === 'admin' &&
+                 String(u['ESTADO'] || '').toLowerCase() === 'activo')
+    .map(u => ({
+      correo: String(u['CORREO'] || '').trim().toLowerCase(),
+      nombre: String(u['NOMBRE'] || '').trim() || String(u['CORREO'] || '').trim()
+    }))
+    .filter(a => a.correo);
+}
+
 function asegurarColumnasTraslados_(hoja) {
   const valores  = valoresDeHoja_(hoja);
   const actuales = (valores[0] || []).map(h => String(h).trim());
@@ -2620,6 +2638,7 @@ function trasladosTodos_() {
     destino: enc.indexOf('DESTINO'),
     monto:   enc.indexOf('MONTO'),
     quien:   enc.indexOf('REGISTRADO POR'),
+    realizo: enc.indexOf('REALIZADO POR'),
     nota:    enc.indexOf('NOTA'),
     url:     enc.indexOf('URL COMPROBANTE')
   };
@@ -2634,6 +2653,9 @@ function trasladosTodos_() {
       destino:    String(f[c.destino] || '').trim(),
       monto:      montoANumero_(f[c.monto]),
       quien:      String(f[c.quien] || ''),
+      // Los traslados cargados antes de que existiera esta columna no tienen
+      // autor. Se muestra vacio en vez de inventar que lo hizo quien lo cargo.
+      realizo:    c.realizo === -1 ? '' : String(f[c.realizo] || ''),
       nota:       String(f[c.nota] || ''),
       url:        String(f[c.url] || '')
     }));
@@ -2676,6 +2698,19 @@ function registrarTraslado_(body) {
     return { status: 'error', message: 'La fecha del traslado no puede ser futura.' };
   }
 
+  // Quién hizo la transferencia en el banco. Se valida contra la lista real de
+  // administradores: si fuera texto libre, esta columna diria lo que cualquiera
+  // escriba, y eso no es una atribucion, es un campo de notas.
+  const autores = administradoresActivos_();
+  const pedido  = String(body.realizado_por || '').trim().toLowerCase();
+  if (!pedido) {
+    return { status: 'error', message: 'Elegí qué administrador hizo el traslado.' };
+  }
+  const autor = autores.filter(a => a.correo === pedido)[0];
+  if (!autor) {
+    return { status: 'error', message: 'Quien figura como autor del traslado no es un administrador activo.' };
+  }
+
   if (!body.archivos || !body.archivos.length) {
     return { status: 'error', message: 'Adjuntá el comprobante de la transferencia.' };
   }
@@ -2694,7 +2729,8 @@ function registrarTraslado_(body) {
     'REGISTRADO POR':   ctx.nombre || ctx.correo || String(body.registrado_por || ''),
     'NOTA':             String(body.nota || ''),
     'URL COMPROBANTE':  subirArchivosACarpeta_(body.archivos, carpetaPorNombre_(CARPETA_TRASLADOS)),
-    'FECHA REGISTRO':   new Date()
+    'FECHA REGISTRO':   new Date(),
+    'REALIZADO POR':    autor.nombre + ' <' + autor.correo + '>'
   });
 
   // Igual que al ajustar un saldo: los saldos nuevos vuelven en esta respuesta,
@@ -2711,6 +2747,10 @@ function consultarTraslados_(body) {
     cuentas: Object.keys(CUENTAS).map(c => ({
       clave: c, etiqueta: CUENTAS[c].etiqueta, grupo: CUENTAS[c].grupo
     })),
+    // Quiénes pueden figurar como autores de un traslado. Sale de la hoja, no
+    // de una lista escrita a mano: si mañana cambia quién es administrador, la
+    // pantalla lo refleja sin tocar código.
+    administradores: administradoresActivos_(),
     // Del más reciente al más viejo POR FECHA DEL TRASLADO. Antes alcanzaba con
     // invertir la hoja porque se registraba siempre en el momento; ahora se
     // pueden cargar traslados viejos, así que el orden de la hoja es el de
@@ -2725,6 +2765,7 @@ function consultarTraslados_(body) {
       destino: (CUENTAS[t.destino] || {}).etiqueta || t.destino,
       monto:   t.monto,
       quien:   t.quien,
+      realizo: t.realizo,
       nota:    t.nota,
       url:     t.url
     }))

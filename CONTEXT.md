@@ -34,7 +34,7 @@ Mantenimiento desde el editor: `PASO_1_VER_que_se_va_a_corregir` → `PASO_2_COR
 
 Incluye todo lo de `v1.4-sesiones`: sesiones propias de 30 días, Traslados, Compra Materiales, saldos por cuenta, privacidad de solicitudes y arranque en una sola petición.
 
-`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-16-j`. `sw.js` → `control-pagos-v73`. `MODO_LOGIN` = `'estricto'`.
+`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-16-j`. `sw.js` → `control-pagos-v74`. `MODO_LOGIN` = `'estricto'`.
 
 **Pendientes:** cargar los cuatro saldos (después de registrar los comprobantes atrasados), mudar el dominio a `pagos.energy-millennium.com` (bloqueado por acceso a Wix), y el botón "Agregar factura" de Consultar Pagos, que nunca se construyó.
 
@@ -469,6 +469,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-16**: 👤 **Traslados: quién HIZO la transferencia, aparte de quién la registró.** Son dos personas distintas cuando un administrador carga el traslado que hizo el otro, y confundirlas seria atribuirle a alguien un movimiento de dinero que no hizo.
+  - **`REALIZADO POR`** (columna nueva): el administrador elegido en el formulario. **`REGISTRADO POR`** sigue saliendo de la **sesión verificada** y no se puede elegir — misma regla que `REVISADO POR` en las aprobaciones.
+  - **No es texto libre.** El autor se valida contra los administradores **activos de la hoja USUARIOS**: un correo cualquiera, un usuario que no es admin, o un admin inactivo se rechazan. Si fuera texto libre, la columna diria lo que cualquiera escriba — eso no es una atribucion, es un campo de notas.
+  - La lista sale de la hoja, no de `CORREOS_ADMIN`: si cambia quien es administrador, el selector lo refleja sin tocar codigo. Viaja dentro de la respuesta de `consultar_traslados`, asi que no cuesta una peticion extra.
+  - Los traslados cargados antes de esta columna muestran autor vacio, no el de quien los registro: **inventar ese dato seria peor que no tenerlo**.
+  - **12 comprobaciones nuevas y 7 mutaciones verificadas**, entre ellas que el autor elegido **no pise** a quien registro. ⚠️ Una mutacion no se detectaba: quitar la guarda de "campo vacio" igual rechazaba, pero con el mensaje equivocado — *"no es un administrador activo"* ante un campo que simplemente no se lleno. **El mensaje es parte del comportamiento**, y ahora hay una comprobacion que lo fija. `sw.js` -> `control-pagos-v74`. `REVISION_BACKEND` -> `2026-09-16-m`.
+
 - **2026-09-16**: 📅 **Traslados: fecha de la transferencia, separada de la de registro.** Hay traslados que se cargan dias despues de hacerse. El campo abre con **hoy** (el caso normal) y permite elegir una fecha anterior; el futuro se rechaza **en el servidor**, no solo en la pantalla.
   - **Son dos fechas y las dos importan.** `FECHA` pasa a ser la de la transferencia —la que manda para los saldos— y se agrego **`FECHA REGISTRO`** con el rastro de cuando se cargo. `asegurarColumnasTraslados_` agrega el encabezado que falta en la hoja que ya existia: sin eso, la fila nueva escribiria ese dato en una columna **sin nombre**, invisible para quien lea la hoja.
   - Se guarda como **fecha REAL**, nunca texto, y el navegador manda `Y-m-d`. Es lo que evita que vuelva el problema de dia/mes.

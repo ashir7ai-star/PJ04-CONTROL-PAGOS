@@ -2932,9 +2932,19 @@
           </div>
         </div>
 
-        <div class="field">
-          <label for="tNota">Nota (opcional)</label>
-          <input type="text" id="tNota" placeholder="Ej: viáticos cuadrilla norte" />
+        <div class="field-row">
+          <div class="field">
+            <!-- Quién hizo la transferencia en el banco. No es lo mismo que
+                 quién la carga acá: uno puede registrar la que hizo el otro. -->
+            <label for="tRealizo">Quién hizo el traslado <span class="req">*</span></label>
+            <select id="tRealizo">
+              <option value="" disabled selected>Seleccionar</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="tNota">Nota (opcional)</label>
+            <input type="text" id="tNota" placeholder="Ej: viáticos cuadrilla norte" />
+          </div>
         </div>
       </div>
 
@@ -2972,7 +2982,7 @@
       <div style="overflow-x:auto;">
         <table class="tabla-usuarios" id="tablaTraslados">
           <thead>
-            <tr><th>Fecha</th><th>Sale de</th><th>Entra a</th><th>Monto</th><th>Registró</th><th>Nota</th><th></th></tr>
+            <tr><th>Fecha</th><th>Sale de</th><th>Entra a</th><th>Monto</th><th>Realizó</th><th>Registró</th><th>Nota</th><th></th></tr>
           </thead>
           <tbody id="cuerpoTraslados"></tbody>
         </table>
@@ -5589,6 +5599,11 @@
         showToast('error', 'Falta la fecha', 'Elegí la fecha en que se hizo la transferencia.');
         return;
       }
+      const realizo = document.getElementById('tRealizo').value;
+      if (!realizo) {
+        showToast('error', 'Falta el autor', 'Elegí qué administrador hizo el traslado.');
+        return;
+      }
       if (!monto || isNaN(Number(monto)) || Number(monto) <= 0) {
         showToast('error', 'Monto inválido', 'Escribí el monto transferido.');
         return;
@@ -5613,6 +5628,7 @@
           action: 'registrar_traslado',
           origen: origen, destino: destino, monto: monto,
           fecha: fecha,
+          realizado_por: realizo,
           nota: document.getElementById('tNota').value.trim(),
           archivos: archivos
         });
@@ -5625,6 +5641,7 @@
           document.getElementById('tNota').value  = '';
           // Vuelve a hoy, no a vacío: el siguiente traslado casi siempre es de hoy.
           fechaPickerTraslado.setDate(new Date(), false);
+          document.getElementById('tRealizo').selectedIndex = 0;
           uploadTraslado.reset();
           cargarTraslados();
           cargarSaldos(true, r.saldos);   // ya recalculado por el servidor
@@ -5638,6 +5655,22 @@
       }
     });
 
+    // Llena el selector de quién hizo el traslado. Conserva lo ya elegido para
+    // no perder la selección si la lista se recarga mientras se llena el
+    // formulario.
+    function pintarAutoresDeTraslado(administradores) {
+      const sel = document.getElementById('tRealizo');
+      if (!sel || !administradores) return;
+      const elegido = sel.value;
+      sel.innerHTML = '<option value="" disabled' + (elegido ? '' : ' selected') +
+                      '>Seleccionar</option>' +
+        administradores.map(a =>
+          '<option value="' + escapeHtml(a.correo) + '"' +
+          (a.correo === elegido ? ' selected' : '') + '>' +
+          escapeHtml(a.nombre) + '</option>'
+        ).join('');
+    }
+
     async function cargarTraslados() {
       const cargando = document.getElementById('trasladosCargando');
       const cuerpo   = document.getElementById('cuerpoTraslados');
@@ -5649,8 +5682,12 @@
           showToast('error', 'No se pudo cargar', r.message || 'Intentá de nuevo.');
           return;
         }
+        // La lista de administradores llega con los traslados, así que el
+        // selector se llena sin pedir nada más.
+        pintarAutoresDeTraslado(r.administradores);
+
         if (!r.traslados.length) {
-          cuerpo.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:26px;color:var(--text-muted);">Todavía no hay traslados registrados.</td></tr>';
+          cuerpo.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:26px;color:var(--text-muted);">Todavía no hay traslados registrados.</td></tr>';
           return;
         }
         cuerpo.innerHTML = r.traslados.map(t =>
@@ -5659,6 +5696,7 @@
             '<td data-etiqueta="Sale de">' + escapeHtml(t.origen) + '</td>' +
             '<td data-etiqueta="Entra a">' + escapeHtml(t.destino) + '</td>' +
             '<td data-etiqueta="Monto" style="font-variant-numeric:tabular-nums;font-weight:600;color:var(--text);">' + formatoPesos(t.monto) + '</td>' +
+            '<td data-etiqueta="Realizó">' + escapeHtml(t.realizo || '—') + '</td>' +
             '<td data-etiqueta="Registró">' + escapeHtml(t.quien || '—') + '</td>' +
             '<td data-etiqueta="Nota">' + escapeHtml(t.nota || '—') + '</td>' +
             '<td data-etiqueta="">' + (t.url
@@ -5667,7 +5705,7 @@
           '</tr>'
         ).join('');
       } catch (err) {
-        showToast('error', 'Error de conexión', 'No pudimos traer los traslados.');
+        showToast('error', 'No se pudieron traer los traslados', mensajeDeError(err));
       } finally {
         cargando.style.display = 'none';
       }
