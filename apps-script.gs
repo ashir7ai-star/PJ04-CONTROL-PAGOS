@@ -724,6 +724,38 @@ function normalizarFechasRegistro(simular) {
   return resumen;
 }
 
+// ═══ LOS TRES PASOS PARA ARREGLAR LAS FECHAS ════════════════════
+//
+// Se corren DESDE EL EDITOR: elegir la función en la lista de arriba y darle
+// "Ejecutar". En orden: PASO_1, mirar el resultado, PASO_2, PASO_3.
+//
+// Por qué existen estas tres envolturas: el botón "Ejecutar" del editor NO puede
+// pasarle parámetros a una función, así que `repararFechasFuturas(false, true)`
+// es imposible de ejecutar desde el menú. Estas tres no reciben nada y por eso
+// sí aparecen en la lista y se ejecutan con un clic.
+
+// PASO 1 — SOLO MIRAR. No modifica nada.
+// Muestra exactamente qué fechas se corregirían y en qué quedaría cada una.
+// Revisar esta lista ANTES del paso 2.
+function PASO_1_VER_que_se_va_a_corregir() {
+  return repararFechasFuturas(true, true);
+}
+
+// PASO 2 — CORREGIR las fechas mal convertidas.
+// Hace una copia de respaldo del Sheet completo antes de tocar nada.
+// Corrige las que quedaron en el futuro Y las que delata su fecha de pago.
+function PASO_2_CORREGIR_las_fechas() {
+  return repararFechasFuturas(false, true);
+}
+
+// PASO 3 — PASAR TODO A FECHAS REALES.
+// Convierte las que todavía son texto en fechas de verdad. Es lo que hace que
+// el problema no vuelva: la tabla deja de marcarlas "Invalid" y no queda nada
+// que interpretar. También respalda el Sheet antes.
+function PASO_3_PASAR_todo_a_fechas_reales() {
+  return normalizarFechasRegistro(false);
+}
+
 // ─── Reparación: fechas de registro que quedaron en el FUTURO ───────
 //
 // Qué paso (caso real, 2026-09-16): 40 filas migradas tenían FECHA REGISTRO en
@@ -1558,7 +1590,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-16-h · reparacion de fechas completa';
+const REVISION_BACKEND = '2026-09-16-i · fechas: pasos 1-2-3';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [

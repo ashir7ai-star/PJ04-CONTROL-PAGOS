@@ -445,6 +445,34 @@ console.log('\n=== Fechas de registro en el futuro: se detectan y se corrigen ==
   chk('y conserva la hora', z.getHours() === 9 && z.getMinutes() === 0);
   chk('la fila coherente sigue intacta',
       datos2[2][0].getMonth() === 7 && datos2[2][0].getDate() === 5);
+
+  // Las tres envolturas PASO_*. Existen porque el botón "Ejecutar" del editor no
+  // puede pasar parámetros. Una que invierta el booleano escribiría en la hoja
+  // cuando el usuario solo quería mirar, así que se comprueban una por una.
+  const datos3 = [ENC2,
+    [new Date(hoy.getFullYear(), hoy.getMonth() + 3, 9, 14, 31), 'AMPAC SAS', 'viaticos', 'q', 'f', 'p', pasadaOk, 100],
+    ['15/09/2026 18:40', 'AMPAC SAS', 'viaticos', 'q', 't', 'p', pasadaOk, 200]
+  ];
+  const ctx5 = backendCon({ 'Viaticos': hojaFalsa('Viaticos', datos3) });
+  const antes = datos3[1][0];
+
+  chk('existen las tres envolturas del editor',
+      typeof ctx5.PASO_1_VER_que_se_va_a_corregir === 'function' &&
+      typeof ctx5.PASO_2_CORREGIR_las_fechas === 'function' &&
+      typeof ctx5.PASO_3_PASAR_todo_a_fechas_reales === 'function');
+
+  const r1 = ctx5.PASO_1_VER_que_se_va_a_corregir();
+  chk('PASO 1 solo mira: no modifica la hoja', datos3[1][0] === antes);
+  chk('PASO 1 anuncia el simulacro',           r1.indexOf('SIMULACRO') !== -1);
+
+  ctx5.PASO_2_CORREGIR_las_fechas();
+  chk('PASO 2 si corrige la fecha futura', datos3[1][0] !== antes);
+
+  ctx5.PASO_3_PASAR_todo_a_fechas_reales();
+  chk('PASO 3 convierte el texto en fecha real', datos3[2][0] instanceof Date, String(datos3[2][0]));
+  chk('y es la fecha correcta (15 de septiembre 18:40)',
+      datos3[2][0].getMonth() === 8 && datos3[2][0].getDate() === 15 &&
+      datos3[2][0].getHours() === 18 && datos3[2][0].getMinutes() === 40, String(datos3[2][0]));
 }
 
 // ── Alta completa de cada tipo de pago ────────────────────────────────────
