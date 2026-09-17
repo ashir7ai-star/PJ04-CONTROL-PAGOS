@@ -465,6 +465,12 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-17**: ⚠️ **AJUSTE TEMPORAL — Compra Materiales descuenta de VIÁTICOS, no del banco.** Pedido del usuario: la plata que se manda a Viáticos también se está usando para comprar materiales. **Es provisorio**; más adelante se organiza mejor.
+  - **Un solo interruptor para revertirlo:** `CUENTA_COMPRA_MATERIALES` en [apps-script.gs](apps-script.gs). Poner `null` y Compra Materiales vuelve a salir del banco de la empresa. **No hay un segundo lugar que tocar** — la visibilidad del saldo se deriva de ese mismo valor, así que no pueden quedar desalineados.
+  - **Por qué importa que no salga del banco:** el dinero ya se le restó al banco cuando se hizo el **traslado** a Viáticos. Cobrarlo otra vez al banco restaría dos veces la misma salida, y además Viáticos mostraría más plata de la que realmente queda. Hay una comprobación que verifica justamente que **el total del sistema solo baje por el gasto real**.
+  - **Quien gasta de un fondo ahora lo VE:** un usuario con solo la sección `compra_materiales` ve el saldo de Viáticos. Dejarlo gastar de un saldo que no ve sería pedirle que trabaje a ciegas. Sigue sin ver los bancos.
+  - **11 comprobaciones nuevas y 5 mutaciones verificadas.** ⚠️ **No había NINGUNA prueba que cubriera `compra_materiales` en los saldos**: las suites pasaban antes del cambio y después, y eso no significaba nada. Al escribir las de visibilidad hubo que usar modo `'estricto'`: en `'off'` el contexto da acceso a todo y esas comprobaciones **pasarían siempre sin comprobar nada**. `REVISION_BACKEND` -> `2026-09-17-b`.
+
 - **2026-09-17**: 🔗 **Botón "Abrir hoja de cálculo" en Consultar Pagos, solo para administradores.** Atajo para ir directo al Sheet donde quedan los pagos.
   - **La dirección NO está escrita en `index.html`.** Ese archivo se sirve público desde GitHub Pages: ahí la dirección del documento quedaría a la vista de cualquiera. Que Google igual exija permisos no es razon para publicarla. La manda el servidor dentro de `arranque`, y **solo si quien pregunta es admin**.
   - **Sale del propio Sheet** (`SpreadsheetApp.getActiveSpreadsheet().getUrl()`), no de una constante: si el documento se mueve o se reemplaza, el botón sigue llevando al correcto en vez de a uno viejo.

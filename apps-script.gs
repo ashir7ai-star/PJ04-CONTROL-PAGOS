@@ -1670,7 +1670,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-17-a · atajo a la hoja de calculo';
+const REVISION_BACKEND = '2026-09-17-b · materiales sale de viaticos';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -2375,6 +2375,19 @@ const CUENTAS = {
 };
 
 // De qué bolsa sale un pago. Devuelve null si no debe tocar ningún saldo.
+// ⚠️ AJUSTE TEMPORAL (2026-09-17, pedido del usuario).
+//
+// La plata que se manda a Viáticos también se está usando para comprar
+// materiales, así que esos gastos tienen que descontarse del MISMO fondo. Si
+// siguieran saliendo del banco de la empresa, pasarían las dos cosas malas a
+// la vez: Viáticos mostraría más plata de la que realmente queda, y al banco
+// se le restaría una salida que ya se le había restado al hacer el traslado.
+//
+// PARA VOLVER ATRÁS cuando se organice mejor: poner `null` acá abajo y Compra
+// Materiales vuelve a salir del banco de la empresa. Es el único lugar que hay
+// que tocar — la visibilidad del saldo se deriva de este mismo valor.
+const CUENTA_COMPRA_MATERIALES = 'viaticos';
+
 function cuentaDePago_(tipoFactura, empresa) {
   const t = String(tipoFactura || '').toLowerCase();
 
@@ -2384,6 +2397,7 @@ function cuentaDePago_(tipoFactura, empresa) {
 
   if (t === 'viaticos')   return 'viaticos';
   if (t === 'caja_menor') return 'caja_menor';
+  if (t === 'compra_materiales' && CUENTA_COMPRA_MATERIALES) return CUENTA_COMPRA_MATERIALES;
 
   // El resto (proveedor, compra, impuestos, seguridad social, nómina) sale del
   // banco de la empresa que figure en el registro.
@@ -2540,7 +2554,14 @@ function consultarSaldos_(ctx) {
     if (esAdministrador) return true;
     if (CUENTAS[clave].grupo !== 'fondo') return false;
     // La clave de la cuenta coincide con la de la sección ('viaticos', 'caja_menor')
-    return contexto.secciones.indexOf(clave) !== -1;
+    if (contexto.secciones.indexOf(clave) !== -1) return true;
+    // Y quien gasta de un fondo tiene que poder verlo, aunque su sección se
+    // llame distinto: con el ajuste temporal, Compra Materiales descuenta de
+    // Viáticos. Dejarlo gastar de un saldo que no ve sería pedirle que trabaje
+    // a ciegas. Se deriva del MISMO valor que decide el descuento, así que no
+    // pueden quedar desalineados.
+    return CUENTA_COMPRA_MATERIALES === clave &&
+           contexto.secciones.indexOf('compra_materiales') !== -1;
   });
 
   const cuentas = visibles.map(clave => {

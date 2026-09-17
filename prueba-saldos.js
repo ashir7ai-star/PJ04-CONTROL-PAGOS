@@ -134,6 +134,12 @@ console.log('\n=== A qué bolsa va cada pago ===');
   chk('seguridad social → banco de la empresa',     g.cuentaDePago_('seguridad_social', 'AMPAC SAS') === 'banco_ampac');
   chk('viáticos → fondo de viáticos',               g.cuentaDePago_('viaticos', 'AMPAC SAS') === 'viaticos');
   chk('caja menor → fondo de caja menor',           g.cuentaDePago_('caja_menor', 'Millennium Co') === 'caja_menor');
+  chk('compra de materiales → fondo de VIÁTICOS (ajuste temporal)',
+      g.cuentaDePago_('compra_materiales', 'AMPAC SAS') === 'viaticos',
+      g.cuentaDePago_('compra_materiales', 'AMPAC SAS'));
+  chk('y NO al banco de la empresa',
+      g.cuentaDePago_('compra_materiales', 'Millennium Co') === 'viaticos',
+      g.cuentaDePago_('compra_materiales', 'Millennium Co'));
   chk('VENTA no toca ningún saldo',                 g.cuentaDePago_('venta', 'AMPAC SAS') === null);
   chk('empresa desconocida no se adivina',          g.cuentaDePago_('compra', 'Otra SAS') === null);
   chk('empresa vacía no se adivina',                g.cuentaDePago_('compra', '') === null);
@@ -383,6 +389,59 @@ console.log('\n=== Quien HIZO el traslado, aparte de quien lo registro ===');
   chk('y el traslado listado muestra quien lo realizo',
       String(g.consultarTraslados_({ rol: 'admin' }).traslados[0].realizo).indexOf('Joseph') !== -1,
       g.consultarTraslados_({ rol: 'admin' }).traslados[0].realizo);
+}
+
+console.log('\n=== Ajuste temporal: Compra Materiales sale de Viaticos ===');
+{
+  // Contexto real (2026-09-17): la plata que se manda a Viaticos tambien se usa
+  // para comprar materiales. Si esos gastos salieran del banco, pasarian las dos
+  // cosas malas juntas: Viaticos mostraria mas plata de la que queda, y al banco
+  // se le restaria una salida que ya se le habia restado al hacer el traslado.
+  const g = montar([
+    ['02/02/2026 10:00', 'AMPAC SAS', 'viaticos',          100000],
+    ['02/02/2026 10:00', 'AMPAC SAS', 'compra_materiales', 250000],
+    ['02/02/2026 10:00', 'AMPAC SAS', 'compra',            400000]
+  ], [
+    ['01/01/2026 00:00', 'viaticos',    1000000],
+    ['01/01/2026 00:00', 'banco_ampac', 5000000]
+  ]);
+
+  const r = g.consultarSaldos_({ rol: 'admin', secciones: [] });
+  const via   = saldoDe(r, 'viaticos');
+  const banco = saldoDe(r, 'banco_ampac');
+
+  chk('Viaticos descuenta el viatico Y los materiales',
+      via.gastado === 350000, 'gastado=' + via.gastado + ' (esperado 350000)');
+  chk('el saldo de Viaticos queda correcto', via.saldo === 650000, 'saldo=' + via.saldo);
+  chk('los materiales NO se le restan tambien al banco',
+      banco.gastado === 400000, 'gastado=' + banco.gastado + ' (esperado 400000: solo la compra)');
+  chk('la plata no se resta dos veces en total',
+      via.saldo + banco.saldo === 6000000 - 750000,
+      (via.saldo + banco.saldo));
+  chk('ningun pago queda sin bolsa asignada', r.sinCuenta === 0, r.sinCuenta);
+
+  // Quien gasta de un fondo tiene que poder verlo: dejarlo gastar de un saldo
+  // que no ve seria pedirle que trabaje a ciegas.
+  //
+  // OJO: en modo 'off' el contexto da acceso a todo, asi que la visibilidad
+  // SOLO se puede probar en 'estricto'. Con 'off' estas comprobaciones pasarian
+  // siempre, sin comprobar nada.
+  const ge = montar([], [
+    ['01/01/2026 00:00', 'viaticos',    1000000],
+    ['01/01/2026 00:00', 'banco_ampac', 5000000]
+  ], 'estricto');
+  const soloMateriales = ge.consultarSaldos_({ rol: 'usuario', secciones: ['compra_materiales'] });
+  chk('quien solo tiene Compra Materiales VE el saldo de Viaticos',
+      !!saldoDe(soloMateriales, 'viaticos'),
+      JSON.stringify(soloMateriales.cuentas.map(c => c.clave)));
+  chk('pero sigue sin ver los bancos',
+      soloMateriales.cuentas.every(c => c.grupo === 'fondo'),
+      JSON.stringify(soloMateriales.cuentas.map(c => c.clave)));
+
+  const soloCaja = ge.consultarSaldos_({ rol: 'usuario', secciones: ['caja_menor'] });
+  chk('quien no gasta de Viaticos sigue sin verlo',
+      !saldoDe(soloCaja, 'viaticos'),
+      JSON.stringify(soloCaja.cuentas.map(c => c.clave)));
 }
 
 console.log('\n=== Quién puede VER cada saldo ===');
