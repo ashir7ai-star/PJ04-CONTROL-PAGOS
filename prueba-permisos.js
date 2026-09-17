@@ -26,7 +26,16 @@ function hojaFalsa(nombre, filas) {
     getLastColumn: () => (datos[0] ? datos[0].length : 0),
     getRange: (f, c, nf, nc) => ({
       getValues: () => [datos[f - 1].slice(c - 1, c - 1 + (nc || 1))],
-      setValues: (v) => { v.forEach((fila, i) => { datos[f - 1 + i] = fila.slice(); }); return { setFontWeight: () => {} }; },
+      // Escribe A PARTIR de la columna pedida. Pisar la fila entera hacía que
+      // agregar una columna borrara las demás, y la prueba daba un resultado
+      // inventado en vez de fallar.
+      setValues: (v) => {
+        v.forEach((fila, i) => {
+          if (!datos[f - 1 + i]) datos[f - 1 + i] = [];
+          fila.forEach((valor, j) => { datos[f - 1 + i][c - 1 + j] = valor; });
+        });
+        return { setFontWeight: () => {} };
+      },
       setValue: (v) => { datos[f - 1][c - 1] = v; }
     }),
     appendRow: (fila) => datos.push(fila.slice()),
@@ -65,7 +74,8 @@ function montar(modoLogin, usuarios, solicitudes) {
         getNumSheets: () => orden.length,
         insertSheet: (n) => { hojas[n] = hojaFalsa(n, []); orden.push(n); return hojas[n]; },
         getName: () => 'CONTROL DE PAGOS',
-        getId: () => 'id'
+        getId: () => 'id',
+        getUrl: () => 'https://docs.google.com/spreadsheets/d/ID-DE-PRUEBA/edit'
       }),
       flush: () => {}
     },
@@ -411,6 +421,40 @@ console.log('\n=== Ningún endpoint del Web App queda sin validar sesión ===');
   chk('"REVISADO POR" sale de la sesión verificada',
       /'REVISADO POR':\s*ctx\.autenticado/.test(codigo),
       'REVISADO POR todavía confía en el cliente');
+}
+
+console.log('\n=== El atajo a la hoja de calculo: solo para administradores ===');
+{
+  const g = montar('estricto', [
+    ['nathan@ylevigroup.com', 'Nathan', '300', 'admin',   'todas',    'activo', '', ''],
+    ['laura@x.com',           'Laura',  '301', 'usuario', 'viaticos', 'activo', '', '']
+  ]);
+
+  const admin = g.arranque_({ idToken: 'nathan@ylevigroup.com' });
+  chk('el admin recibe la direccion de la hoja',
+      !!admin.sesion && String(admin.sesion.urlHoja).indexOf('docs.google.com') !== -1,
+      admin.sesion && admin.sesion.urlHoja);
+
+  // Lo importante no es que el boton no se vea, sino que la direccion NO VIAJE:
+  // ocultar algo en la pantalla no es control de acceso.
+  g.olvidarTodasLasHojas_();
+  const usuaria = g.arranque_({ idToken: 'laura@x.com' });
+  chk('un usuario comun NO la recibe',
+      !!usuaria.sesion && !usuaria.sesion.urlHoja,
+      usuaria.sesion && usuaria.sesion.urlHoja);
+
+  // Y sale del propio Sheet. Lo que no puede haber es un IDENTIFICADOR DE
+  // DOCUMENTO literal: las URLs de exportacion que arma el codigo usan una
+  // variable y estan bien, una direccion fija seria la que queda desactualizada
+  // y —en el index.html, que es publico— la que se expone de mas.
+  const idLiteral = /spreadsheets\/d\/[A-Za-z0-9_-]{30,}/;
+  const codigo = fs.readFileSync(RUTA, 'utf8');
+  chk('el backend no lleva un identificador de documento escrito a mano',
+      !idLiteral.test(codigo), (codigo.match(idLiteral) || [''])[0]);
+
+  const html = fs.readFileSync(path.join(path.dirname(RUTA) || '.', 'index.html'), 'utf8');
+  chk('ni el index.html, que es publico',
+      !idLiteral.test(html), (html.match(idLiteral) || [''])[0]);
 }
 
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));

@@ -36,7 +36,7 @@ Incluye todo lo de `v1.5-fechas`: las 35 fechas corregidas, las 74 celdas pasada
 
 ⚠️ **Pendiente de confirmar en producción:** al momento de marcar este tag, el usuario todavía no había reportado los tiempos reales tras redesplegar. Las pruebas pasan y las mutaciones se detectan, pero **el número de `ms` en Configuración es lo que lo confirma**.
 
-`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-16-m`. `sw.js` → `control-pagos-v74`. `MODO_LOGIN` = `'estricto'`.
+`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-16-m`. `sw.js` → `control-pagos-v75`. `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -465,6 +465,14 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-17**: 🔗 **Botón "Abrir hoja de cálculo" en Consultar Pagos, solo para administradores.** Atajo para ir directo al Sheet donde quedan los pagos.
+  - **La dirección NO está escrita en `index.html`.** Ese archivo se sirve público desde GitHub Pages: ahí la dirección del documento quedaría a la vista de cualquiera. Que Google igual exija permisos no es razon para publicarla. La manda el servidor dentro de `arranque`, y **solo si quien pregunta es admin**.
+  - **Sale del propio Sheet** (`SpreadsheetApp.getActiveSpreadsheet().getUrl()`), no de una constante: si el documento se mueve o se reemplaza, el botón sigue llevando al correcto en vez de a uno viejo.
+  - El botón aparece según **llegue o no la dirección**, no según lo que la pantalla crea del rol. Ocultar un botón no es control de acceso; lo que importa es que el dato **no viaje**.
+  - Clase nueva `.page-header-accion` **con su regla CSS real** — no se reutilizó una ajena ni se inventó un nombre sin estilo, que ya fue un error dos veces en este proyecto.
+  - **4 comprobaciones nuevas y 4 mutaciones verificadas**, incluida una que vigila que no se cuele un **identificador de documento literal** ni en el backend ni en el `index.html`.
+  - De paso: `prueba-permisos.js` tenía el mismo `setValues` infiel que ya se había corregido en `prueba-saldos.js` (pisaba la fila entera ignorando la columna de inicio), y dos escrituras de ULTIMO ACCESO **no invalidaban** lo memorizado. Las tres corregidas. `sw.js` -> `control-pagos-v75`. `REVISION_BACKEND` -> `2026-09-17-a`.
+
 - **2026-09-16**: 👤 **Traslados: quién HIZO la transferencia, aparte de quién la registró.** Son dos personas distintas cuando un administrador carga el traslado que hizo el otro, y confundirlas seria atribuirle a alguien un movimiento de dinero que no hizo.
   - **`REALIZADO POR`** (columna nueva): el administrador elegido en el formulario. **`REGISTRADO POR`** sigue saliendo de la **sesión verificada** y no se puede elegir — misma regla que `REVISADO POR` en las aprobaciones.
   - **No es texto libre.** El autor se valida contra los administradores **activos de la hoja USUARIOS**: un correo cualquiera, un usuario que no es admin, o un admin inactivo se rechazan. Si fuera texto libre, la columna diria lo que cualquiera escriba — eso no es una atribucion, es un campo de notas.

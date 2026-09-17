@@ -1670,7 +1670,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-16-m · traslado: fecha y autor';
+const REVISION_BACKEND = '2026-09-17-a · atajo a la hoja de calculo';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -1976,6 +1976,18 @@ function esAdmin_(ctx) {
   return ctx.rol === 'admin';
 }
 
+// La dirección de la hoja de cálculo, tomada del propio Sheet al que está
+// vinculado este script. No se escribe a mano en ningún lado: si el documento
+// se mueve o se reemplaza, esto sigue devolviendo el correcto, y no hay una
+// dirección desactualizada llevando a nadie al documento equivocado.
+function urlDeLaHoja_() {
+  try {
+    return SpreadsheetApp.getActiveSpreadsheet().getUrl();
+  } catch (err) {
+    return '';   // mejor sin botón que con un enlace roto
+  }
+}
+
 // Las hojas de pagos que este usuario tiene permitido leer.
 function hojasPermitidas_(ctx) {
   const ss        = SpreadsheetApp.getActiveSpreadsheet();
@@ -2039,8 +2051,7 @@ function iniciarSesion_(body) {
   // Marca de último acceso, para que los admins vean quién está usando el sistema.
   try {
     const col = ENCABEZADOS_USUARIOS.indexOf('ULTIMO ACCESO') + 1;
-    hojaUsuarios_().getRange(usuario._fila, col)
-      .setValue(new Date());
+    escribirCelda_(hojaUsuarios_(), usuario._fila, col, new Date());
   } catch (err) { /* no vale la pena fallar el login por esto */ }
 
   return {
@@ -2079,7 +2090,8 @@ function arranque_(body) {
 
   if (MODO_LOGIN === 'off') {
     const ctx = contextoDe_(null);
-    base.sesion = { rol: 'admin', secciones: Object.keys(SECCIONES), nombre: '', correo: '' };
+    base.sesion = { rol: 'admin', secciones: Object.keys(SECCIONES), nombre: '', correo: '',
+                    urlHoja: urlDeLaHoja_() };
     base.saldos = consultarSaldos_(ctx);
     return base;
   }
@@ -2133,7 +2145,12 @@ function arranque_(body) {
     nombre:    ctx.nombre,
     foto:      perfilGoogle ? perfilGoogle.foto : '',
     rol:       ctx.rol,
-    secciones: ctx.secciones
+    secciones: ctx.secciones,
+    // Enlace directo a la hoja de cálculo, SOLO para administradores. Se manda
+    // desde el servidor en vez de escribirlo en el index.html porque ese
+    // archivo es público: ahí la dirección quedaría a la vista de cualquiera.
+    // Que Google igual exija permisos no es razón para publicarla.
+    urlHoja:   esAdmin_(ctx) ? urlDeLaHoja_() : ''
   };
   // El token solo viaja una vez, cuando se crea. Después el navegador lo
   // guarda y lo manda en cada petición.
@@ -2144,8 +2161,7 @@ function arranque_(body) {
   // al final y sin dejar que un fallo acá arruine un arranque que ya salió bien.
   try {
     const col = ENCABEZADOS_USUARIOS.indexOf('ULTIMO ACCESO') + 1;
-    hojaUsuarios_().getRange(usuario._fila, col)
-      .setValue(new Date());
+    escribirCelda_(hojaUsuarios_(), usuario._fila, col, new Date());
   } catch (err) { /* no vale la pena fallar el arranque por esto */ }
 
   return base;

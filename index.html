@@ -214,6 +214,17 @@
       margin-bottom: 28px;
     }
 
+    /* Cabecera con una acción a la derecha (abrir la hoja de cálculo). Sin
+       esto el botón caería debajo del subtítulo y se comería una línea
+       entera. Envuelve en pantallas angostas en vez de desbordar. */
+    .page-header-accion {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
     .page-title {
       font-size: 1.6rem;
       font-weight: 700;
@@ -2449,9 +2460,21 @@
 
   <!-- Vista: Consultar Pagos -->
   <main id="viewSearch" style="display:none;">
-    <div class="page-header">
-      <p class="page-title" id="searchTitle">Consultar Pagos</p>
-      <p class="page-subtitle" id="searchSubtitle">Filtra y busca pagos registrados en el sistema.</p>
+    <div class="page-header page-header-accion">
+      <div>
+        <p class="page-title" id="searchTitle">Consultar Pagos</p>
+        <p class="page-subtitle" id="searchSubtitle">Filtra y busca pagos registrados en el sistema.</p>
+      </div>
+      <!-- Solo para administradores. Se muestra cuando el servidor manda la
+           dirección; si no la manda, no hay botón. -->
+      <button type="button" class="btn-refrescar" id="btnAbrirHoja" style="display:none;"
+              title="Abrir la hoja de cálculo en Google Sheets">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+        Abrir hoja de cálculo
+      </button>
     </div>
 
     <!-- Filtros -->
@@ -3137,6 +3160,7 @@
       foto:      '',
       rol:       'admin',
       revision:  '',       // versión del backend, para detectar desfases
+      urlHoja:   '',       // hoja de cálculo; el servidor solo la manda a admins
       secciones: ['pagos', 'viaticos', 'caja_menor', 'impuestos', 'seguridad_social', 'nomina', 'compra_materiales']
     };
 
@@ -4688,6 +4712,7 @@
       sesion.foto      = datos.foto      || '';
       sesion.rol       = datos.rol       || 'usuario';
       sesion.secciones = datos.secciones || [];
+      sesion.urlHoja   = datos.urlHoja   || '';
       pintarSesionEnHeader();
       aplicarPermisos();
     }
@@ -5135,6 +5160,12 @@
       const esAdministrador = sesion.rol === 'admin';
       const puede = (s) => esAdministrador || sesion.secciones.indexOf(s) !== -1;
 
+      // Atajo a la hoja de cálculo. La condición es que el SERVIDOR haya
+      // mandado la dirección, no que la pantalla crea que sos admin: quien
+      // decide es quien tiene los datos.
+      const btnHoja = document.getElementById('btnAbrirHoja');
+      if (btnHoja) btnHoja.style.display = sesion.urlHoja ? '' : 'none';
+
       // Botones de tipo de pago, en los dos formularios
       document.querySelectorAll('#tipoSelector .tipo-btn, #tipoSelectorSolicitud .tipo-btn').forEach(btn => {
         const seccion = seccionDeTipoFront(btn.dataset.value);
@@ -5518,6 +5549,13 @@
     document.getElementById('btnCancelarSaldo').addEventListener('click', cerrarModalSaldo);
     modalSaldo.addEventListener('click', e => { if (e.target === modalSaldo) cerrarModalSaldo(); });
     document.getElementById('btnRefrescarSaldos').addEventListener('click', () => cargarSaldos(false));
+
+    // Abre la hoja de cálculo en otra pestaña. `noopener` para que la página
+    // que se abre no pueda manipular esta.
+    document.getElementById('btnAbrirHoja').addEventListener('click', () => {
+      if (!sesion.urlHoja) return;
+      window.open(sesion.urlHoja, '_blank', 'noopener');
+    });
     initFormateadorValor('mSaldoMonto');
 
     document.getElementById('btnGuardarSaldo').addEventListener('click', async () => {
