@@ -5462,7 +5462,10 @@
         saldosGrid.innerHTML   = '';
       }
       try {
-        const r = await postAppsScript({ action: 'consultar_saldos' }, 60000);
+        // `forzar` solo cuando la persona toca "Actualizar": ahí está pidiendo
+        // explícitamente ver la realidad, aunque cueste recalcular todo. En el
+        // arranque alcanza con lo calculado hace poco.
+        const r = await postAppsScript({ action: 'consultar_saldos', forzar: !silencioso }, 60000);
         if (r.status !== 'success') {
           saldosNota.textContent = 'No se pudieron cargar los saldos.';
           return;

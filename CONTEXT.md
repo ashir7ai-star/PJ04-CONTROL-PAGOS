@@ -36,7 +36,7 @@ Incluye todo lo de `v1.5-fechas`: las 35 fechas corregidas, las 74 celdas pasada
 
 ⚠️ **Pendiente de confirmar en producción:** al momento de marcar este tag, el usuario todavía no había reportado los tiempos reales tras redesplegar. Las pruebas pasan y las mutaciones se detectan, pero **el número de `ms` en Configuración es lo que lo confirma**.
 
-`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-16-m`. `sw.js` → `control-pagos-v76`. `MODO_LOGIN` = `'estricto'`.
+`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-16-m`. `sw.js` → `control-pagos-v77`. `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -465,6 +465,14 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-17**: ⚡ **El cálculo de saldos se guarda en caché.** El usuario preguntó por qué los saldos tardan "si están en el frontend". **No lo están**: el saldo no se guarda en ningún lado, se **calcula** en cada consulta (`base − pagos posteriores − traslados salidos + traslados entrados`). Eso es a propósito — un número guardado puede quedar desincronizado del banco para siempre si algo falla a mitad de camino — pero obliga a leer SALDOS, TRASLADOS y las **7 hojas de pagos** en cada arranque.
+  - Verificado: el arranque **ya no hacía una petición extra** (los saldos viajan dentro de `arranque`). El costo estaba en que `arranque` toca **~11 hojas distintas**, y el memo por petición no ayuda ahí — evita releer *la misma* hoja, no hojas distintas.
+  - **Ahora se cachea el resultado del cálculo** (`saldosCrudos_`, 10 min, caché del SCRIPT: si alguien del equipo ya lo calculó, el siguiente entra rápido). Se cachea **sin filtrar por permisos** y la visibilidad se aplica después, que si no se filtraría con los permisos del primero que consultó.
+  - ⚠️ **Un saldo viejo es peor que uno lento**, así que lo que importa es la invalidación: registrar un **pago**, un **traslado** y un **ajuste** llaman a `olvidarSaldosCalculados_()`. El botón "Actualizar" manda `forzar` y recalcula — es la salida para cuando alguien editó la hoja a mano.
+  - **La conciliación fuerza el recálculo** antes de comparar. Comparar el banco contra una foto en caché daría una diferencia equivocada **y la guardaría como buena**.
+  - **12 comprobaciones nuevas y 6 mutaciones verificadas.** Dos trampas del banco de pruebas: el stub de `CacheService` **nunca guardaba nada** (`get` siempre `null`), así que todo lo que depende del caché pasaba igual con invalidación o sin ella; y una comprobación usaba `_lecturas`, que **no existía** en esa suite, o sea que no podía fallar. Las dos corregidas. `sw.js` -> `control-pagos-v77`. `REVISION_BACKEND` -> `2026-09-17-d`.
+  - 📌 **Falta medir:** el usuario todavía no reportó el `ms` que muestra Configuración. Si ese número es bajo y la espera sigue siendo larga, el tiempo se va en el **viaje** a Apps Script (POST + redirección 302 + arranque del contenedor), no en leer hojas — y entonces el siguiente paso es otro, no más caché.
+
 - **2026-09-17**: ⚖️ **Conciliación: la diferencia contra el banco deja de perderse.** El banco cobra 4x1000, comisiones e intereses que el sistema **no ve**, y por eso el saldo se descuadra solo. Hasta ahora, al recargar el saldo base la diferencia **desaparecía en silencio**: el sistema arrancaba de cero desde el número nuevo, la cifra cuadraba, y nadie sabía por qué se había descuadrado ni cuánto se va en costos bancarios.
   - **Dos columnas nuevas en SALDOS:** `SALDO CALCULADO` (lo que tenía el sistema justo antes) y `DIFERENCIA` (= saldo real − calculado). Negativa = el banco cobró de más; positiva = entró plata no registrada. Como cada ajuste es una fila nueva, queda el **historial de cuánto cuesta el banco al mes**, que antes no existía en ningún lado.
   - **La comparación se hace ANTES de escribir.** Después ya es tarde: el saldo nuevo pisa el cálculo y la diferencia da cero siempre. Hay una mutación que vigila exactamente eso.

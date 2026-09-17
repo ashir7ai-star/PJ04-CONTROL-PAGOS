@@ -17,9 +17,14 @@ function chk(nombre, cond, detalle) {
 
 function hojaFalsa(nombre, filas) {
   const datos = filas || [];
+  // Cuenta las lecturas completas: es LA medida de cuantos viajes al servicio
+  // de Sheets cuesta una operacion, y sin ella no se puede comprobar que el
+  // cache evite trabajo.
+  let lecturas = 0;
   return {
     getName: () => nombre,
-    getDataRange: () => ({ getValues: () => datos.map(f => f.slice()) }),
+    _lecturas: () => lecturas,
+    getDataRange: () => ({ getValues: () => { lecturas++; return datos.map(f => f.slice()); } }),
     getLastRow: () => datos.length,
     getLastColumn: () => (datos[0] ? datos[0].length : 0),
     getRange: (f, c, nf, nc) => ({
@@ -52,6 +57,9 @@ const ENC_TRAS = ['FECHA', 'ORIGEN', 'DESTINO', 'MONTO', 'REGISTRADO POR', 'NOTA
 // saldos:    [[fecha, cuenta, base], ...]
 // traslados: [[fecha, origen, destino, monto], ...]
 function montar(pagos, saldos, modoLogin, traslados) {
+  // Un cache por montaje: cada backend simulado arranca limpio, como arrancaria
+  // el script recien desplegado.
+  const _cache = {};
   const filasPagos = [ENC_PAGOS].concat((pagos || []).map(p =>
     [p[0], p[1], p[2], 'quien', 'nombre', 'prov', '2026-01-01', p[3]]));
 
@@ -91,7 +99,14 @@ function montar(pagos, saldos, modoLogin, traslados) {
     },
     MailApp: { sendEmail: () => {} },
     Logger: { log: () => {} },
-    CacheService: { getScriptCache: () => ({ get: () => null, put: () => {} }) },
+    // Cache DE VERDAD, en memoria. Con el stub anterior (get siempre null) el
+    // cache nunca acertaba, asi que nada de lo que depende de el se podia
+    // comprobar: las pruebas pasaban tanto con invalidacion como sin ella.
+    CacheService: { getScriptCache: () => ({
+      get:    (k) => (Object.prototype.hasOwnProperty.call(_cache, k) ? _cache[k] : null),
+      put:    (k, v) => { _cache[k] = v; },
+      remove: (k) => { delete _cache[k]; }
+    }) },
     UrlFetchApp: { fetch: () => ({ getResponseCode: () => 500, getContentText: () => '{}' }) },
     ContentService: { createTextOutput: (t) => ({ setMimeType: () => t }), MimeType: { JSON: 'json' } },
     Utilities: {
@@ -514,6 +529,86 @@ console.log('\n=== Conciliacion: la diferencia contra el banco queda registrada 
   g.ajustarSaldo_({ cuenta: 'banco_ampac', monto: '680000' });
   chk('cada conciliacion agrega una fila al historial',
       h._datos.length === antes + 1, h._datos.length);
+}
+
+console.log('\n=== El cache de saldos: rapido, pero NUNCA viejo ===');
+{
+  // El saldo se calcula leyendo la hoja de saldos, la de traslados y las 7 de
+  // pagos. Cada hoja es un viaje al servicio de Sheets, y de ahi salia la
+  // lentitud del arranque. El resultado se guarda un rato — pero un saldo
+  // viejo en una app de plata es peor que una lenta, asi que lo que importa es
+  // que TODO lo que cambia un saldo lo invalide.
+  const hojaPagos = (g) => g.SpreadsheetApp.getActiveSpreadsheet().getSheetByName('PAGOS REGISTRADOS');
+  const saldoAmpac = (g, forzar) =>
+    saldoDe(g.consultarSaldos_({ rol: 'admin', secciones: [] }, forzar), 'banco_ampac').saldo;
+
+  // 1) Sirve del cache: dos consultas seguidas no releen las hojas.
+  const g = montar([], [['01/01/2026 00:00', 'banco_ampac', 1000000]]);
+  chk('primera consulta calcula', saldoAmpac(g) === 1000000, saldoAmpac(g));
+  const lecturas1 = hojaPagos(g)._lecturas();
+  chk('la primera consulta SI leyo la hoja de pagos', lecturas1 > 0, lecturas1);
+  g.olvidarTodasLasHojas_();   // como si fuera otra peticion
+  saldoAmpac(g);
+  chk('la segunda consulta no vuelve a leer las hojas de pagos',
+      hojaPagos(g)._lecturas() === lecturas1, hojaPagos(g)._lecturas());
+
+  // 2) Registrar un PAGO invalida: si no, el usuario veria su plata sin gastar.
+  const g2 = montar([], [['01/01/2026 00:00', 'banco_ampac', 1000000]]);
+  chk('saldo inicial', saldoAmpac(g2) === 1000000, saldoAmpac(g2));
+  g2.registrarPago_({
+    tipo_factura: 'compra', empresa: 'AMPAC SAS', monto: '200000',
+    nombre_pago: 'x', proveedor: 'y', fecha_pago: '2026-09-17', archivos: []
+  });
+  chk('tras registrar un pago el saldo baja (el cache se invalido)',
+      saldoAmpac(g2) === 800000, saldoAmpac(g2));
+
+  // 3) Un TRASLADO invalida las dos cuentas que toca.
+  const g3 = montar([], [
+    ['01/01/2026 00:00', 'banco_ampac', 1000000],
+    ['01/01/2026 00:00', 'viaticos',     100000]
+  ]);
+  saldoAmpac(g3);   // deja algo cacheado
+  g3.registrarTraslado_({
+    origen: 'banco_ampac', destino: 'viaticos', monto: '300000',
+    fecha: '2026-09-17', realizado_por: 'nathan@ylevigroup.com',
+    archivos: [{ nombre: 'c.pdf', datos: 'x' }]
+  });
+  const tras = g3.consultarSaldos_({ rol: 'admin', secciones: [] });
+  chk('tras un traslado el banco baja',   saldoDe(tras, 'banco_ampac').saldo === 700000, saldoDe(tras, 'banco_ampac').saldo);
+  chk('y el fondo sube',                  saldoDe(tras, 'viaticos').saldo === 400000,    saldoDe(tras, 'viaticos').saldo);
+
+  // 4) Un AJUSTE de saldo invalida, y ademas se compara contra el valor REAL,
+  //    no contra una foto guardada en cache: si no, la conciliacion mentiria.
+  const g4 = montar(
+    [['02/01/2026 10:00', 'AMPAC SAS', 'compra', 300000]],
+    [['01/01/2026 00:00', 'banco_ampac', 1000000]]
+  );
+  saldoAmpac(g4);   // cachea 700000
+
+  // Y ahora el cache queda VIEJO: aparece un pago de 100000 que no paso por la
+  // app (lo cargo alguien a mano en la hoja). Es justo el caso que la
+  // conciliacion existe para detectar, asi que comparar contra la foto vieja
+  // daria una diferencia equivocada y la guardaria como si fuera buena.
+  hojaPagos(g4)._datos.push(
+    ['03/01/2026 10:00', 'AMPAC SAS', 'compra', 'quien', 'nombre', 'prov', '2026-01-01', 100000]);
+  g4.olvidarTodasLasHojas_();
+
+  const r4 = g4.ajustarSaldo_({ cuenta: 'banco_ampac', monto: '687000' });
+  chk('la conciliacion compara contra el calculo REAL, no contra el cache viejo',
+      r4.conciliacion.calculado === 600000, r4.conciliacion.calculado);
+  chk('y por eso la diferencia es la verdadera',
+      r4.conciliacion.diferencia === 87000, r4.conciliacion.diferencia);
+  chk('tras el ajuste el saldo es el nuevo', saldoAmpac(g4) === 687000, saldoAmpac(g4));
+
+  // 5) La salida para cuando alguien edita la hoja A MANO: forzar.
+  const g5 = montar([], [['01/01/2026 00:00', 'banco_ampac', 1000000]]);
+  saldoAmpac(g5);   // cachea 1.000.000
+  hojaPagos(g5)._datos.push(
+    ['02/01/2026 10:00', 'AMPAC SAS', 'compra', 'quien', 'nombre', 'prov', '2026-01-01', 400000]);
+  g5.olvidarTodasLasHojas_();
+  chk('sin forzar, sigue sirviendo lo calculado antes', saldoAmpac(g5) === 1000000, saldoAmpac(g5));
+  chk('el boton Actualizar (forzar) SI ve el cambio hecho a mano',
+      saldoAmpac(g5, true) === 600000, saldoAmpac(g5, true));
 }
 
 console.log('\n=== Quién puede VER cada saldo ===');

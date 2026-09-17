@@ -338,6 +338,9 @@ function registrarPago_(body) {
     'ID REGISTRO':    body.fecha_envio || new Date().toISOString()
   });
 
+  // Un pago cambia el saldo: lo calculado que hubiera guardado ya no vale.
+  olvidarSaldosCalculados_();
+
   // Los saldos nuevos viajan con la confirmación del pago: el navegador los
   // muestra sin pedir nada más. Todas las hojas ya se leyeron en esta petición.
   return { status: 'success', seccion: seccion, saldos: consultarSaldos_(ctx) };
@@ -1308,7 +1311,7 @@ function doPost(e) {
     if (body.action === 'registrar_usuario')    return respuestaJson_(registrarUsuario_(body));
     if (body.action === 'listar_usuarios')      return respuestaJson_(listarUsuarios_(body));
     if (body.action === 'guardar_usuario')      return respuestaJson_(guardarUsuario_(body));
-    if (body.action === 'consultar_saldos')     return respuestaJson_(consultarSaldos_(contextoDe_(body)));
+    if (body.action === 'consultar_saldos')     return respuestaJson_(consultarSaldos_(contextoDe_(body), body.forzar === true));
     if (body.action === 'ajustar_saldo')        return respuestaJson_(ajustarSaldo_(body));
     if (body.action === 'registrar_traslado')   return respuestaJson_(registrarTraslado_(body));
     if (body.action === 'consultar_traslados')  return respuestaJson_(consultarTraslados_(body));
@@ -1670,7 +1673,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-17-c · conciliacion del saldo';
+const REVISION_BACKEND = '2026-09-17-d · saldos en cache';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -2496,9 +2499,49 @@ function basesDeSaldo_() {
 }
 
 // Saldo actual de cada cuenta = base − pagos registrados DESPUÉS de esa base.
-function consultarSaldos_(ctx) {
-  const contexto = ctx || contextoDe_(null);
-  const bases    = basesDeSaldo_();
+// ─── El cálculo de saldos, guardado en caché ──────────────────────
+//
+// El saldo NO se guarda: se calcula cada vez, porque un número guardado puede
+// quedar desincronizado del banco para siempre si algo falla a mitad de camino.
+// Pero calcularlo obliga a leer la hoja de saldos, la de traslados y las 7 de
+// pagos — y cada hoja es un viaje al servicio de Sheets. Eso es lo que hace
+// lento el arranque.
+//
+// El resultado del cálculo sí se puede guardar un rato, porque solo cambia
+// cuando se registra un pago, un traslado o un ajuste de saldo — y esos tres
+// caminos lo invalidan explícitamente.
+//
+// ⚠️ Lo único que puede dejarlo viejo es que alguien edite la hoja A MANO.
+// Por eso el TTL es corto y el botón "Actualizar" fuerza el recálculo.
+// El caché es del SCRIPT, no de cada usuario: si alguien del equipo ya lo
+// calculó hace poco, el siguiente entra rápido.
+const CACHE_SALDOS = 'saldos_calculados_v1';
+const SEGUNDOS_CACHE_SALDOS = 600;
+
+function olvidarSaldosCalculados_() {
+  try { CacheService.getScriptCache().remove(CACHE_SALDOS); } catch (err) {}
+}
+
+function saldosCrudos_(forzar) {
+  const cache = CacheService.getScriptCache();
+  if (!forzar) {
+    try {
+      const guardado = cache.get(CACHE_SALDOS);
+      if (guardado) return JSON.parse(guardado);
+    } catch (err) { /* un caché ilegible no puede romper la consulta */ }
+  }
+  const crudos = calcularSaldosCrudos_();
+  try {
+    cache.put(CACHE_SALDOS, JSON.stringify(crudos), SEGUNDOS_CACHE_SALDOS);
+  } catch (err) { /* si no se puede guardar, igual devolvemos el cálculo */ }
+  return crudos;
+}
+
+// El cálculo completo, SIN filtrar por permisos: eso depende de quién pregunta
+// y no se puede cachear junto. Devuelve algo puramente JSON (sin objetos Date),
+// porque tiene que sobrevivir a ir y volver del caché.
+function calcularSaldosCrudos_() {
+  const bases = basesDeSaldo_();
 
   const acumulado = {};
   Object.keys(CUENTAS).forEach(c => {
@@ -2555,6 +2598,35 @@ function consultarSaldos_(ctx) {
     });
   });
 
+  const porCuenta = {};
+  Object.keys(CUENTAS).forEach(clave => {
+    const base = bases[clave] || null;
+    porCuenta[clave] = {
+      configurado: !!base,
+      base:        base ? base.monto : 0,
+      // Ya formateada: un Date no sobrevive al viaje por el caché.
+      desde:       base ? Utilities.formatDate(base.fecha, ZONA_HORARIA, 'dd/MM/yyyy HH:mm') : '',
+      concepto:    base ? base.concepto : '',
+      gastado:     acumulado[clave].gastado,
+      pagos:       acumulado[clave].pagos,
+      enviado:     acumulado[clave].enviado,
+      recibido:    acumulado[clave].recibido,
+      traslados:   acumulado[clave].traslados,
+      saldo:       base
+        ? base.monto - acumulado[clave].gastado - acumulado[clave].enviado + acumulado[clave].recibido
+        : 0
+    };
+  });
+
+  return { porCuenta: porCuenta, sinCuenta: sinCuenta };
+}
+
+// `forzar` salta el caché y recalcula. Lo usa el botón "Actualizar": es la
+// salida para cuando alguien tocó la hoja a mano.
+function consultarSaldos_(ctx, forzar) {
+  const contexto = ctx || contextoDe_(null);
+  const crudos   = saldosCrudos_(forzar === true);
+
   // Qué cuentas puede VER esta persona. Se filtra acá, en el servidor: si solo
   // se ocultaran en la pantalla, los saldos de las cuentas bancarias igual
   // viajarían al navegador de cualquier usuario.
@@ -2578,25 +2650,23 @@ function consultarSaldos_(ctx) {
   });
 
   const cuentas = visibles.map(clave => {
-    const cfg  = CUENTAS[clave];
-    const base = bases[clave] || null;
+    const cfg = CUENTAS[clave];
+    const c   = crudos.porCuenta[clave] || {};
     return {
       clave:       clave,
       etiqueta:    cfg.etiqueta,
       detalle:     cfg.detalle,
       grupo:       cfg.grupo,
-      configurado: !!base,
-      base:        base ? base.monto : 0,
-      desde:       base ? Utilities.formatDate(base.fecha, ZONA_HORARIA, 'dd/MM/yyyy HH:mm') : '',
-      concepto:    base ? base.concepto : '',
-      gastado:     acumulado[clave].gastado,
-      pagos:       acumulado[clave].pagos,
-      enviado:     acumulado[clave].enviado,
-      recibido:    acumulado[clave].recibido,
-      traslados:   acumulado[clave].traslados,
-      saldo:       base
-        ? base.monto - acumulado[clave].gastado - acumulado[clave].enviado + acumulado[clave].recibido
-        : 0
+      configurado: !!c.configurado,
+      base:        c.base      || 0,
+      desde:       c.desde     || '',
+      concepto:    c.concepto  || '',
+      gastado:     c.gastado   || 0,
+      pagos:       c.pagos     || 0,
+      enviado:     c.enviado   || 0,
+      recibido:    c.recibido  || 0,
+      traslados:   c.traslados || 0,
+      saldo:       c.saldo     || 0
     };
   });
 
@@ -2605,7 +2675,7 @@ function consultarSaldos_(ctx) {
     puedeEditar: esAdministrador,
     // Los registros sin cuenta asignada son información de cuadre global:
     // solo le sirve (y solo le corresponde) a un administrador.
-    sinCuenta:   esAdministrador ? sinCuenta : 0,
+    sinCuenta:   esAdministrador ? crudos.sinCuenta : 0,
     cuentas:     cuentas
   };
 }
@@ -2787,6 +2857,8 @@ function registrarTraslado_(body) {
     'REALIZADO POR':    autor.nombre + ' <' + autor.correo + '>'
   });
 
+  olvidarSaldosCalculados_();
+
   // Igual que al ajustar un saldo: los saldos nuevos vuelven en esta respuesta,
   // así el navegador no tiene que pedir todo otra vez.
   return { status: 'success', saldos: consultarSaldos_(ctx) };
@@ -2848,7 +2920,9 @@ function ajustarSaldo_(body) {
   // Solo tiene sentido si YA había un saldo base para esa cuenta. La primera
   // carga no se compara contra nada, y poner 0 ahí sería afirmar que todo
   // cuadraba — una mentira con forma de dato.
-  const antes      = consultarSaldos_(ctx).cuentas.filter(c => c.clave === cuenta)[0];
+  // Se fuerza el recálculo: comparar contra un valor guardado en caché sería
+  // comparar el banco contra una foto vieja, y la diferencia saldría mal.
+  const antes      = consultarSaldos_(ctx, true).cuentas.filter(c => c.clave === cuenta)[0];
   const habiaBase  = !!(antes && antes.configurado);
   const calculado  = habiaBase ? antes.saldo : '';
   const diferencia = habiaBase ? (monto - antes.saldo) : '';
@@ -2868,6 +2942,8 @@ function ajustarSaldo_(body) {
     'SALDO CALCULADO': calculado,
     'DIFERENCIA':      diferencia
   });
+
+  olvidarSaldosCalculados_();
 
   // Los saldos ya recalculados viajan en ESTA misma respuesta. Antes el
   // navegador tenía que hacer una segunda petición completa para refrescarlos,
