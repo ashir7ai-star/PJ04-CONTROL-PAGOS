@@ -1670,7 +1670,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-16-k · una lectura por hoja + medicion';
+const REVISION_BACKEND = '2026-09-16-l · fecha del traslado';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -2573,8 +2573,13 @@ function consultarSaldos_(ctx) {
 
 const NOMBRE_HOJA_TRASLADOS = 'TRASLADOS';
 const CARPETA_TRASLADOS     = 'PJ04 TRASLADOS';
+// FECHA es la fecha en que se hizo la TRANSFERENCIA, que es la que importa
+// para los saldos. FECHA REGISTRO es cuándo se cargó en el sistema, y puede ser
+// días después. Separarlas es lo que permite registrar un traslado viejo sin
+// mentir sobre ninguna de las dos cosas.
 const ENCABEZADOS_TRASLADOS = [
-  'FECHA', 'ORIGEN', 'DESTINO', 'MONTO', 'REGISTRADO POR', 'NOTA', 'URL COMPROBANTE'
+  'FECHA', 'ORIGEN', 'DESTINO', 'MONTO', 'REGISTRADO POR', 'NOTA', 'URL COMPROBANTE',
+  'FECHA REGISTRO'
 ];
 
 function hojaTraslados_() {
@@ -2589,8 +2594,24 @@ function hojaTraslados_() {
   return hoja;
 }
 
+// Agrega al final los encabezados que falten, sin tocar los datos.
+//
+// La hoja TRASLADOS se creó antes de que existiera 'FECHA REGISTRO'. Escribir
+// por posición en una hoja vieja pondría ese dato en una columna sin nombre, y
+// eso no da error: da una columna muda que nadie sabe leer.
+function asegurarColumnasTraslados_(hoja) {
+  const valores  = valoresDeHoja_(hoja);
+  const actuales = (valores[0] || []).map(h => String(h).trim());
+  const faltan   = ENCABEZADOS_TRASLADOS.filter(h => actuales.indexOf(h) === -1);
+  if (!faltan.length) return;
+
+  hoja.getRange(1, actuales.length + 1, 1, faltan.length)
+      .setValues([faltan]).setFontWeight('bold');
+  olvidarHoja_(hoja);
+}
+
 function trasladosTodos_() {
-  const valores = hojaTraslados_().getDataRange().getValues();
+  const valores = valoresDeHoja_(hojaTraslados_());
   if (valores.length < 2) return [];
   const enc = valores[0];
   const c = {
@@ -2605,7 +2626,9 @@ function trasladosTodos_() {
   return valores.slice(1)
     .filter(f => f.some(v => v !== ''))
     .map(f => ({
-      fechaTexto: String(f[c.fecha]),
+      // Formateada, no String(Date): una fecha real convertida con String da
+      // "Mon Aug 03 2026 00:00:00 GMT-0500", que no se puede mostrar.
+      fechaTexto: formatearValorDeCelda_('FECHA DE PAGO', f[c.fecha], null),
       fecha:      fechaHoraDeRegistro_(f[c.fecha]),
       origen:     String(f[c.origen] || '').trim(),
       destino:    String(f[c.destino] || '').trim(),
@@ -2639,19 +2662,40 @@ function registrarTraslado_(body) {
   const monto = montoANumero_(body.monto);
   if (!monto || monto <= 0) return { status: 'error', message: 'El monto tiene que ser mayor a cero.' };
 
+  // La fecha en que se hizo la transferencia. Puede ser anterior a hoy —hay
+  // traslados que se cargan días después— pero NO futura: una transferencia
+  // que todavía no ocurrió no se registra. Se valida acá y no solo en la
+  // pantalla, porque cualquiera puede llamar a esta URL directamente.
+  const fechaTraslado = fechaDeTextoISO_(body.fecha);
+  if (!(fechaTraslado instanceof Date)) {
+    return { status: 'error', message: 'Elegí la fecha en que se hizo la transferencia.' };
+  }
+  const limite = new Date();
+  limite.setDate(limite.getDate() + 1);
+  if (fechaTraslado.getTime() > limite.getTime()) {
+    return { status: 'error', message: 'La fecha del traslado no puede ser futura.' };
+  }
+
   if (!body.archivos || !body.archivos.length) {
     return { status: 'error', message: 'Adjuntá el comprobante de la transferencia.' };
   }
 
-  agregarFila_(hojaTraslados_(), [
-    new Date(),
-    origen,
-    destino,
-    monto,
-    ctx.nombre || ctx.correo || String(body.registrado_por || ''),
-    String(body.nota || ''),
-    subirArchivosACarpeta_(body.archivos, carpetaPorNombre_(CARPETA_TRASLADOS))
-  ]);
+  const hoja = hojaTraslados_();
+  // La hoja existía antes de que hubiera columna 'FECHA REGISTRO'. Sin esto la
+  // fila nueva escribiría ese dato en una columna sin encabezado: invisible
+  // para quien lea la hoja, y perdido para cualquier lectura por nombre.
+  asegurarColumnasTraslados_(hoja);
+
+  agregarFilaPorEncabezados_(hoja, {
+    'FECHA':            fechaTraslado,
+    'ORIGEN':           origen,
+    'DESTINO':          destino,
+    'MONTO':            monto,
+    'REGISTRADO POR':   ctx.nombre || ctx.correo || String(body.registrado_por || ''),
+    'NOTA':             String(body.nota || ''),
+    'URL COMPROBANTE':  subirArchivosACarpeta_(body.archivos, carpetaPorNombre_(CARPETA_TRASLADOS)),
+    'FECHA REGISTRO':   new Date()
+  });
 
   // Igual que al ajustar un saldo: los saldos nuevos vuelven en esta respuesta,
   // así el navegador no tiene que pedir todo otra vez.
@@ -2667,8 +2711,15 @@ function consultarTraslados_(body) {
     cuentas: Object.keys(CUENTAS).map(c => ({
       clave: c, etiqueta: CUENTAS[c].etiqueta, grupo: CUENTAS[c].grupo
     })),
-    // Del más reciente al más viejo: es el orden en que se quiere revisar.
-    traslados: trasladosTodos_().reverse().map(t => ({
+    // Del más reciente al más viejo POR FECHA DEL TRASLADO. Antes alcanzaba con
+    // invertir la hoja porque se registraba siempre en el momento; ahora se
+    // pueden cargar traslados viejos, así que el orden de la hoja es el de
+    // registro y ya no coincide con el cronológico.
+    traslados: trasladosTodos_().slice().sort((a, b) => {
+      const fa = a.fecha ? a.fecha.getTime() : 0;
+      const fb = b.fecha ? b.fecha.getTime() : 0;
+      return fb - fa;
+    }).map(t => ({
       fecha:   t.fechaTexto,
       origen:  (CUENTAS[t.origen]  || {}).etiqueta || t.origen,
       destino: (CUENTAS[t.destino] || {}).etiqueta || t.destino,

@@ -24,7 +24,16 @@ function hojaFalsa(nombre, filas) {
     getLastColumn: () => (datos[0] ? datos[0].length : 0),
     getRange: (f, c, nf, nc) => ({
       getValues: () => [datos[f - 1].slice(c - 1, c - 1 + (nc || 1))],
-      setValues: (v) => { v.forEach((fila, i) => { datos[f - 1 + i] = fila.slice(); }); return { setFontWeight: () => {} }; },
+      // setValues tiene que escribir A PARTIR de la columna pedida, no pisar la
+      // fila entera. Con la versión anterior, agregar una columna al final
+      // borraba todas las demás y la prueba daba un resultado inventado.
+      setValues: (v) => {
+        v.forEach((fila, i) => {
+          if (!datos[f - 1 + i]) datos[f - 1 + i] = [];
+          fila.forEach((valor, j) => { datos[f - 1 + i][c - 1 + j] = valor; });
+        });
+        return { setFontWeight: () => {} };
+      },
       setValue: (v) => { datos[f - 1][c - 1] = v; }
     }),
     appendRow: (fila) => datos.push(fila.slice()),
@@ -80,10 +89,16 @@ function montar(pagos, saldos, modoLogin, traslados) {
     UrlFetchApp: { fetch: () => ({ getResponseCode: () => 500, getContentText: () => '{}' }) },
     ContentService: { createTextOutput: (t) => ({ setMimeType: () => t }), MimeType: { JSON: 'json' } },
     Utilities: {
-      formatDate: (d) => {
+      // Tiene que RESPETAR el formato que se le pide. Un stub que devuelve
+      // siempre lo mismo hace que cualquier prueba sobre formatos de fecha pase
+      // sin comprobar nada — ya pasó antes en este proyecto.
+      formatDate: (d, z, f) => {
         const p = n => String(n).padStart(2, '0');
-        return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() +
-               ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+        const ymd = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+        const hm  = p(d.getHours()) + ':' + p(d.getMinutes());
+        if (f === 'yyyy-MM-dd')      return ymd;
+        if (f === 'yyyy-MM-dd HH:mm') return ymd + ' ' + hm;
+        return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + hm;
       },
       base64Encode: x => String(x), computeDigest: (a, b) => b,
       base64Decode: x => String(x),
@@ -229,11 +244,88 @@ console.log('\n=== Ajustar el saldo: permisos y validación ===');
 
   // Lo mismo al trasladar plata: el saldo cambia en las dos cuentas.
   const g4 = montar([], [['01/01/2026 08:00', 'banco_ampac', 1000000, '', 'admin']], 'off');
+  const hoy = new Date();
+  const hoyTxt = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') +
+                 '-' + String(hoy.getDate()).padStart(2, '0');
   const tras = g4.registrarTraslado_({
-    origen: 'banco_ampac', destino: 'viaticos', monto: 100000,
+    origen: 'banco_ampac', destino: 'viaticos', monto: 100000, fecha: hoyTxt,
     archivos: [{ nombre: 'c.pdf', contenido: 'x' }]
   });
   chk('el traslado tambien devuelve los saldos', !!tras.saldos && tras.saldos.status === 'success', tras.message);
+}
+
+console.log('\n=== La fecha del traslado se guarda aparte de cuando se registro ===');
+{
+  // Son dos cosas distintas y las dos importan: la transferencia pudo hacerse
+  // el 3 de agosto y cargarse hoy. Para los saldos manda la del banco; la de
+  // registro queda como rastro de auditoria.
+  const g = montar([], [], 'off');
+  g.registrarTraslado_({
+    origen: 'banco_ampac', destino: 'viaticos', monto: 100000,
+    fecha: '2026-08-03', nota: 'viejo',
+    archivos: [{ nombre: 'c.pdf', datos: 'x' }]
+  });
+
+  const hoja = g.SpreadsheetApp.getActiveSpreadsheet().getSheetByName('TRASLADOS');
+  const enc  = hoja._datos[0].map(String);
+  const fila = hoja._datos[hoja._datos.length - 1];
+
+  chk('la hoja tiene columna FECHA REGISTRO', enc.indexOf('FECHA REGISTRO') !== -1, enc);
+
+  const fTraslado = fila[enc.indexOf('FECHA')];
+  const fRegistro = fila[enc.indexOf('FECHA REGISTRO')];
+
+  // Guardarla como fecha REAL y no como texto es lo que evita que vuelva el
+  // problema de dia/mes que costo todo el trabajo anterior.
+  chk('la fecha del traslado se guarda como fecha REAL',
+      Object.prototype.toString.call(fTraslado) === '[object Date]', String(fTraslado));
+  chk('y es la que eligio el usuario, no la de hoy',
+      fTraslado.getFullYear() === 2026 && fTraslado.getMonth() === 7 && fTraslado.getDate() === 3,
+      String(fTraslado));
+  chk('la fecha de registro es la de hoy',
+      Object.prototype.toString.call(fRegistro) === '[object Date]' &&
+      Math.abs(fRegistro.getTime() - Date.now()) < 60000, String(fRegistro));
+
+  // Y la consecuencia que importa: un traslado anterior al saldo base NO
+  // descuenta, porque ese saldo ya lo refleja. Si descontara, la plata se
+  // restaria dos veces y el saldo no cuadraria con el banco.
+  const g2 = montar([], [['10/09/2026 08:00', 'banco_ampac', 1000000, 'base', 'admin']], 'off');
+  g2.registrarTraslado_({
+    origen: 'banco_ampac', destino: 'viaticos', monto: 100000,
+    fecha: '2026-08-03', archivos: [{ nombre: 'c.pdf', datos: 'x' }]
+  });
+  const cuentas = g2.consultarSaldos_({ rol: 'admin', secciones: [] }).cuentas;
+  const banco = cuentas.filter(c => c.clave === 'banco_ampac')[0];
+  chk('un traslado anterior al saldo base no se descuenta dos veces',
+      banco.saldo === 1000000, banco && banco.saldo);
+}
+
+console.log('\n=== La lista de traslados: orden y formato ===');
+{
+  // Antes alcanzaba con invertir la hoja, porque un traslado se registraba
+  // siempre en el momento. Ahora se pueden cargar traslados viejos, asi que el
+  // orden de la hoja es el de REGISTRO y ya no coincide con el cronologico.
+  const g = montar([], [], 'off');
+  const alta = (fecha, monto) => g.registrarTraslado_({
+    origen: 'banco_ampac', destino: 'viaticos', monto: String(monto),
+    fecha: fecha, archivos: [{ nombre: 'c.pdf', datos: 'x' }]
+  });
+
+  alta('2026-09-10', 100);   // se registra primero, pero es el del medio
+  alta('2026-08-03', 200);   // se registra segundo, y es el mas viejo
+  alta('2026-09-15', 300);   // se registra tercero, y es el mas reciente
+
+  const lista = g.consultarTraslados_({ rol: 'admin' }).traslados;
+  chk('la lista sale del mas reciente al mas viejo POR FECHA DEL TRASLADO',
+      JSON.stringify(lista.map(t => t.monto)) === JSON.stringify([300, 100, 200]),
+      JSON.stringify(lista.map(t => t.monto)));
+
+  // String(unaFecha) daria "Mon Aug 03 2026 00:00:00 GMT-0500", ilegible.
+  chk('la fecha se muestra en formato legible, no como objeto Date',
+      lista[2].fecha === '2026-08-03', lista[2].fecha);
+  chk('ninguna fecha sale como texto crudo de Date',
+      lista.every(t => String(t.fecha).indexOf('GMT') === -1),
+      JSON.stringify(lista.map(t => t.fecha)));
 }
 
 console.log('\n=== Quién puede VER cada saldo ===');
@@ -337,10 +429,24 @@ console.log('\n=== Traslados: la regla de corte por fecha ===');
 console.log('\n=== Traslados: qué se rechaza ===');
 {
   const g = montar([], [], 'off');
-  const ok = { origen: 'banco_ampac', destino: 'viaticos', monto: '500000', archivos: [{ nombre: 'c.pdf', datos: 'x' }] };
+  const hoyISO = (d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
+                       '-' + String(d.getDate()).padStart(2, '0'))(new Date());
+  const ok = { origen: 'banco_ampac', destino: 'viaticos', monto: '500000',
+               fecha: hoyISO, archivos: [{ nombre: 'c.pdf', datos: 'x' }] };
   const con = (cambios) => g.registrarTraslado_(Object.assign({}, ok, cambios));
 
   chk('un traslado válido se acepta', g.registrarTraslado_(ok).status === 'success');
+
+  // La fecha del traslado: obligatoria, nunca futura, y puede ser anterior.
+  chk('sin fecha se rechaza',    con({ fecha: '' }).status === 'error');
+  chk('fecha ilegible se rechaza', con({ fecha: 'ayer' }).status === 'error');
+
+  const manana = new Date(); manana.setDate(manana.getDate() + 5);
+  const mananaISO = manana.getFullYear() + '-' + String(manana.getMonth() + 1).padStart(2, '0') +
+                    '-' + String(manana.getDate()).padStart(2, '0');
+  chk('fecha futura se rechaza', con({ fecha: mananaISO }).status === 'error');
+  chk('una fecha anterior SI se acepta (traslado cargado dias despues)',
+      con({ fecha: '2026-08-03' }).status === 'success');
   chk('sin comprobante se rechaza',        con({ archivos: [] }).status === 'error');
   chk('monto cero se rechaza',             con({ monto: '0' }).status === 'error');
   chk('monto negativo se rechaza',         con({ monto: '-100' }).status === 'error');

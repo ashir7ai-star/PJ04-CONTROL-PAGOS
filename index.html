@@ -2920,13 +2920,21 @@
 
         <div class="field-row">
           <div class="field">
+            <!-- La fecha en que se hizo la transferencia, no la de hoy: hay
+                 traslados que se registran días después. Abre con la fecha de
+                 hoy ya puesta, que es el caso normal. -->
+            <label for="tFecha">Fecha del traslado <span class="req">*</span></label>
+            <input type="date" id="tFecha" />
+          </div>
+          <div class="field">
             <label for="tMonto">Monto <span class="req">*</span></label>
             <input type="text" id="tMonto" placeholder="$ 0" autocomplete="off" inputmode="numeric" />
           </div>
-          <div class="field">
-            <label for="tNota">Nota (opcional)</label>
-            <input type="text" id="tNota" placeholder="Ej: viáticos cuadrilla norte" />
-          </div>
+        </div>
+
+        <div class="field">
+          <label for="tNota">Nota (opcional)</label>
+          <input type="text" id="tNota" placeholder="Ej: viáticos cuadrilla norte" />
         </div>
       </div>
 
@@ -5551,13 +5559,34 @@
     const uploadTraslado = initUploadZone('tZona', 'tArchivo', 'tPreview');
     initFormateadorValor('tMonto');
 
+    // Abre con la fecha de hoy, que es el caso normal, y deja elegir una
+    // anterior para los traslados que se registran días después. `maxDate`
+    // impide el futuro: una transferencia que todavía no ocurrió no se registra.
+    const fechaPickerTraslado = flatpickr('#tFecha', {
+      locale: 'es',
+      dateFormat: 'd/m/Y',
+      defaultDate: 'today',
+      maxDate: 'today',
+      disableMobile: true,
+      allowInput: false,
+    });
+
     document.getElementById('btnTraslado').addEventListener('click', async () => {
       const origen  = document.getElementById('tOrigen').value;
       const destino = document.getElementById('tDestino').value;
       const monto   = document.getElementById('tMonto').value.replace(/\./g, '').trim();
+      // Se manda en año-mes-día, nunca el texto que se ve en pantalla: es el
+      // único formato que no se puede leer de dos maneras.
+      const fecha   = fechaPickerTraslado.selectedDates[0]
+        ? fechaPickerTraslado.formatDate(fechaPickerTraslado.selectedDates[0], 'Y-m-d')
+        : '';
 
       if (!origen || !destino) {
         showToast('error', 'Faltan datos', 'Elegí de qué cuenta sale y a cuál entra.');
+        return;
+      }
+      if (!fecha) {
+        showToast('error', 'Falta la fecha', 'Elegí la fecha en que se hizo la transferencia.');
         return;
       }
       if (!monto || isNaN(Number(monto)) || Number(monto) <= 0) {
@@ -5583,6 +5612,7 @@
         const r = await postAppsScript({
           action: 'registrar_traslado',
           origen: origen, destino: destino, monto: monto,
+          fecha: fecha,
           nota: document.getElementById('tNota').value.trim(),
           archivos: archivos
         });
@@ -5593,6 +5623,8 @@
           document.getElementById('tDestino').selectedIndex = 0;
           document.getElementById('tMonto').value = '';
           document.getElementById('tNota').value  = '';
+          // Vuelve a hoy, no a vacío: el siguiente traslado casi siempre es de hoy.
+          fechaPickerTraslado.setDate(new Date(), false);
           uploadTraslado.reset();
           cargarTraslados();
           cargarSaldos(true, r.saldos);   // ya recalculado por el servidor

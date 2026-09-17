@@ -34,7 +34,7 @@ Mantenimiento desde el editor: `PASO_1_VER_que_se_va_a_corregir` → `PASO_2_COR
 
 Incluye todo lo de `v1.4-sesiones`: sesiones propias de 30 días, Traslados, Compra Materiales, saldos por cuenta, privacidad de solicitudes y arranque en una sola petición.
 
-`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-16-j`. `sw.js` → `control-pagos-v72`. `MODO_LOGIN` = `'estricto'`.
+`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-16-j`. `sw.js` → `control-pagos-v73`. `MODO_LOGIN` = `'estricto'`.
 
 **Pendientes:** cargar los cuatro saldos (después de registrar los comprobantes atrasados), mudar el dominio a `pagos.energy-millennium.com` (bloqueado por acceso a Wix), y el botón "Agregar factura" de Consultar Pagos, que nunca se construyó.
 
@@ -469,6 +469,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-16**: 📅 **Traslados: fecha de la transferencia, separada de la de registro.** Hay traslados que se cargan dias despues de hacerse. El campo abre con **hoy** (el caso normal) y permite elegir una fecha anterior; el futuro se rechaza **en el servidor**, no solo en la pantalla.
+  - **Son dos fechas y las dos importan.** `FECHA` pasa a ser la de la transferencia —la que manda para los saldos— y se agrego **`FECHA REGISTRO`** con el rastro de cuando se cargo. `asegurarColumnasTraslados_` agrega el encabezado que falta en la hoja que ya existia: sin eso, la fila nueva escribiria ese dato en una columna **sin nombre**, invisible para quien lea la hoja.
+  - Se guarda como **fecha REAL**, nunca texto, y el navegador manda `Y-m-d`. Es lo que evita que vuelva el problema de dia/mes.
+  - **Dos efectos secundarios que habia que arreglar**, y que no eran obvios: `String(unaFechaReal)` da `"Mon Aug 03 2026 00:00:00 GMT-0500"`, ilegible; y la lista se ordenaba invirtiendo la hoja, lo cual solo funcionaba mientras registro y traslado fueran el mismo momento. Ahora ordena **por fecha del traslado**.
+  - Un traslado anterior al saldo base **no descuenta**: ese saldo ya lo refleja. Descontarlo restaria la plata dos veces.
+  - **17 comprobaciones nuevas y 7 mutaciones verificadas.** Aparecieron **dos simulaciones infieles** que hacian pasar pruebas sin comprobar nada: `setValues` de la hoja falsa **ignoraba la columna de inicio** y pisaba la fila entera, y el stub de `Utilities.formatDate` **ignoraba el formato pedido**. Las dos corregidas. `sw.js` -> `control-pagos-v73`. `REVISION_BACKEND` -> `2026-09-16-l`.
+
 - **2026-09-16**: ⚡ **Rendimiento: cada hoja se lee UNA vez por peticion.** El usuario reporto lentitud general — editar un saldo fallaba tras ~30 s, ver usuarios tardaba, sacar un reporte tardaba. La causa no era una funcion lenta sino **viajes repetidos al servicio de Sheets**: cada `getDataRange().getValues()` cuesta 100-400 ms y habia **17 repartidos** por el codigo.
   - **Lo que pagaba TODA peticion:** leer la hoja USUARIOS entera solo para saber quien llamaba (`usuariosTodos_` no tenia cache), mas la hoja SESIONES, mas —al consultar saldos— las 7 hojas de pagos completas. Diez viajes o mas por peticion.
   - **Arreglo 1 — memo por peticion** (`valoresDeHoja_`): la misma hoja se lee una sola vez. Escribir invalida (`agregarFila_` / `escribirCelda_` / `escribirRango_` hacen las dos cosas juntas, para que nadie agregue una escritura y se olvide de invalidar — ese error **no da error**, da datos viejos). `doPost` limpia al entrar, asi que no hay forma de servir datos de una peticion anterior.
