@@ -24,19 +24,25 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
-**2026-09-16** — ✅ **VERSIÓN ESTABLE** (tag `v1.6-rendimiento`). **La app dejó de ser lenta** y los traslados registran qué pasó de verdad.
+**2026-09-17** — ✅ **VERSIÓN ESTABLE** (tag `v1.7-conciliacion`). Confirmada por el usuario probando un traslado real.
 
-**Rendimiento.** Cada hoja se lee **una sola vez por petición** (`valoresDeHoja_`). Antes TODA petición leía la hoja USUARIOS entera solo para saber quién llamaba, más SESIONES, más —al ver saldos— las 7 hojas de pagos: diez viajes o más al servicio de Sheets, a 100-400 ms cada uno. Además, guardar un saldo disparaba una **segunda petición completa**; ahora los saldos recalculados vuelven en la misma respuesta. Toda respuesta trae `ms` y `hojasLeidas`, y Configuración los muestra.
+**Los saldos cuadran de verdad.** Se corrigió una **regresión propia**: al permitir elegir la fecha del traslado, esa fecha pasó a ser un día a las 00:00 y los traslados del mismo día **no se contaban en ningún lado**. `momentoDeTraslado_` usa ahora el instante del registro cuando el traslado se cargó el mismo día, y el final del día cuando es retroactivo — eso suma lo que debe sumar **sin contar dos veces** cuando el saldo real se carga después.
 
-**Traslados.** Fecha de la transferencia (abre en hoy, admite anteriores, rechaza futuras) separada de `FECHA REGISTRO`; y `REALIZADO POR` —qué administrador la hizo— separado de `REGISTRADO POR`, que sale de la sesión verificada. El autor se valida contra los admins activos de la hoja, no es texto libre.
+**Conciliación con el banco.** Al cargar el saldo real, la diferencia contra lo calculado queda **registrada** en SALDOS (`SALDO CALCULADO`, `DIFERENCIA`) en vez de perderse. Ahí aparecen el 4x1000, las comisiones y cualquier cobro que el sistema no ve. El modal la muestra **en vivo** mientras se escribe. La primera carga no inventa una conciliación: `DIFERENCIA` queda vacía, no en 0.
 
-**Errores visibles.** Los `catch` mostraban "Error de conexión" y descartaban el mensaje real; ahora `mensajeDeError` distingue tiempo agotado, falta de internet y error del servidor.
+**Compra Materiales descuenta de Viáticos** (ajuste **temporal** pedido por el usuario). Un solo interruptor para revertirlo: `CUENTA_COMPRA_MATERIALES`.
 
-Incluye todo lo de `v1.5-fechas`: las 35 fechas corregidas, las 74 celdas pasadas a fechas reales, y el formato decidido por columna con evidencia.
+**Traslados completos:** fecha de la transferencia separada de la de registro, y `REALIZADO POR` —qué administrador la hizo, validado contra los admins activos— separado de `REGISTRADO POR`, que sale de la sesión verificada.
 
-⚠️ **Pendiente de confirmar en producción:** al momento de marcar este tag, el usuario todavía no había reportado los tiempos reales tras redesplegar. Las pruebas pasan y las mutaciones se detectan, pero **el número de `ms` en Configuración es lo que lo confirma**.
+**Velocidad:** una lectura por hoja y por petición, el cálculo de saldos en caché (10 min, invalidado por pago/traslado/ajuste, y el botón "Actualizar" fuerza el recálculo), y las escrituras devuelven los saldos ya recalculados. Toda respuesta informa `ms` y `hojasLeidas`, visibles en Configuración.
 
-`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-16-m`. `sw.js` → `control-pagos-v77`. `MODO_LOGIN` = `'estricto'`.
+**Atajo a la hoja de cálculo** en Consultar Pagos, solo para administradores y con la dirección enviada por el servidor — nunca escrita en el `index.html`, que es público.
+
+⚠️ **Sigue sin medirse:** el usuario todavía no reportó el `ms` real. Si ese número es bajo y la espera sigue siendo larga, el tiempo se va en el **viaje** a Apps Script, no en leer hojas.
+
+📌 **En gestión del usuario:** conexión con Bancolombia (Cash Management → Extractos Especiales vía H2H, o API Market) para llenar la columna `DIFERENCIA` automáticamente.
+
+`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-17-e`. `sw.js` → `control-pagos-v77`. `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
