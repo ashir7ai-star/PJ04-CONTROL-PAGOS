@@ -24,23 +24,19 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
-**2026-09-16** — ✅ **VERSIÓN ESTABLE** (tag `v1.5-fechas`). **Las fechas quedaron correctas y no pueden volver a ensuciarse.** Confirmado por el usuario contra su Excel de viáticos.
+**2026-09-16** — ✅ **VERSIÓN ESTABLE** (tag `v1.6-rendimiento`). **La app dejó de ser lenta** y los traslados registran qué pasó de verdad.
 
-Lo que se arregló, sobre datos reales: **35 fechas de registro mal convertidas** (27 que habían quedado en el futuro y 8 que delató su fecha de pago) y **74 celdas de texto pasadas a fechas reales**. La hoja quedó con **228 celdas de fecha, todas reales**: cero texto, cero `Invalid` en la Tabla.
+**Rendimiento.** Cada hoja se lee **una sola vez por petición** (`valoresDeHoja_`). Antes TODA petición leía la hoja USUARIOS entera solo para saber quién llamaba, más SESIONES, más —al ver saldos— las 7 hojas de pagos: diez viajes o más al servicio de Sheets, a 100-400 ms cada uno. Además, guardar un saldo disparaba una **segunda petición completa**; ahora los saldos recalculados vuelven en la misma respuesta. Toda respuesta trae `ms` y `hojasLeidas`, y Configuración los muestra.
 
-La causa raíz era que el sistema **guardaba las fechas como texto**. Ya no: se escriben como fechas reales (`new Date()` y `fechaDeTextoISO_`), y al leer, el formato se decide **por columna con evidencia** (`inferirFormatosDeColumna_`), nunca celda por celda.
+**Traslados.** Fecha de la transferencia (abre en hoy, admite anteriores, rechaza futuras) separada de `FECHA REGISTRO`; y `REALIZADO POR` —qué administrador la hizo— separado de `REGISTRADO POR`, que sale de la sesión verificada. El autor se valida contra los admins activos de la hoja, no es texto libre.
 
-Mantenimiento desde el editor: `PASO_1_VER_que_se_va_a_corregir` → `PASO_2_CORREGIR_las_fechas` → `PASO_3_PASAR_todo_a_fechas_reales`. Sin parámetros, porque el botón Ejecutar no puede pasarlos.
+**Errores visibles.** Los `catch` mostraban "Error de conexión" y descartaban el mensaje real; ahora `mensajeDeError` distingue tiempo agotado, falta de internet y error del servidor.
 
-Incluye todo lo de `v1.4-sesiones`: sesiones propias de 30 días, Traslados, Compra Materiales, saldos por cuenta, privacidad de solicitudes y arranque en una sola petición.
+Incluye todo lo de `v1.5-fechas`: las 35 fechas corregidas, las 74 celdas pasadas a fechas reales, y el formato decidido por columna con evidencia.
 
-`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-16-j`. `sw.js` → `control-pagos-v74`. `MODO_LOGIN` = `'estricto'`.
+⚠️ **Pendiente de confirmar en producción:** al momento de marcar este tag, el usuario todavía no había reportado los tiempos reales tras redesplegar. Las pruebas pasan y las mutaciones se detectan, pero **el número de `ms` en Configuración es lo que lo confirma**.
 
-**Pendientes:** cargar los cuatro saldos (después de registrar los comprobantes atrasados), mudar el dominio a `pagos.energy-millennium.com` (bloqueado por acceso a Wix), y el botón "Agregar factura" de Consultar Pagos, que nunca se construyó.
-
-**2026-09-16** — ✅ Versión estable anterior (tag `v1.2-saldos`). Incluye la **Fase 2 operativa** (login con Google, hoja `USUARIOS` con roles ya cargados a mano por el usuario, sección Configuración, sesión que se recuerda entre recargas) y el **panel de saldos** por cuenta. `MODO_LOGIN` sigue en **`'suave'`**: quien inicia sesión ve solo lo suyo, pero quien no la inicia todavía entra. Pasar a `'estricto'` cuando el usuario lo indique. Pendientes anotados arriba: **cargar los saldos** (después de meter los comprobantes atrasados) y **mudar el dominio** (bloqueado por acceso a Wix). `sw.js` → `control-pagos-v44`.
-
-**2026-09-15** — ✅ **VERSIÓN ESTABLE, Fase 1 completa y en producción** (tag de git `v1.0-fase1`). n8n quedó fuera del sistema por completo: "Nuevo Pago" y "Consultar Pagos" usan el mismo **Google Apps Script Web App** que ya usaba Aprobaciones. Cada tipo de pago tiene **su propia hoja en el Sheet y su propia carpeta en Drive**, con dos tipos nuevos (**Seguridad Social** y **Pago Nómina**). La migración de datos históricos **ya se ejecutó y se concilió**. `sw.js` → `control-pagos-v32`. Lo siguiente es la **Fase 2: login con Google + hoja `USUARIOS`**.
+`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-16-m`. `sw.js` → `control-pagos-v74`. `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
