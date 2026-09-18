@@ -1,0 +1,35 @@
+# Qué NO entra en la imagen del contenedor.
+
+# ⚠️ CREDENCIALES. Si esto se copiara a la imagen, la clave viajaría dentro de
+# ella y quedaría en cualquier registro donde se guarde. En EasyPanel las
+# credenciales van por variable de entorno, nunca en la imagen.
+credenciales*.json
+*-credenciales.json
+service-account*.json
+.env
+.env.*
+
+# node_modules del equipo de desarrollo: son binarios compilados para Windows
+# y romperían dentro del contenedor, que es Linux. Las dependencias se instalan
+# adentro con npm.
+node_modules
+servidor/node_modules
+
+# La app que ve el usuario se sirve desde GitHub Pages, no desde acá.
+index.html
+index.stable.html
+sw.js
+manifest.json
+icons
+
+# Historia y documentación: no aportan a la imagen y la hacen más pesada.
+.git
+.github
+.claude
+*.md
+CONTEXT.md
+CLAUDE.md
+
+# Las pruebas corren antes de desplegar, no dentro del contenedor.
+prueba-*.js
+servidor/prueba-*.js
