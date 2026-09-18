@@ -471,6 +471,24 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-18**: 🚀 **Paso 2.2 — el servidor HTTP anda, medido contra las hojas REALES.** Pipeline completo: leer hojas → ejecutar la logica de `apps-script.gs` → responder JSON.
+
+  | | Apps Script | pj04-pagos-api |
+  |---|---|---|
+  | Peticion tipica | 2.100 – 5.100 ms | **76 – 81 ms** |
+  | Peor caso | **33.810 ms** | 983 ms |
+  | Primera peticion (arranque en frio) | — | 2.248 ms |
+
+  - **26 a 400 veces mas rapido**, y sobre todo **estable**: 76/79/81 ms, no el ir y venir de 0,6 a 32 s.
+  - **Mismo contrato que Apps Script** (POST con `{action}`), asi que el `index.html` solo cambia una constante y **se puede volver atras al instante**.
+  - **`servidor.js`** — dos decisiones que importan:
+    1. **Foto de hojas con vida corta (15 s).** Traerla cuesta ~600 ms; guardarla hace que varias consultas seguidas no la vuelvan a pedir (de ahi los 80 ms). El riesgo de datos viejos se acota por los dos lados: vive poco, y **toda accion que escribe la tira y relee**. Solo una edicion hecha a mano en la hoja puede quedar desactualizada unos segundos.
+    2. **CORS con lista de origenes**, no `*`. Un `*` funcionaria igual, pero dejaria la API abierta a cualquier pagina que quisiera usarla desde el navegador de alguien con sesion abierta.
+  - **`escribir.js`** — aplica los cambios anotados. ⚠️ **El orden no se puede reordenar por eficiencia**: si se borraron filas y despues se escribio por numero de fila, cambiar el orden escribe en la fila equivocada — sin fallar. Las escrituras contiguas se agrupan, pero un borrado o una hoja nueva **cortan el grupo**. Usa `USER_ENTERED` para que las fechas queden como **fechas reales**, no como texto: es lo que costo una jornada conseguir.
+  - **Las escrituras se aplican al final**, cuando la logica ya termino sin errores. Si algo falla a mitad de camino, no se escribe nada y la hoja **no queda a medias** — algo que Apps Script no garantizaba.
+  - **`Dockerfile`** listo para EasyPanel: Alpine, sin usuario root, y las dependencias en una capa aparte para que un cambio de codigo no vuelva a bajar todo.
+  - **17 comprobaciones nuevas** en `prueba-escribir.js` (rangos A1 — la columna 27 es AA, no `[` —, formato de fechas y **orden de operaciones** con un cliente simulado). Total en `servidor/`: **74**, con `npm run prueba`.
+
 - **2026-09-18**: ✅ **Paso 2.1 — la logica contable real YA CORRE sobre el servidor propio.** `apps-script.gs` se carga **sin modificar** sobre un entorno de Node y calcula lo mismo. **57 comprobaciones nuevas**, en `servidor/` (`npm run prueba`).
   - **`adaptador-hojas.js`** — el truco central: `apps-script.gs` lee las hojas de forma **sincrona** y la API de Sheets es **asincrona**. En vez de pelear con eso se cambia el momento: se trae una **foto** de todas las hojas ANTES de ejecutar la logica, esta trabaja en memoria, y las escrituras se anotan y se aplican DESPUES. Resultado: **exactamente 2 llamadas HTTP por peticion** (una para leer, otra para escribir), sin importar cuantas veces la logica toque las hojas.
     - Las escrituras se aplican **tambien a la foto, en el acto**: si no, una funcion que escribe y relee veria datos viejos — y eso no da error, da un numero equivocado.

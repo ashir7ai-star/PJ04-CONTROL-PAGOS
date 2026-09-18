@@ -13,44 +13,7 @@ const { google } = require('googleapis');
 const ALCANCE_LECTURA  = 'https://www.googleapis.com/auth/spreadsheets.readonly';
 const ALCANCE_ESCRITURA = 'https://www.googleapis.com/auth/spreadsheets';
 
-// Lee la clave de la cuenta de servicio del entorno.
-//
-// Se aceptan dos formas porque los hosts difieren: EasyPanel es más cómodo con
-// el JSON pegado en una variable, y en local es más cómodo un archivo.
-function credenciales() {
-  const inline = process.env.GOOGLE_CREDENCIALES_JSON;
-  if (inline && inline.trim()) {
-    try {
-      return JSON.parse(inline);
-    } catch (err) {
-      throw new Error(
-        'GOOGLE_CREDENCIALES_JSON no es un JSON válido. Si lo pegaste en el panel, ' +
-        'revisá que esté completo y en una sola variable.'
-      );
-    }
-  }
-
-  const ruta = process.env.GOOGLE_CREDENCIALES_ARCHIVO;
-  if (ruta && ruta.trim()) {
-    // require() resuelve rutas relativas contra ESTE archivo, no contra donde
-    // se ejecutó el comando: se normaliza para que ambas formas funcionen.
-    const path = require('path');
-    return require(path.resolve(process.cwd(), ruta));
-  }
-
-  throw new Error(
-    'Faltan las credenciales. Definí GOOGLE_CREDENCIALES_JSON (el contenido del ' +
-    'archivo) o GOOGLE_CREDENCIALES_ARCHIVO (la ruta al archivo).'
-  );
-}
-
-function idDocumento() {
-  const id = process.env.SHEETS_ID;
-  if (!id || !id.trim()) {
-    throw new Error('Falta SHEETS_ID: el identificador del documento de Google Sheets.');
-  }
-  return id.trim();
-}
+const { credenciales, idDocumento } = require('./credenciales');
 
 let clienteCache = null;
 
