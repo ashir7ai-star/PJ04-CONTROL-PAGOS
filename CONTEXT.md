@@ -471,6 +471,18 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-18**: ✅✅ **El backend propio hace TODO lo que hacia Apps Script, verificado en EasyPanel.**
+  ```
+  GET /diagnostico
+  hojas   → ok, 12 pestanas
+  drive   → ok, encuentra las carpetas
+  correo  → ok, puede enviar · NO puede leer la bandeja
+  ```
+  - **`/diagnostico` comprueba las tres capacidades contra los servicios REALES** y no devuelve ningun secreto. Existe porque sin el, una credencial mal pegada se descubria recien cuando alguien intentaba registrar un pago — y ahi ya es problema del usuario, no aviso nuestro. Sirve cada vez que se toque una credencial.
+  - **Credenciales en produccion:** cuenta de servicio para las hojas, OAuth de `contabilidad@energy-millennium.com` para Drive y correo, carpeta madre `FACTURAS CONTROL DE PAGOS`.
+  - 🔑 **Archivos sensibles en la carpeta del proyecto, todos fuera de git:** `credenciales.json`, `oauth-drive.json`, `token-drive.json`, `credenciales-una-linea.txt`, `variables-easypanel.txt`. Este ultimo tiene **las dos credenciales completas** y es el que se pega en Environment.
+  - ⚠️ **Windows agrega una segunda extension al renombrar** (`credenciales.json.json`, `oauth-drive.json.json`). Paso dos veces. Si un archivo "no aparece", es lo primero a mirar.
+
 - **2026-09-18**: ✉️ **Correo listo: el backend propio ya hace TODO lo que hacia Apps Script.** 124 comprobaciones en `servidor/`.
   - **Gmail API con la MISMA autorizacion de Drive**, sumando el permiso `gmail.send` — que **solo permite enviar**, no leer la bandeja. Hay que **volver a correr `autorizar-drive.js`** una vez para que incluya ese permiso.
   - 🔄 **Cambio de comportamiento deliberado: los correos salen DESPUES de responderle al usuario.** En Apps Script, `MailApp.sendEmail` frenaba la ejecucion hasta que el correo saliera. Ahora se juntan y se mandan al final.
