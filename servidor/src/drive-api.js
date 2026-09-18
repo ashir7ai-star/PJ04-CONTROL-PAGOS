@@ -10,17 +10,55 @@
 // distingue "no existe" de "no tengo acceso" y avisa distinto.
 
 const { google } = require('googleapis');
-const { credenciales } = require('./credenciales');
+
+// ─── Por qué Drive NO usa la cuenta de servicio ───────────────────────────
+//
+// Google ya no permite que una cuenta de servicio sea dueña de archivos en un
+// Drive personal: "Service Accounts do not have storage quota". Puede buscar y
+// organizar, pero no crear. Se comprobó en la práctica: encontró las 8
+// carpetas sin problema y la subida falló.
+//
+// La salida es actuar EN NOMBRE de una persona, con una autorización que ella
+// misma otorgó (ver `autorizar-drive.js`). Los comprobantes quedan en las
+// mismas carpetas y con el mismo dueño que hoy.
+//
+// Las hojas SÍ siguen usando la cuenta de servicio: ahí no hay que crear
+// archivos nuevos, solo leer y escribir en uno que ya existe.
+function autorizacion() {
+  const inline = process.env.DRIVE_TOKEN_JSON;
+  if (inline && inline.trim()) {
+    try { return JSON.parse(inline); }
+    catch (err) { throw new Error('DRIVE_TOKEN_JSON no es un JSON válido.'); }
+  }
+
+  const ruta = process.env.DRIVE_TOKEN_ARCHIVO;
+  if (ruta && ruta.trim()) {
+    const path = require('path');
+    return require(path.resolve(process.cwd(), ruta));
+  }
+
+  throw new Error(
+    'Falta la autorización de Drive. Definí DRIVE_TOKEN_JSON (el contenido de ' +
+    'token-drive.json) o DRIVE_TOKEN_ARCHIVO (la ruta al archivo). Se genera ' +
+    'una sola vez con: node autorizar-drive.js'
+  );
+}
 
 let clienteCache = null;
 
 async function cliente() {
   if (clienteCache) return clienteCache;
-  const auth = new google.auth.GoogleAuth({
-    credentials: credenciales(),
-    scopes: ['https://www.googleapis.com/auth/drive']
-  });
-  clienteCache = google.drive({ version: 'v3', auth: await auth.getClient() });
+
+  const t = autorizacion();
+  if (!t.refresh_token) {
+    throw new Error('La autorización de Drive no tiene refresh_token: hay que volver a generarla.');
+  }
+
+  const oAuth = new google.auth.OAuth2(t.client_id, t.client_secret);
+  // El permiso duradero se canjea solo por accesos cortos cuando hacen falta.
+  oAuth.setCredentials({ refresh_token: t.refresh_token });
+
+  clienteCache = google.drive({ version: 'v3', auth: oAuth });
   return clienteCache;
 }
 

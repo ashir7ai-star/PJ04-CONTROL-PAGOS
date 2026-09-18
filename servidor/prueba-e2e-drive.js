@@ -1,5 +1,6 @@
 process.env.GOOGLE_CREDENCIALES_ARCHIVO = '../credenciales.json';
-process.env.DRIVE_CARPETA_MADRE = '1E8M52g8IfEAdzYYpeXqLsMX2nDlw7OCO';
+process.env.DRIVE_CARPETA_MADRE = process.env.DRIVE_CARPETA_MADRE || '1E8M52g8IfEAdzYYpeXqLsMX2nDlw7OCO';
+process.env.DRIVE_TOKEN_ARCHIVO = '../token-drive.json';
 process.env.SHEETS_ID = '1z8qd3qfU0k2y07xddtu-3-kFVe9EnOU8ZT7mDEjf1e8';
 
 const fs = require('fs'), vm = require('vm'), path = require('path');
@@ -46,8 +47,10 @@ console.log('(la hoja real NO se toca: esto es una foto en memoria)\n');
 const { google } = require('googleapis');
 const { credenciales } = require('./src/credenciales');
 (async () => {
-  const auth = new google.auth.GoogleAuth({ credentials: credenciales(), scopes:['https://www.googleapis.com/auth/drive'] });
-  const drive = google.drive({ version:'v3', auth: await auth.getClient() });
+  const t = require('../token-drive.json');
+  const oAuth = new google.auth.OAuth2(t.client_id, t.client_secret);
+  oAuth.setCredentials({ refresh_token: t.refresh_token });
+  const drive = google.drive({ version:'v3', auth: oAuth });
   const id = (String(url).match(/\/d\/([^\/]+)/) || String(url).match(/id=([^&]+)/) || [])[1];
   if (!id) { console.log('No se pudo extraer el id de la URL'); return; }
 
