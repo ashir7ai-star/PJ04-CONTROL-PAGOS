@@ -29,6 +29,36 @@ function autorizacion() {
   throw new Error('Falta la autorización de Google para enviar correo.');
 }
 
+// El nombre que ve quien recibe el correo. Sin esto aparece el nombre
+// personal de la cuenta ("Sandra Cardozo"), que confunde: el aviso lo manda
+// el sistema, no una persona.
+const NOMBRE_REMITENTE = process.env.CORREO_NOMBRE || 'Control de Pagos';
+
+// La dirección sale de la cuenta autorizada, no de una variable: si mañana se
+// autoriza otra cuenta, el remitente acompaña solo. Una variable aparte se
+// desincronizaría en silencio y los correos saldrían diciendo una dirección
+// que no es la que envía.
+let direccionCache = null;
+async function direccionPropia() {
+  if (direccionCache) return direccionCache;
+
+  // Si quedó guardada al autorizar, se usa esa y no se pregunta nada.
+  const t = autorizacion();
+  if (t.correo) { direccionCache = t.correo; return direccionCache; }
+
+  // Se pregunta por DRIVE, no por Gmail: `gmail.send` solo permite enviar, no
+  // leer el perfil — pedir un permiso más amplio solo para saber la propia
+  // dirección sería pagar de más. El permiso de Drive ya lo tenemos y también
+  // informa de qué cuenta se trata.
+  const oAuth = new google.auth.OAuth2(t.client_id, t.client_secret);
+  oAuth.setCredentials({ refresh_token: t.refresh_token });
+  const drive = google.drive({ version: 'v3', auth: oAuth });
+  const r = await drive.about.get({ fields: 'user(emailAddress)' });
+
+  direccionCache = r.data.user.emailAddress;
+  return direccionCache;
+}
+
 let clienteCache = null;
 async function cliente() {
   if (clienteCache) return clienteCache;
@@ -54,11 +84,16 @@ function asuntoCodificado(texto) {
 // soporte HTML igual lee el mensaje.
 function construirMensaje(m) {
   const limite = 'lim_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-  const cabeceras = [
-    'To: ' + m.to,
-    'Subject: ' + asuntoCodificado(m.subject),
-    'MIME-Version: 1.0'
-  ];
+  const cabeceras = [];
+
+  // El remitente va primero, como manda el formato. Si no se conoce la
+  // dirección, se omite la cabecera y el servidor de correo pone la de la
+  // cuenta: es preferible a inventar una que no exista.
+  if (m.from) cabeceras.push('From: ' + asuntoCodificado(NOMBRE_REMITENTE) + ' <' + m.from + '>');
+
+  cabeceras.push('To: ' + m.to);
+  cabeceras.push('Subject: ' + asuntoCodificado(m.subject));
+  cabeceras.push('MIME-Version: 1.0');
 
   if (!m.htmlBody) {
     cabeceras.push('Content-Type: text/plain; charset="UTF-8"');
@@ -85,7 +120,17 @@ async function enviar(m) {
     throw new Error('El correo no tiene destinatario.');
   }
   const api = await cliente();
-  const crudo = Buffer.from(construirMensaje(m), 'utf8')
+
+  let remitente = null;
+  try {
+    remitente = await direccionPropia();
+  } catch (err) {
+    // Si no se pudo averiguar, el correo sale igual con el remitente por
+    // defecto. Perder el nombre visible es mucho menos grave que no avisar.
+    console.warn('[correo] no se pudo leer la dirección propia: ' + err.message);
+  }
+
+  const crudo = Buffer.from(construirMensaje(Object.assign({}, m, { from: remitente })), 'utf8')
     .toString('base64')
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
@@ -133,4 +178,4 @@ async function permisos() {
   };
 }
 
-module.exports = { enviar, enviarPendientes, construirMensaje, asuntoCodificado, permisos };
+module.exports = { enviar, enviarPendientes, construirMensaje, asuntoCodificado, permisos, NOMBRE_REMITENTE };

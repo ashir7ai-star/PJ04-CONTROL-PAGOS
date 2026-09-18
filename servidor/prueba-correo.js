@@ -69,6 +69,32 @@ console.log('\n=== Mensaje con HTML: van las DOS versiones ===');
       cuerpoDe(m, 'text/html').indexOf(limite) === -1);
 }
 
+console.log('\n=== El remitente que ve quien recibe ===');
+{
+  const { NOMBRE_REMITENTE } = require('./src/correo');
+  const m = construirMensaje({
+    from: 'contabilidad@energy-millennium.com',
+    to: 'admin@x.com', subject: 'Aviso', body: 'texto'
+  });
+
+  // Sin esto aparece el nombre personal de la cuenta ("Sandra Cardozo"), que
+  // confunde: el aviso lo manda el sistema, no una persona.
+  chk('aparece como "Control de Pagos", no como una persona',
+      m.indexOf('From: Control de Pagos <contabilidad@energy-millennium.com>') !== -1,
+      m.split('\r\n')[0]);
+  chk('el remitente va en la primera linea', m.indexOf('From:') === 0, m.slice(0, 20));
+
+  // Si no se conoce la direccion, MEJOR omitir la cabecera que inventar una:
+  // un remitente inexistente hace que el correo rebote o caiga en spam.
+  const sinRemitente = construirMensaje({ to: 'a@b.com', subject: 'x', body: 'y' });
+  chk('sin direccion conocida no se inventa un remitente',
+      sinRemitente.indexOf('From:') === -1, sinRemitente.split('\r\n')[0]);
+  chk('y el correo se arma igual', sinRemitente.indexOf('To: a@b.com') !== -1);
+
+  chk('el nombre se puede cambiar por variable de entorno',
+      NOMBRE_REMITENTE === (process.env.CORREO_NOMBRE || 'Control de Pagos'));
+}
+
 console.log('\n=== Lo que NO se debe aceptar ===');
 {
   const { enviar } = require('./src/correo');

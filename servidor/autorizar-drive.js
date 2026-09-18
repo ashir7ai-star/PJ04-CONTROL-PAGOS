@@ -115,16 +115,20 @@ async function main() {
     );
   }
 
-  fs.writeFileSync(DESTINO, JSON.stringify({
-    client_id:     c.client_id,
-    client_secret: c.client_secret,
-    refresh_token: tokens.refresh_token
-  }, null, 2));
-
   // Se comprueba que el permiso SIRVA, no solo que exista.
   oAuth.setCredentials(tokens);
   const drive = google.drive({ version: 'v3', auth: oAuth });
   const yo = await drive.about.get({ fields: 'user(emailAddress),storageQuota(limit,usage)' });
+
+  // La dirección se guarda junto al permiso: es la cuenta que va a figurar
+  // como remitente. Guardarla acá evita preguntarla en cada envío, y sobre
+  // todo evita una variable aparte que podría quedar desincronizada.
+  fs.writeFileSync(DESTINO, JSON.stringify({
+    client_id:     c.client_id,
+    client_secret: c.client_secret,
+    refresh_token: tokens.refresh_token,
+    correo:        yo.data.user.emailAddress
+  }, null, 2));
 
   console.log('');
   console.log('AUTORIZACIÓN GUARDADA en token-drive.json');
