@@ -1,0 +1,22 @@
+# ⚠️ CREDENCIALES — nunca al repositorio.
+#
+# Este repositorio es PÚBLICO (sirve la app por GitHub Pages). Una clave de
+# cuenta de servicio subida acá da acceso de escritura a la contabilidad de la
+# empresa, y queda en el historial de git aunque después se borre el archivo.
+credenciales*.json
+*-credenciales.json
+service-account*.json
+clave*.json
+.env
+.env.*
+!.env.example
+
+# Dependencias y artefactos
+node_modules/
+servidor/node_modules/
+*.log
+npm-debug.log*
+
+# Temporales del sistema
+.DS_Store
+Thumbs.db

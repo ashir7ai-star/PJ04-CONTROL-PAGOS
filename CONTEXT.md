@@ -471,6 +471,17 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-18**: 🏗️ **MIGRACION EN CURSO — backend propio en EasyPanel (opcion A, elegida por el usuario).** Las hojas **siguen siendo la fuente de datos**; lo que cambia es quien las lee. Ver [servidor/README.md](servidor/README.md).
+  - **Plan por pasos, en orden:**
+    1. ✅ **Andamiaje + medicion.** `servidor/src/hojas.js` (acceso por `values.batchGet`: TODAS las hojas en UNA llamada HTTP) y `servidor/src/medir.js` (solo lee, no escribe). **Decide si seguimos**: si la mejora no es grande, no se migra.
+    2. **Dominio portado.** Mover la logica de negocio de `apps-script.gs` a modulos puros (saldos, fechas, permisos, deduplicacion) para que **las 4 suites actuales se sigan usando**. La logica esta probada; lo que se reemplaza es la capa de datos.
+    3. **API con el MISMO contrato.** Mismos nombres de `action`, misma forma de respuesta. Asi el `index.html` solo cambia una constante y **se puede volver atras al instante**.
+    4. **Despliegue en EasyPanel** + comparacion lado a lado contra Apps Script con datos reales.
+    5. **Conmutacion** y Apps Script queda de respaldo un tiempo.
+  - ⚠️ **Seguridad — el repositorio es PUBLICO** (sirve la app por GitHub Pages). Se creo `.gitignore` (**no existia**) que bloquea `credenciales*.json` y `.env`. Una clave de cuenta de servicio subida ahi da **acceso de escritura a la contabilidad**, y queda en el historial de git aunque despues se borre el archivo. Verificado con `git check-ignore`.
+  - **Por que cuenta de servicio y no la cuenta personal:** el sistema no puede depender de que Nathan siga en la empresa ni de que no cambie su contrasena.
+  - **Decision tecnica:** `UNFORMATTED_VALUE` + `SERIAL_NUMBER` al leer. Los numeros vuelven como numeros y las fechas como serie convertible, **sin depender del idioma del documento** — que fue exactamente el origen del problema de dia/mes que costo una jornada entera.
+
 - **2026-09-18**: 📏 **CAUSA RAIZ DE LA LENTITUD, MEDIDA: es Apps Script, no nuestro codigo.** Se cronometraron los DOS saltos que hace cada peticion (POST → 302 → GET al `googleusercontent`), por separado:
 
   | Peticion | Servidor | Transporte | Total |

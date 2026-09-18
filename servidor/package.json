@@ -1,0 +1,18 @@
+{
+  "name": "pj04-control-pagos-servidor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Backend propio de PJ04 Control de Pagos. Reemplaza a Google Apps Script como capa de API; las hojas de cálculo siguen siendo la fuente de datos.",
+  "type": "commonjs",
+  "main": "src/servidor.js",
+  "scripts": {
+    "medir": "node src/medir.js",
+    "start": "node src/servidor.js"
+  },
+  "dependencies": {
+    "googleapis": "^144.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
