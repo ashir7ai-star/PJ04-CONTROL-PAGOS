@@ -5,6 +5,9 @@
 # empresa, y queda en el historial de git aunque después se borre el archivo.
 credenciales*
 *-credenciales*
+oauth-*.json
+token-*.json
+*-token.json
 *-credenciales.json
 service-account*.json
 clave*.json
