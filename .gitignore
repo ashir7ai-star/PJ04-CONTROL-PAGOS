@@ -6,6 +6,8 @@
 credenciales*
 *-credenciales*
 oauth-*.json
+variables-easypanel*
+*-una-linea.txt
 token-*.json
 *-token.json
 *-credenciales.json
