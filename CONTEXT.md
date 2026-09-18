@@ -471,6 +471,27 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-18**: 🌉 **Paso 2.3 — Drive: la pieza tecnicamente mas dificil, resuelta.** 110 comprobaciones en `servidor/`.
+  - **El problema:** `apps-script.gs` sube archivos de forma **sincrona** (`carpeta.createFile(blob).getUrl()`), y la API de Drive es asincrona. Con las hojas se resolvio trayendo una foto por adelantado; **con Drive no se puede**, porque los nombres de carpeta y archivo los decide la propia logica mientras corre. Adelantarlos significaria **duplicar esas reglas** en el servidor — la misma decision escrita en dos lados, que es como empiezan las diferencias silenciosas.
+  - **La solucion — `puente-sincrono.js`:** el trabajo va a un **hilo aparte** y el principal se **duerme** con `Atomics.wait` hasta que ese hilo toca el timbre. El resultado no puede volver por el evento `message` de siempre (el hilo esta dormido y no procesa eventos), asi que viaja por un canal y se lee con `receiveMessageOnPort`, que no depende del bucle de eventos.
+    - ⚠️ **Bloquear el hilo principal significa que el servidor no atiende otra peticion mientras dura la subida.** Es aceptable porque subir un comprobante ya es lento y ocurre poco; si algun dia hay muchas subidas a la vez, la salida es **correr varias instancias**, no quitar el bloqueo.
+    - **14 comprobaciones**, incluidas 25 llamadas seguidas para descartar que el timbre quede desfasado: si dos llamadas mezclaran resultados, una subida devolveria **la URL de otro archivo** y nadie lo notaria.
+  - **`drive-api.js`** (hilo trabajador) y **`adaptador-drive.js`** (la forma que espera la logica: iterador con `hasNext()`, archivo con `setSharing()` y `getUrl()`).
+  - 🚨 **PENDIENTE CRITICO antes de migrar las escrituras:** una cuenta de servicio tiene **su propio Drive**, separado del de una persona. Si no se le comparten las carpetas donde hoy viven los comprobantes (`PJ04 FACTURAS`, `PJ04 VIATICOS`, ...), **no las va a encontrar y va a crear otras nuevas en su propio espacio**: los archivos se subirian bien y **nadie podria verlos jamas**. Hay que compartir la carpeta madre con `pj04-backend@pj04-control-de-pagos.iam.gserviceaccount.com` como **Editor**, y definir `DRIVE_CARPETA_MADRE` con su id.
+  - `base64Decode` pasa a devolver un **Buffer** en vez de un arreglo de bytes: es lo que se sube a Drive sin pasos intermedios. Nada en la logica recorre esos bytes, solo se los entrega a `newBlob`.
+
+- **2026-09-18**: 🎯 **DESPLEGADO en EasyPanel: `pj04-pagos-api` responde con datos reales.**
+  - URL: `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · proyecto `ashir` · puerto interno **8080**.
+  - **Tu logica corre en 2 ms.** El resto es viaje de red. Comprobado con `/salud`, que no toca hojas y tarda lo mismo: el servidor no es el cuello de botella.
+  - Contra Apps Script desde la misma conexion: **0,68–0,88 s** frente a **2,1–33,8 s**, y **sin los picos de 30 s**.
+  - ⚠️ **Leer las hojas desde EasyPanel cuesta ~1.500 ms**, contra ~300 ms desde la oficina: el centro de datos tiene peor conexion con Google. La foto de 15 s lo tapa casi siempre. **Pendiente: pasar esa foto a `redis`**, que ya corre en el mismo proyecto, para que dure mas y se comparta entre reinicios.
+  - **Tropiezos del despliegue, para no repetirlos:**
+    1. El dominio apuntaba al **puerto 80** y el servidor escucha en **8080** → HTTP 502. Se corrige en Domains, sin redesplegar. No se baja el servidor a 80: dentro del contenedor los puertos <1024 piden privilegios y la imagen corre como usuario comun a proposito.
+    2. En **Source** se eligio la pestana *Dockerfile*, que significa "pego el contenido aca" y **desconecta el repositorio**. La opcion de usar el Dockerfile del repo va en **Build**, que es otra seccion.
+    3. 🔑 **La clave se corrompio al copiarla**: perdio **4 caracteres** de `private_key` (1704 en vez de 1708). El sintoma enganaba — la clave **existia** en Google, el JSON era **valido**, la cuenta era correcta; solo fallaba la firma (`invalid_grant: Invalid JWT Signature`). Se encontro **comparando la huella** del archivo en uso contra el descargado. Ahora el generador de `credenciales-una-linea.txt` **valida el largo antes de escribir**: si vuelve a pasar, falla ahi y no despues de tres despliegues.
+    4. ⚠️ Una captura de pantalla expuso la clave privada en el chat y hubo que **rotarla**. Al mandar capturas de Environment, tapar `private_key`.
+  - `.dockerignore` creado: sin el, `COPY servidor` arrastraba los `node_modules` de Windows al contenedor Linux. Contexto de build: 200 KB.
+
 - **2026-09-18**: 🚀 **Paso 2.2 — el servidor HTTP anda, medido contra las hojas REALES.** Pipeline completo: leer hojas → ejecutar la logica de `apps-script.gs` → responder JSON.
 
   | | Apps Script | pj04-pagos-api |

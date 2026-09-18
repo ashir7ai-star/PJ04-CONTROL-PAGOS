@@ -12,6 +12,7 @@
 
 const crypto = require('crypto');
 const { crearLibro } = require('./adaptador-hojas');
+const { crearDriveApp } = require('./adaptador-drive');
 
 // ─── Utilities.formatDate ─────────────────────────────────────────────────
 //
@@ -94,11 +95,17 @@ function crearEntorno(foto, opciones) {
   const bitacora = [];
   const correos  = [];
 
-  const noImplementado = (que) => () => {
-    throw new Error(
-      que + ' todavía no está implementado en el servidor propio. ' +
-      'Esta acción hay que seguir haciéndola por Apps Script hasta que se migre.'
-    );
+  // Para las pruebas: permite armar el entorno SIN Drive y verificar que la
+  // lógica que no lo necesita funcione igual.
+  const noDisponible = (que) => {
+    const explota = () => {
+      throw new Error(
+        que + ' no está disponible en este entorno. ' +
+        'Esta acción hay que seguir haciéndola por Apps Script.'
+      );
+    };
+    return { getFileById: explota, getFoldersByName: explota, createFolder: explota,
+             Access: {}, Permission: {}, sendEmail: explota, fetch: explota };
   };
 
   const entorno = {
@@ -117,7 +124,10 @@ function crearEntorno(foto, opciones) {
       },
       DigestAlgorithm: { SHA_256: 'SHA_256' },
       base64Encode: (x) => Buffer.from(String(x), 'utf8').toString('base64'),
-      base64Decode: (x) => Array.from(Buffer.from(String(x), 'base64')),
+      // Devuelve un Buffer y no un arreglo de bytes: es lo que después sube a
+      // Drive sin pasos intermedios. Nada en la lógica recorre estos bytes;
+      // solo se los entrega a newBlob.
+      base64Decode: (x) => Buffer.from(String(x), 'base64'),
       newBlob: (datos, tipo, nombre) => ({ datos, tipo, nombre })
     },
 
@@ -141,10 +151,12 @@ function crearEntorno(foto, opciones) {
       MimeType: { JSON: 'application/json' }
     },
 
-    DriveApp:    { getFileById: noImplementado('DriveApp'), getFoldersByName: noImplementado('DriveApp'), createFolder: noImplementado('DriveApp'), Access: {}, Permission: {} },
+    // Drive de verdad. Las llamadas cruzan al hilo trabajador y vuelven
+    // resueltas, así la lógica las usa igual que en Apps Script.
+    DriveApp: op.sinDrive ? noDisponible('DriveApp') : crearDriveApp(),
     MailApp:     { sendEmail: (m) => { correos.push(m); } },
-    UrlFetchApp: { fetch: noImplementado('UrlFetchApp') },
-    ScriptApp:   { getOAuthToken: noImplementado('ScriptApp.getOAuthToken') },
+    UrlFetchApp: noDisponible('UrlFetchApp'),
+    ScriptApp:   noDisponible('ScriptApp.getOAuthToken'),
 
     console: console,
     Date: Date,

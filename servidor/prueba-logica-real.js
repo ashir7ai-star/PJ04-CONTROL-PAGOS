@@ -32,7 +32,7 @@ const RUTA = path.join(__dirname, '..', 'apps-script.gs');
 // Monta la lógica real sobre una foto de hojas dada.
 function montar(foto, modoLogin) {
   // La foto pasa por la MISMA conversion que en produccion.
-  const e = crearEntorno(convertirFoto(foto, 'America/Bogota'), {});
+  const e = crearEntorno(convertirFoto(foto, 'America/Bogota'), { sinDrive: true });
   let codigo = fs.readFileSync(RUTA, 'utf8');
 
   const patron = /^const MODO_LOGIN = '[a-z]+';$/m;
@@ -148,13 +148,13 @@ console.log('\n=== Lo que todavia NO esta, falla en voz alta ===');
   const e = montar({ 'PAGOS REGISTRADOS': [ENC_PAGOS] }, 'off');
   let explotó = false, mensaje = '';
   try { e.globales.DriveApp.createFolder('x'); } catch (err) { explotó = true; mensaje = err.message; }
-  chk('DriveApp avisa que falta implementarlo', explotó && /DriveApp/.test(mensaje), mensaje);
+  chk('DriveApp avisa cuando no esta disponible', explotó && /DriveApp/.test(mensaje), mensaje);
   chk('y dice que hay que seguir usando Apps Script', /Apps Script/.test(mensaje), mensaje);
 
-  // HALLAZGO: registrar un pago toca Drive SIEMPRE, aunque no haya archivos
-  // adjuntos, porque resuelve la carpeta de la seccion antes de mirar si hay
-  // algo que subir. O sea que registrar pagos NO se puede migrar hasta tener
-  // DriveApp. Queda fijado aca para que no se descubra tarde.
+  // Registrar un pago toca Drive SIEMPRE, aunque no haya archivos adjuntos,
+  // porque resuelve la carpeta de la seccion antes de mirar si hay algo que
+  // subir. Con `sinDrive` se comprueba que esa dependencia sigue existiendo:
+  // el dia que alguien la cambie, esta prueba lo va a avisar.
   let pagoFalla = false;
   try {
     e.globales.registrarPago_({ tipo_factura: 'viaticos', empresa: 'AMPAC SAS',
