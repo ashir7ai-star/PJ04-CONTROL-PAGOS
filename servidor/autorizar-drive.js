@@ -35,10 +35,14 @@ const RAIZ  = path.join(__dirname, '..');
 const CLIENTE = path.join(RAIZ, 'oauth-drive.json');
 const DESTINO = path.join(RAIZ, 'token-drive.json');
 
-// Solo Drive, y solo lo necesario para subir y organizar comprobantes.
-// No se piden permisos de correo ni de calendario ni de nada más: si algún día
-// este permiso se filtra, que sirva para lo menos posible.
-const PERMISOS = ['https://www.googleapis.com/auth/drive'];
+// Solo lo que el sistema necesita, y nada mas: subir comprobantes a Drive y
+// enviar los avisos de aprobacion. `gmail.send` SOLO permite enviar — no da
+// acceso a leer la bandeja de entrada. Si algun dia este permiso se filtra,
+// que sirva para lo menos posible.
+const PERMISOS = [
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/gmail.send'
+];
 
 function config() {
   if (!fs.existsSync(CLIENTE)) {
@@ -77,6 +81,7 @@ async function main() {
   console.log(' ' + url);
   console.log('');
   console.log(' Entrá con la cuenta DUEÑA de las carpetas de comprobantes.');
+  console.log(' Se van a pedir DOS permisos: Drive y envío de correo.');
   console.log(' Google va a avisar que la app no está verificada: es normal,');
   console.log(' es tuya. Elegí "Configuración avanzada" → "Ir a ... (no seguro)".');
   console.log('─────────────────────────────────────────────────────────────');

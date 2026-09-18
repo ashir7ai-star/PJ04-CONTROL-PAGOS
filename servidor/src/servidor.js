@@ -181,7 +181,20 @@ const servidor = http.createServer(async (req, res) => {
       }
     } catch (err) { /* si no es JSON se manda tal cual */ }
 
-    return responder(res, 200, salida);
+    responder(res, 200, salida);
+
+    // Los correos salen DESPUES de haber respondido. Si el pago se guardo, la
+    // persona ve su confirmacion ya; no espera a que conteste el servidor de
+    // correo. Y un fallo de envio no puede ensuciar una operacion que ya
+    // termino bien — es lo mismo que dicen los try/catch de apps-script.gs:
+    // "el alta ya quedo registrada; el correo es un extra".
+    const correos = entorno.correos();
+    if (correos.length) {
+      require('./correo').enviarPendientes(correos)
+        .then(r => { if (r.fallidos) console.warn('[correo] ' + r.fallidos + ' de ' + correos.length + ' no salieron'); })
+        .catch(err => console.error('[correo] fallo general:', err && err.message));
+    }
+    return;
 
   } catch (err) {
     console.error('[pj04-pagos-api]', err && err.stack ? err.stack : err);

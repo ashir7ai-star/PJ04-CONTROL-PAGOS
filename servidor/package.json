@@ -7,7 +7,7 @@
   "main": "src/servidor.js",
   "scripts": {
     "medir": "node src/medir.js",
-    "prueba": "node prueba-adaptador.js && node prueba-fechas-sheets.js && node prueba-escribir.js && node prueba-puente.js && node prueba-logica-real.js",
+    "prueba": "node prueba-adaptador.js && node prueba-fechas-sheets.js && node prueba-escribir.js && node prueba-puente.js && node prueba-correo.js && node prueba-logica-real.js",
     "start": "node src/servidor.js"
   },
   "dependencies": {

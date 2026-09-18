@@ -471,6 +471,14 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-18**: ✉️ **Correo listo: el backend propio ya hace TODO lo que hacia Apps Script.** 124 comprobaciones en `servidor/`.
+  - **Gmail API con la MISMA autorizacion de Drive**, sumando el permiso `gmail.send` — que **solo permite enviar**, no leer la bandeja. Hay que **volver a correr `autorizar-drive.js`** una vez para que incluya ese permiso.
+  - 🔄 **Cambio de comportamiento deliberado: los correos salen DESPUES de responderle al usuario.** En Apps Script, `MailApp.sendEmail` frenaba la ejecucion hasta que el correo saliera. Ahora se juntan y se mandan al final.
+    - **Por que:** lo dice el propio `apps-script.gs` en sus try/catch — *"el alta ya quedo registrada; el correo es un extra"*. Si el pago se guardo, la persona tiene que ver su confirmacion **ya**, no esperar al servidor de correo. Y un fallo de envio no puede ensuciar una operacion que termino bien.
+    - ⚠️ **La contra:** un fallo de envio no le llega al usuario. Queda en el registro del servidor — sin eso, un correo que nunca sale es invisible.
+  - **Solo 4 de los 6 usos de correo importan** para la app (aprobaciones y avisos de acceso). Los reportes **diario y mensual** se disparan con temporizadores de Apps Script, no pasan por el servidor, y **siguen funcionando ahi**.
+  - Las pruebas verifican el **formato del mensaje**, no que la funcion corra: un error de formato no falla, hace que el correo **llegue ilegible**. Cubren asuntos con tildes (sin codificar, *Aprobacion* llega como *AprobaciÃ³n*), las dos versiones texto+HTML, y que el separador cierre bien.
+
 - **2026-09-18**: ✅ **Drive FUNCIONA de punta a punta.** Un comprobante real subio a `PJ04 VIATICOS`, quedo visible con el enlace, la URL se guardo en la fila, y el archivo de prueba se borro. **Sin tocar una linea de `apps-script.gs`.**
   - 🚫 **Las cuentas de servicio ya NO pueden crear archivos en un Drive personal** (*"Service Accounts do not have storage quota"*). Pueden buscar y organizar — encontro las 8 carpetas sin problema — pero no subir. Es politica de Google, no configuracion.
   - **Se evaluaron 4 salidas.** El usuario propuso volver a n8n para las subidas; el razonamiento era **correcto** (hay que autenticarse como usuario, no como cuenta de servicio) pero n8n es un intermediario evitable: sumaba un tercer sistema a la cadena de registrar un pago, y cada eslabon es un lugar donde cortarse. Se eligio **OAuth de usuario en nuestro propio servidor**: mismo mecanismo, un sistema menos.
