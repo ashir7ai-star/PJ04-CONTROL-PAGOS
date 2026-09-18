@@ -42,7 +42,7 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 
 📌 **En gestión del usuario:** conexión con Bancolombia (Cash Management → Extractos Especiales vía H2H, o API Market) para llenar la columna `DIFERENCIA` automáticamente.
 
-`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-17-e`. `sw.js` → `control-pagos-v78`. `MODO_LOGIN` = `'estricto'`.
+`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-17-e`. `sw.js` → `control-pagos-v79`. `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -471,6 +471,25 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-18**: 📏 **CAUSA RAIZ DE LA LENTITUD, MEDIDA: es Apps Script, no nuestro codigo.** Se cronometraron los DOS saltos que hace cada peticion (POST → 302 → GET al `googleusercontent`), por separado:
+
+  | Peticion | Servidor | Transporte | Total |
+  |---|---|---|---|
+  | `arranque` sin sesion | **2 ms** | 2.100 ms | 2,1 s |
+  | `arranque` leyendo **1 hoja** | **2.085 ms** | 3.054 ms | 5,1 s |
+  | `consultar_saldos` | 2 ms | **33.810 ms** | 33,8 s |
+  | `arranque` (otro intento) | 61 ms | **12.059 ms** | 12,1 s |
+
+  - **Nuestro codigo tarda 2 ms** cuando no toca hojas. No es el cuello de botella.
+  - **Leer UNA hoja costo 2.085 ms.** El `arranque` con sesion real lee **once**.
+  - **El transporte es erratico:** el primer salto vario entre 1,5 s y 11 s; el segundo entre 0,6 s y **32 s**, con la misma peticion minutos despues. Ningun cache nuestro toca eso.
+  - ⚙️ **Conclusion:** Apps Script es un motor de automatizacion de documentos, no un servidor de aplicaciones, y Sheets no es una base de datos. **Ya se alcanzo el techo** (~2 s en el mejor caso, picos de 30 s). Se le propusieron al usuario tres salidas; la recomendada es **backend propio en EasyPanel + Google Sheets API** (las hojas siguen siendo la fuente de datos, contabilidad no cambia su forma de trabajar, esperable 100-300 ms). **Decision pendiente del usuario.**
+
+- **2026-09-18**: 🔄 **Mitigacion mientras tanto: reintento seguro y mensajes que no mienten.** El usuario confirmo el mecanismo exacto: *"a pesar del error el pago si quedo registrado"* — el servidor graba y lo que se pierde es la respuesta.
+  - **Ahora `registrar_pago` se reintenta hasta 3 veces** con espera creciente. Es seguro **solo porque es idempotente**: llega con el mismo id y el servidor responde "ya estaba registrado" en vez de escribir otra fila. `ACCIONES_CON_ID` deja explicito cuales se pueden reintentar; hay comprobaciones que verifican que traslados, saldos, usuarios y aprobaciones **NO** esten en esa lista — reintentarlas duplicaria dinero.
+  - **El mensaje de error dejo de volcar el HTML de Google.** La pagina propia de Google contiene la palabra "Exception" en su JavaScript, asi que caia en la rama de "el servidor fallo al ejecutarse" y le mostraba al usuario `window['ppConfig'] = {...}` entero — ilegible, y encima parecia un error nuestro. Ahora se detecta esa pagina PRIMERO. Un error real del script **si** sigue mostrando el detalle: es la unica pista que llega desde el navegador del usuario.
+  - **8 comprobaciones nuevas** en [prueba-frontend.js](prueba-frontend.js), que ahora tambien ejecuta funciones extraidas del HTML en vez de solo mirar el texto. `sw.js` -> `control-pagos-v79`.
+
 - **2026-09-17**: 🛡️ **Un reintento ya no puede duplicar un pago.** Un usuario registró pagos desde el celular, la app se quedó cargando y "no aparecieron"... pero **sí se habían guardado, dos veces**: dos filas idénticas de HOSPEDAJE el mismo minuto (10:05) y dos de Almuerzo (14:03 y 14:11).
   - **Diagnóstico, con mediciones y no por síntomas.** El backend está sano: `GET` responde bien, y replicando lo que hace el navegador (POST → 302 → GET al `googleusercontent`) la entrega funcionó **3 de 3**. O sea que **no era el Service Worker ni el despliegue**: es la red móvil. Apps Script entrega la respuesta de un POST en **dos saltos**, así que en una conexión inestable el servidor **guarda bien** y lo que se pierde es la respuesta — y ahí la red, o la persona, reintenta.
   - ⚠️ **El primer intento de diagnosticar dio un falso positivo:** `curl -L --post302` devolvía una página de error de Drive, lo que parecía confirmar "el POST está roto". Era artefacto de la prueba — esa URL de entrega solo acepta GET. **Reproducir mal es peor que no reproducir.**

@@ -3176,6 +3176,10 @@
     // de acordarse de ponerlo en cada llamada.
     // Acciones que solo LEEN. Reintentar una de estas es seguro; reintentar una
     // que escribe podría registrar el mismo pago dos veces, así que no se hace.
+    // Escrituras que el servidor deduplica por id de operación. Solo estas se
+    // pueden reintentar sin riesgo de registrar la misma cosa dos veces.
+    const ACCIONES_CON_ID = ['registrar_pago'];
+
     const ACCIONES_DE_LECTURA = [
       'arranque', 'consultar_pagos', 'consultar_solicitudes', 'consultar_saldos',
       'listar_usuarios', 'iniciar_sesion', 'estado_login'
@@ -3199,17 +3203,34 @@
     var idPagoPendiente = null;
 
     async function postAppsScript(payload, timeoutMs = 120000) {
-      const esLectura = ACCIONES_DE_LECTURA.indexOf(payload && payload.action) !== -1;
-      try {
-        return await enviarAppsScript(payload, timeoutMs);
-      } catch (err) {
-        // Un solo reintento, y solo para lecturas: Apps Script entrega sus
-        // respuestas a través de una redirección y de vez en cuando esa entrega
-        // falla devolviendo HTML. Repetir una lectura no tiene consecuencias.
-        if (!esLectura || !err || err.name === 'AbortError') throw err;
-        console.warn('Reintentando ' + payload.action + ' tras:', err.message);
-        return await enviarAppsScript(payload, timeoutMs);
+      const accion    = payload && payload.action;
+      const esLectura = ACCIONES_DE_LECTURA.indexOf(accion) !== -1;
+      // Una escritura se puede reintentar SI lleva un id de operación que el
+      // servidor reconoce: ahí un reintento no puede duplicar nada. Sin esa
+      // garantía, reintentar un pago sería registrarlo dos veces.
+      const esEscrituraSegura = ACCIONES_CON_ID.indexOf(accion) !== -1 &&
+                                !!(payload && payload.fecha_envio);
+
+      if (!esLectura && !esEscrituraSegura) return await enviarAppsScript(payload, timeoutMs);
+
+      // Apps Script entrega la respuesta de un POST en dos saltos, y esa
+      // entrega falla seguido en redes móviles: medido, el segundo salto pasó
+      // de 0,6 s a 32 s con la misma petición. Reintentar es lo que convierte
+      // ese corte en algo que el usuario no llega a ver.
+      let ultimo = null;
+      for (let intento = 1; intento <= 3; intento++) {
+        try {
+          return await enviarAppsScript(payload, timeoutMs);
+        } catch (err) {
+          ultimo = err;
+          if (err && err.name === 'AbortError') throw err;   // lo cortó el tiempo límite
+          if (intento < 3) {
+            console.warn('Reintento ' + intento + ' de ' + accion + ' tras:', err.message);
+            await new Promise(r => setTimeout(r, 800 * intento));
+          }
+        }
       }
+      throw ultimo;
     }
 
     async function enviarAppsScript(payload, timeoutMs) {
@@ -3279,6 +3300,14 @@
       const t = String(texto || '');
       const recorte = t.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
 
+      // PRIMERO la página propia de Google, porque su JavaScript contiene las
+      // palabras "Exception", "TypeError", etc. y caía en la rama de abajo:
+      // el usuario terminaba viendo un volcado de `window['ppConfig']`, que no
+      // le dice nada y parece un error nuestro. No lo es: es Apps Script que
+      // no alcanzó a entregar la respuesta.
+      if (/ppConfig|userContent|No se encontró la página|No se pudo abrir el archivo|googleusercontent/i.test(t)) {
+        return 'Google no alcanzó a entregar la respuesta. Es intermitente y no depende de los datos que cargaste.';
+      }
       if (/accounts\.google\.com|Elige una cuenta|Choose an account|Iniciar sesión|Sign in/i.test(t)) {
         return 'Google pidió elegir una cuenta en vez de responder. Cerrá sesión en la app y volvé a entrar con una sola cuenta de Google abierta en este navegador.';
       }

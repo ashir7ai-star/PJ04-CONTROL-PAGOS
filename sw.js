@@ -1,4 +1,4 @@
-const CACHE = 'control-pagos-v78';
+const CACHE = 'control-pagos-v79';
 // Rutas RELATIVAS a propósito: así la app funciona igual en
 // ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/ que en un dominio propio, sin
 // tener que cambiar código el día que se mude. En un Service Worker, './'

@@ -314,5 +314,55 @@ if (clienteBack) {
       clienteFront === clienteBack, clienteFront + ' vs ' + clienteBack);
 }
 
+// ── Reintentos y mensajes de error ───────────────────────────
+console.log('\n=== Reintentos seguros y mensajes utiles ===');
+{
+  const vm = require('vm');
+  const js = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].pop()[1];
+
+  // Medido en produccion (2026-09-17/18): Apps Script entrega la respuesta de
+  // un POST en dos saltos, y ese segundo salto paso de 0,6 s a 32 s con la
+  // misma peticion. El pago SE GUARDA y la respuesta se pierde. Reintentar es
+  // lo que lo vuelve invisible — pero solo es seguro si el servidor deduplica.
+  const listaId = (js.match(/const ACCIONES_CON_ID = \[([^\]]*)\]/) || [])[1] || '';
+  chk('registrar_pago se puede reintentar (el servidor lo deduplica)',
+      listaId.indexOf('registrar_pago') !== -1, listaId);
+
+  // Lo que NO puede reintentarse: escrituras sin id de operacion. Un reintento
+  // ahi crea un traslado o un saldo duplicado, que es dinero mal contado.
+  ['registrar_traslado', 'ajustar_saldo', 'guardar_usuario', 'decidir_solicitud'].forEach(a => {
+    chk('NO se reintenta ' + a + ' (no tiene id de operacion)', listaId.indexOf(a) === -1, listaId);
+  });
+
+  // El mensaje de error: la pagina propia de Google contiene la palabra
+  // "Exception" en su JavaScript, asi que caia en la rama de "fallo al
+  // ejecutarse" y le volcaba al usuario `window['ppConfig'] = {...}` entero.
+  const i = js.indexOf('function describirRespuestaNoJson');
+  let prof = 0, j = i, visto = false, codigo = '';
+  while (j < js.length) {
+    const ch = js[j]; codigo += ch;
+    if (ch === '{') { prof++; visto = true; }
+    if (ch === '}') { prof--; if (visto && prof === 0) break; }
+    j++;
+  }
+  const ctx = { console };
+  vm.createContext(ctx);
+  vm.runInContext(codigo + '; this.f = describirRespuestaNoJson;', ctx);
+
+  const paginaGoogle = "<!DOCTYPE html><html><head><script>window['ppConfig'] = {productName: 'x'};" +
+                       "function k(a){throw new TypeError('x')}</scr" + "ipt></head></html>";
+  const msg = ctx.f(paginaGoogle, 200);
+  chk('la pagina de Google NO se vuelca al usuario',
+      msg.indexOf('ppConfig') === -1, msg);
+  chk('y se explica que es intermitente y no culpa de sus datos',
+      /no alcanz|intermitente/i.test(msg), msg);
+
+  // Un error REAL de nuestro script si tiene que mostrar el detalle: si no,
+  // perdemos la unica pista que llega desde el navegador del usuario.
+  const errorReal = 'ReferenceError: hojasNoPagos_ is not defined (linea 42)';
+  chk('un error real del script si muestra el detalle',
+      ctx.f(errorReal, 200).indexOf('hojasNoPagos_') !== -1, ctx.f(errorReal, 200));
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);
