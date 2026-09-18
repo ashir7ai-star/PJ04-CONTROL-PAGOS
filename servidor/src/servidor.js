@@ -134,6 +134,37 @@ const servidor = http.createServer(async (req, res) => {
     return responder(res, 200, { status: 'success', servicio: 'pj04-pagos-api', zona: ZONA });
   }
 
+  // Comprueba las TRES capacidades contra los servicios reales. Sin esto, una
+  // credencial mal pegada se descubre recién cuando alguien intenta registrar
+  // un pago — y ahí ya es un problema de la persona, no un aviso nuestro.
+  //
+  // No devuelve ningún secreto: solo si cada cosa funciona y qué falló.
+  if (req.method === 'GET' && req.url.split('?')[0] === '/diagnostico') {
+    const r = { status: 'success', hojas: {}, drive: {}, correo: {} };
+
+    try {
+      const nombres = await nombresDeHojas(false);
+      r.hojas = { ok: true, pestanas: nombres.length };
+    } catch (err) { r.hojas = { ok: false, error: err.message }; }
+
+    try {
+      const madre = process.env.DRIVE_CARPETA_MADRE;
+      if (!madre) throw new Error('Falta DRIVE_CARPETA_MADRE.');
+      const { buscarCarpeta } = require('./drive-api');
+      // Se busca una carpeta que sabemos que existe: prueba credenciales Y acceso.
+      const id = await buscarCarpeta({ nombre: 'PJ04 VIATICOS' });
+      r.drive = { ok: !!id, carpetasVisibles: id ? 'si' : 'no encuentra PJ04 VIATICOS' };
+    } catch (err) { r.drive = { ok: false, error: err.message }; }
+
+    try {
+      const { permisos } = require('./correo');
+      r.correo = await permisos();
+    } catch (err) { r.correo = { ok: false, error: err.message }; }
+
+    r.status = (r.hojas.ok && r.drive.ok && r.correo.ok) ? 'success' : 'error';
+    return responder(res, 200, r);
+  }
+
   if (req.method !== 'POST') {
     return responder(res, 405, { status: 'error', message: 'Usá POST con { "action": "..." }.' });
   }

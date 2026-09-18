@@ -112,4 +112,25 @@ async function enviarPendientes(mensajes) {
   return { enviados, fallidos };
 }
 
-module.exports = { enviar, enviarPendientes, construirMensaje, asuntoCodificado };
+// Comprueba que la autorizacion sirva para enviar, SIN mandar ningun correo.
+// Enviar uno de prueba en cada diagnostico llenaria de basura la bandeja.
+async function permisos() {
+  const t = autorizacion();
+  const oAuth = new google.auth.OAuth2(t.client_id, t.client_secret);
+  oAuth.setCredentials({ refresh_token: t.refresh_token });
+
+  const at = await oAuth.getAccessToken();
+  const r = await fetch('https://oauth2.googleapis.com/tokeninfo?access_token=' + at.token);
+  const info = await r.json();
+  const alcances = String(info.scope || '').split(' ');
+
+  return {
+    ok: alcances.some(a => a.indexOf('gmail.send') !== -1),
+    puedeEnviar: alcances.some(a => a.indexOf('gmail.send') !== -1),
+    // Se informa a proposito: si alguna vez aparece en 'si', el permiso es mas
+    // amplio de lo que el sistema necesita y hay que volver a autorizar.
+    puedeLeerCorreo: alcances.some(a => /gmail\.(readonly|modify)|mail\.google/.test(a))
+  };
+}
+
+module.exports = { enviar, enviarPendientes, construirMensaje, asuntoCodificado, permisos };
