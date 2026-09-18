@@ -1,5 +1,5 @@
 {
-  "name": "pj04-control-pagos-servidor",
+  "name": "pj04-pagos-api",
   "version": "0.1.0",
   "private": true,
   "description": "Backend propio de PJ04 Control de Pagos. Reemplaza a Google Apps Script como capa de API; las hojas de cálculo siguen siendo la fuente de datos.",

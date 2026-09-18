@@ -472,6 +472,8 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 
 ## Historial de cambios recientes
 - **2026-09-18**: 🏗️ **MIGRACION EN CURSO — backend propio en EasyPanel (opcion A, elegida por el usuario).** Las hojas **siguen siendo la fuente de datos**; lo que cambia es quien las lee. Ver [servidor/README.md](servidor/README.md).
+  - **Servicio: `pj04-pagos-api`**, en el proyecto **`ashir`** de EasyPanel, junto a `conciliacion-app`, `n8n`, `pgadmin-ashir`, `postgres` y `redis`. ⚠️ **No confundir con `conciliacion-app`**: esta app tiene *adentro* una funcion llamada "conciliacion" que no tiene relacion con ese servicio. El **frontend no se mueve**: la PWA sigue en GitHub Pages y solo cambia a que direccion le habla.
+  - **Ya hay `redis` y `postgres` corriendo en ese proyecto.** `redis` es el destino natural del cache de saldos y de las sesiones (hoy viven en el proceso); `postgres` deja abierta la opcion B sin infraestructura nueva.
   - **Plan por pasos, en orden:**
     1. ✅ **Andamiaje + medicion.** `servidor/src/hojas.js` (acceso por `values.batchGet`: TODAS las hojas en UNA llamada HTTP) y `servidor/src/medir.js` (solo lee, no escribe). **Decide si seguimos**: si la mejora no es grande, no se migra.
     2. **Dominio portado.** Mover la logica de negocio de `apps-script.gs` a modulos puros (saldos, fechas, permisos, deduplicacion) para que **las 4 suites actuales se sigan usando**. La logica esta probada; lo que se reemplaza es la capa de datos.

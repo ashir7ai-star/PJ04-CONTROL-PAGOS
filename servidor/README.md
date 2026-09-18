@@ -1,7 +1,29 @@
-# Backend propio — PJ04 Control de Pagos
+# pj04-pagos-api
 
-Reemplaza a Google Apps Script como capa de API. **Las hojas de cálculo siguen
-siendo la fuente de datos**, así que contabilidad no cambia su forma de trabajar.
+Backend propio de **PJ04 Control de Pagos**. Reemplaza a Google Apps Script como
+capa de API. **Las hojas de cálculo siguen siendo la fuente de datos**, así que
+contabilidad no cambia su forma de trabajar.
+
+## Dónde vive
+
+EasyPanel, proyecto **`ashir`**, servicio **`pj04-pagos-api`**.
+
+Conviven ahí `conciliacion-app`, `n8n`, `pgadmin-ashir`, `postgres` y `redis`.
+
+> ⚠️ **No confundir con `conciliacion-app`.** Son cosas distintas: esta app tiene
+> *adentro* una función llamada "conciliación" (comparar el saldo real del banco
+> contra el calculado), que no tiene relación con ese otro servicio.
+
+El **frontend no se mueve**: la PWA sigue publicada en GitHub Pages. Lo único que
+cambia es a qué dirección le habla.
+
+### Infraestructura ya disponible en el proyecto
+
+- **`redis`** — destino natural del caché de saldos y de las sesiones. Hoy el
+  caché vive en el proceso; con Redis sobrevive a un reinicio y sirve igual si
+  algún día corre más de una instancia. Se evalúa en el paso 3.
+- **`postgres`** — deja abierta la opción B (mover los datos a una base real)
+  sin tener que levantar infraestructura nueva.
 
 ## Por qué
 
