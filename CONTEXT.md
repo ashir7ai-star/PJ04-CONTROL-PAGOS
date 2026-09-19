@@ -476,6 +476,8 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
     - `apps-script.gs`: `limpiarSesionesVencidas_` ahora agrupa por bloques (el mismo patrón que ya usaba `archivarPagosViejos_`). Importa para la **vuelta atrás**: en Apps Script también eran 867 llamadas.
   - **Las escrituras ahora se cuentan** y salen en `/salud` (`lecturas.escrituras`). **No tienen freno a propósito:** se aplican después de que la lógica decidió, y frenarlas a mitad dejaría una operación hecha por la mitad.
   - 🧭 **Una de las pruebas nuevas NO detectaba su defecto** (con un solo rango, el id de hoja se pide una vez igual). Se agregó el caso de dos rangos. **Verificar que pueda fallar no es un trámite: la primera versión no probaba nada.**
+  - ✅ **Verificado contra la hoja real, por el mismo camino de código que usa la app:** las 867 filas vacías se borraron en **1 lectura + 1 escritura, en 1,1 s**. Las 16 sesiones reales quedaron intactas (nadie tuvo que volver a entrar). `SESIONES` pasó de **884 filas a 17**.
+  - 📋 **Dato para tener presente: TODAS las hojas son Tablas de Sheets** (`Table1`…`Table12`), con ~1000 filas y 26-28 columnas reservadas. El hueco de filas vacías estaba **solo en SESIONES**; el resto está limpio. Si vuelve a aparecer un hueco así en otra hoja, el sospechoso es la Tabla.
 
 - **2026-09-19**: 🔎 **Ningún mensaje de Google puede llegar a pantalla, y ahora se puede saber si una petición siquiera llegó.**
   - Después de arreglar la cuota, **el mensaje en inglés seguía apareciendo en un equipo y no en los otros**. Los contadores de `/salud` decían **5 lecturas desde el arranque** y `vecesSinCupo: 0` — o sea que **no era cuota**. Un cupo agotado deja a todos afuera, no a una sola persona.
