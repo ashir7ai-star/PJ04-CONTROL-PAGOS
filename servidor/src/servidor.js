@@ -23,6 +23,40 @@ const { crearEntorno }  = require('./entorno');
 const PUERTO = Number(process.env.PORT || 8080);
 const ZONA   = process.env.ZONA_HORARIA || 'America/Bogota';
 
+// ─── La zona del PROCESO tiene que ser la del negocio ─────────────────────
+//
+// `apps-script.gs` construye fechas con `new Date(año, mes, día, hora, minuto)`,
+// que las interpreta en la hora del proceso. Si el proceso corre en UTC y el
+// negocio es Bogotá, toda fecha de texto queda corrida cinco horas.
+//
+// No falla: devuelve otra hora. Exactamente la clase de error que en este
+// proyecto ya costó días — un dato equivocado es peor que una caída, porque
+// una caída se ve.
+//
+// Por eso se comprueba al arrancar y se REHÚSA a servir si no coincide: es
+// preferible que el despliegue falle a la vista que servir fechas corridas.
+(function verificarZona() {
+  const ahora = new Date();
+  const enZona = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ZONA, hour: '2-digit', minute: '2-digit', hour12: false
+  }).format(ahora);
+  const local = new Intl.DateTimeFormat('en-CA', {
+    hour: '2-digit', minute: '2-digit', hour12: false
+  }).format(ahora);
+
+  if (enZona !== local) {
+    console.error('');
+    console.error('  La zona horaria del proceso NO es ' + ZONA + '.');
+    console.error('  proceso: ' + local + '   ' + ZONA + ': ' + enZona);
+    console.error('');
+    console.error('  Con esta diferencia, las fechas de texto quedarían corridas.');
+    console.error('  Definí TZ=' + ZONA + ' en el contenedor. En Alpine hace falta');
+    console.error('  además instalar tzdata, o el valor se ignora en silencio.');
+    console.error('');
+    process.exit(1);
+  }
+})();
+
 // Orígenes a los que se les permite llamar. El navegador exige que el servidor
 // lo autorice explícitamente; un '*' funcionaría igual pero dejaría la API
 // abierta a cualquier página que quisiera usarla desde el navegador de un

@@ -4,6 +4,18 @@
 # significa despliegues de segundos, no de minutos.
 FROM node:20-alpine
 
+# ⚠️ La zona horaria NO es un detalle cosmético.
+#
+# `apps-script.gs` construye fechas con `new Date(año, mes, día, hora, minuto)`,
+# que las interpreta en la hora DEL PROCESO. Apps Script corría en Bogotá; un
+# contenedor corre en UTC. Sin esto, toda fecha de texto queda corrida CINCO
+# HORAS — y no falla, simplemente muestra otra hora.
+#
+# Alpine no trae la base de zonas horarias: sin `tzdata`, pedir
+# "America/Bogota" no da error, se ignora en silencio y queda UTC.
+RUN apk add --no-cache tzdata
+ENV TZ=America/Bogota
+
 WORKDIR /app
 
 # Las dependencias se instalan ANTES de copiar el código. Así, si solo cambia
