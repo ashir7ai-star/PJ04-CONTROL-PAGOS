@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-09-19** — ✅ **VERSIÓN ESTABLE: `v1.8-backend-propio`.** Probada en producción con varias cuentas a la vez, después de resolver las dos caídas por cuota de Sheets.
+
 **2026-09-19** — 🚀 **CONMUTADO al backend propio.** La app le habla a `pj04-pagos-api` en EasyPanel, que corre **el mismo `apps-script.gs`** con otra capa de datos debajo.
 
 Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **seis consultas devuelven datos idénticos**, entre 2 y 12 veces más rápido (`listar_usuarios` pasó de **18,5 s a 1,5 s**).
@@ -34,7 +36,9 @@ Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **se
 
 ⚠️ **Cualquier cambio en `apps-script.gs` hay que desplegarlo en LOS DOS lados** — pegar en el editor y redesplegar, y hacer Deploy en EasyPanel — y después correr el comparador.
 
-⚠️ **La cuota de lectura de Sheets es de TODA la empresa, no de cada usuario.** Con cuenta de servicio, los nueve comparten **60 lecturas por minuto**. Hay un freno propio en 40 (`LECTURAS_POR_MINUTO`) y el consumo real se mira en `GET /salud`. **Antes de agregar cualquier consulta nueva, revisar cuántas lecturas cuesta.**
+⚠️ **La cuota de Sheets es de TODA la empresa, no de cada usuario.** Con cuenta de servicio, los nueve comparten **60 lecturas y 60 escrituras por minuto**. Hay un freno propio de lectura en 40 (`LECTURAS_POR_MINUTO`) y el consumo real se mira en `GET /salud`.
+- **Antes de agregar cualquier consulta nueva, revisar cuántas llamadas cuesta.**
+- ⚠️ **Nunca escribir ni borrar fila por fila.** Lo que en Apps Script era lento, acá es una llamada a la API por fila: 867 filas agotaron la cuota de todos. Agrupar siempre.
 
 `API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-19-a` · `sw.js` → `control-pagos-v81` · `MODO_LOGIN` = `'estricto'`.
 
