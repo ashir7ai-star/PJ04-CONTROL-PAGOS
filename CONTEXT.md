@@ -40,6 +40,8 @@ Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **se
 - **Antes de agregar cualquier consulta nueva, revisar cuántas llamadas cuesta.**
 - ⚠️ **Nunca escribir ni borrar fila por fila.** Lo que en Apps Script era lento, acá es una llamada a la API por fila: 867 filas agotaron la cuota de todos. Agrupar siempre.
 
+⚠️ **Las hojas son TABLAS de Sheets, y eso cambia dónde caen los datos nuevos.** `appendRow()` agrega tras la última fila con datos; `values.append` agrega tras la **Tabla**. Si una Tabla abarca más filas que sus datos, un pago nuevo cae al fondo y **desaparece de la vista sin dar ningún error**. Vigilarlo en `GET /salud` → `filasFueraDeLugar` (tiene que estar siempre vacío) y, si aparece algo, correr `node servidor/limpiar-filas-vacias.js` (simula; `--aplicar` para borrar).
+
 `API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-19-a` · `sw.js` → `control-pagos-v81` · `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
@@ -469,6 +471,18 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-19**: 🚨 **Un pago quedó en la fila 1041 de una hoja con 44 filas de datos.** La app lo mostraba; la hoja, no. **No se perdió** — pero para quien mira el Sheets había desaparecido, y en contabilidad eso es casi tan grave como perderlo.
+  - **La causa, y es sutil:** todas las hojas están convertidas en **Tablas de Sheets**, y cada Tabla abarcaba las **1000 filas de la cuadrícula**, no solo las filas con datos.
+    - `SpreadsheetApp.appendRow()` (Apps Script) agrega después de la última fila **CON DATOS**.
+    - `values.append` (API de Sheets) agrega después de la **TABLA**.
+    - **La migración cambió esa semántica sin que nadie tocara la lógica.** Por eso los pagos de la mañana (hechos por Apps Script) quedaron bien y el de la noche saltó al fondo. **Es también el origen de las 867 filas vacías de SESIONES.**
+  - ⚠️ **La copia en memoria decía fila 45 y la hoja decía 1041.** Las dos "correctas", ninguna igual a la otra — y el servidor se queda con la copia después de escribir, así que la diferencia se propagaba.
+  - **Limpieza (`servidor/limpiar-filas-vacias.js`, nuevo):** se borraron **10.875 filas vacías** en 11 hojas. Eso **encoge cada Tabla hasta sus datos** — `PAGOS REGISTRADOS` pasó de `Table1 1-1041` a `1-45`, y el pago quedó visible en la fila 45. El script simula por defecto; hay que pasarle `--aplicar`. Sheets **no deja borrar todas las filas no congeladas**: las hojas que solo tienen encabezado conservan una.
+  - **Arreglo en el código, para no depender de la geometría de las Tablas:**
+    - `adaptador-hojas.js`: `appendRow` ahora registra **en qué fila quedó**.
+    - `escribir.js`: el `range` del append **acota la búsqueda al bloque de datos** (`A1:L44`), así la fila nueva cae pegada aunque la Tabla sea enorme. Se mantiene `INSERT_ROWS`: **inserta en vez de sobrescribir**, así dos pagos simultáneos nunca se pisan.
+    - **Y se comprueba dónde cayó de verdad**, comparando con el `updatedRange` que devuelve Sheets. Que un dato quede en el lugar equivocado **no da error**: sin esta comprobación nadie se entera. Sale en `GET /salud` → `filasFueraDeLugar`, que **tiene que estar siempre vacío**.
+
 - **2026-09-19**: 🎯 **CAUSA RAÍZ de las caídas por cuota: 867 filas vacías en SESIONES, borradas de a una.**
   - El mensaje cambió de `'Read requests'` a **`'Write requests'`** y apareció **también en incógnito** → era real, no una pantalla vieja. Pero `/salud` decía **8 lecturas** y el freno nunca actuó. Las dos cosas eran ciertas: **las escrituras no se contaban, y el `spreadsheets.get` de cada borrado tampoco.**
   - **Medido sobre la hoja real:** `SESIONES` tenía **884 filas y solo 16 sesiones**. Las otras **867 estaban completamente vacías** — quedaron al convertir la hoja en **Tabla** (llegó a tener hasta "Column 21").

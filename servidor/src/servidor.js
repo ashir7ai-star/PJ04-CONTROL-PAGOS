@@ -210,7 +210,10 @@ const servidor = http.createServer(async (req, res) => {
       foto: gestorFoto.estado(),
       // Si esto está vacío, ninguna petición falló acá: un mensaje de error en
       // la pantalla de alguien es entonces una página vieja sin recargar.
-      ultimosErrores: ULTIMOS_ERRORES
+      ultimosErrores: ULTIMOS_ERRORES,
+      // Filas que Sheets escribió en un lugar distinto del calculado. Tiene
+      // que estar SIEMPRE vacío: si no, hay datos donde nadie los ve.
+      filasFueraDeLugar: require('./escribir').filasFueraDeLugar()
     });
   }
 

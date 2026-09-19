@@ -41,15 +41,44 @@ function aCelda(v) {
   return v;
 }
 
-function rangoA1(hoja, fila, col, alto, ancho) {
-  const letra = (n) => {
-    let s = '';
-    while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
-    return s;
-  };
-  const nombre = "'" + String(hoja).replace(/'/g, "''") + "'";
-  return nombre + '!' + letra(col) + fila + ':' + letra(col + ancho - 1) + (fila + alto - 1);
+function letraDeColumna(n) {
+  let s = '';
+  while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+  return s;
 }
+
+function rangoA1(hoja, fila, col, alto, ancho) {
+  const nombre = "'" + String(hoja).replace(/'/g, "''") + "'";
+  return nombre + '!' + letraDeColumna(col) + fila + ':' + letraDeColumna(col + ancho - 1) + (fila + alto - 1);
+}
+
+// ─── Filas que caen donde no deben ────────────────────────────────────────
+//
+// `values.append` devuelve en qué rango escribió. Comparar eso con la fila
+// que calculó la lógica es la única forma de enterarse de que un dato quedó
+// en el lugar equivocado: no da error, no falla nada, y la app lo sigue
+// leyendo igual. Así pasó desapercibido que un pago estaba en la fila 1041.
+let fueraDeLugar = [];
+
+function filaDelRango(rango) {
+  const m = /![A-Z]+(\d+)/.exec(String(rango || ''));
+  return m ? Number(m[1]) : null;
+}
+
+function verificarFila(hoja, esperada, respuesta) {
+  if (!esperada || !respuesta) return;
+  const real = filaDelRango(respuesta.updates && respuesta.updates.updatedRange);
+  if (!real || real === esperada) return;
+
+  console.warn('[fila fuera de lugar] "' + hoja + '": se esperaba la fila ' + esperada +
+               ' y cayó en la ' + real + '. Revisá si la hoja es una Tabla de Sheets ' +
+               'con filas vacías de sobra (node limpiar-filas-vacias.js).');
+
+  fueraDeLugar.unshift({ cuando: new Date().toISOString(), hoja: hoja, esperada: esperada, real: real });
+  fueraDeLugar.length = Math.min(fueraDeLugar.length, 10);
+}
+
+function filasFueraDeLugar() { return fueraDeLugar.slice(); }
 
 // Aplica los cambios, en orden.
 //
@@ -181,13 +210,46 @@ async function aplicar(cambios, apiInyectada, idInyectado) {
     if (c.tipo === 'agregar') {
       await bajarGrupo();
       cupo.anotarEscritura();
-      await api.spreadsheets.values.append({
+
+      // ─── Dónde cae una fila nueva ────────────────────────────────────────
+      //
+      // El 19/09/2026 un pago de $100.000 quedó en la fila 1041 de una hoja
+      // con 44 filas de datos. No se perdió —la app lo leía— pero para quien
+      // mira la hoja había desaparecido. En contabilidad eso es casi tan
+      // grave como perderlo.
+      //
+      // La causa: las hojas están convertidas en **Tablas de Sheets**, y cada
+      // Tabla abarca las 1000 filas de la cuadrícula.
+      //
+      //   · `appendRow()` de Apps Script agrega tras la última fila CON DATOS.
+      //   · `values.append` agrega tras la TABLA.
+      //
+      // La migración cambió esa semántica sin que nadie tocara la lógica.
+      //
+      // El rango que se manda acota dónde busca la API: dándole el bloque de
+      // datos (A1 hasta la fila anterior), la fila nueva cae pegada a los
+      // datos aunque la Tabla siga siendo enorme.
+      //
+      // Se mantiene INSERT_ROWS a propósito: INSERTA en vez de sobrescribir,
+      // así dos pagos simultáneos nunca pueden pisarse.
+      const nombreHoja = "'" + String(c.hoja).replace(/'/g, "''") + "'";
+      const ancho = Math.max(1, (c.valores || []).length);
+      const rango = (c.fila && c.fila > 1)
+        ? nombreHoja + '!A1:' + letraDeColumna(ancho) + (c.fila - 1)
+        : nombreHoja;
+
+      const r = await api.spreadsheets.values.append({
         spreadsheetId: id,
-        range: "'" + String(c.hoja).replace(/'/g, "''") + "'",
+        range: rango,
         valueInputOption: 'USER_ENTERED',
         insertDataOption: 'INSERT_ROWS',
         requestBody: { values: [c.valores.map(aCelda)] }
       });
+
+      // Y se comprueba dónde cayó de verdad. Sin esta comprobación, que la
+      // fila termine en el lugar equivocado NO da error: la app la sigue
+      // leyendo y nadie se entera hasta que alguien mira la hoja.
+      verificarFila(c.hoja, c.fila, r && r.data);
       continue;
     }
 
@@ -207,4 +269,4 @@ async function aplicar(cambios, apiInyectada, idInyectado) {
   await bajarBorrados();
 }
 
-module.exports = { aplicar, rangoA1, aCelda };
+module.exports = { aplicar, rangoA1, aCelda, letraDeColumna, filasFueraDeLugar };

@@ -102,6 +102,94 @@ console.log('\n=== El orden de las operaciones ===');
 
     chk('sin cambios no se llama a nada', (await esc.aplicar([], apiFalsa, 'x'), true));
 
+    console.log('\n=== Una fila nueva cae PEGADA a los datos, no al final de la Tabla ===');
+    {
+      // El 19/09/2026 un pago de $100.000 quedó en la fila 1041 de una hoja
+      // con 44 filas de datos. No se perdió —la app lo leía— pero para quien
+      // mira la hoja había desaparecido.
+      //
+      // Las hojas están convertidas en Tablas de Sheets y cada Tabla abarca
+      // las 1000 filas de la cuadrícula. `appendRow()` de Apps Script agrega
+      // tras la última fila CON DATOS; `values.append` agrega tras la TABLA.
+      // La migración cambió esa semántica sin que nadie tocara la lógica.
+      const rangos = [];
+      const api = {
+        spreadsheets: {
+          get: async () => ({ data: { sheets: [{ properties: { sheetId: 7, title: 'S' } }] } }),
+          batchUpdate: async () => ({}),
+          values: {
+            batchUpdate: async () => ({}),
+            append: async (r) => {
+              rangos.push(r.range);
+              // Como responde Sheets de verdad: dice dónde escribió. Acá se
+              // finge que cayó donde correspondía, para no disparar el aviso.
+              const m = /!A1:[A-Z]+(\d+)/.exec(r.range);
+              const fila = m ? Number(m[1]) + 1 : 1;
+              return { data: { updates: { updatedRange: "'x'!A" + fila + ':L' + fila } } };
+            }
+          }
+        }
+      };
+
+      await esc.aplicar([{ tipo: 'agregar', hoja: 'PAGOS REGISTRADOS', fila: 45,
+                           valores: new Array(12).fill('x') }], api, 'doc');
+
+      chk('el rango acota la búsqueda al bloque de datos',
+          rangos[0] === "'PAGOS REGISTRADOS'!A1:L44", rangos[0]);
+      chk('y NO manda la hoja entera, que es lo que la mandaba al fondo',
+          rangos[0].indexOf('!') !== -1, rangos[0]);
+
+      // Una hoja vacía no tiene bloque de datos: ahí va el nombre solo.
+      rangos.length = 0;
+      await esc.aplicar([{ tipo: 'agregar', hoja: 'S', fila: 1, valores: ['a'] }], api, 'doc');
+      chk('una hoja sin datos usa el nombre solo', rangos[0] === "'S'", rangos[0]);
+    }
+
+    console.log('\n=== Si la fila cae en otro lado, se avisa ===');
+    {
+      // Que un dato quede en el lugar equivocado NO da error: la app lo sigue
+      // leyendo y nadie se entera hasta que alguien mira la hoja. Por eso hay
+      // que comparar dónde dijo Sheets que escribió.
+      const api = {
+        spreadsheets: {
+          get: async () => ({ data: { sheets: [] } }),
+          batchUpdate: async () => ({}),
+          values: {
+            batchUpdate: async () => ({}),
+            // Sheets dice que escribió en la 1041, no en la 45.
+            append: async () => ({ data: { updates: { updatedRange: "'PAGOS REGISTRADOS'!A1041:L1041" } } })
+          }
+        }
+      };
+
+      const antes = esc.filasFueraDeLugar().length;
+      await esc.aplicar([{ tipo: 'agregar', hoja: 'PAGOS REGISTRADOS', fila: 45,
+                           valores: new Array(12).fill('x') }], api, 'doc');
+      const reg = esc.filasFueraDeLugar();
+
+      chk('queda registrado que cayó fuera de lugar', reg.length === antes + 1, reg.length);
+      chk('con la fila esperada y la real',
+          reg[0] && reg[0].esperada === 45 && reg[0].real === 1041, reg[0]);
+      chk('y con la hoja', reg[0] && reg[0].hoja === 'PAGOS REGISTRADOS', reg[0]);
+    }
+
+    console.log('\n=== La copia en memoria y la hoja tienen que coincidir ===');
+    {
+      // La copia decía 45 y la hoja decía 1041: las dos "correctas" y ninguna
+      // igual a la otra. Desde que el servidor se queda con la copia después
+      // de escribir, esa diferencia se propagaría.
+      const { crearLibro } = require('./src/adaptador-hojas');
+      const libro = crearLibro({ 'PAGOS REGISTRADOS': [['A','B'], ['1','2'], ['3','4']] });
+      libro.SpreadsheetApp.getActiveSpreadsheet()
+           .getSheetByName('PAGOS REGISTRADOS').appendRow(['5','6']);
+
+      const c = libro.cambios().filter(x => x.tipo === 'agregar')[0];
+      chk('appendRow dice en qué fila quedó', c && c.fila === 4, c);
+      chk('y la copia en memoria la tiene ahí',
+          libro.datos()['PAGOS REGISTRADOS'][3][0] === '5',
+          libro.datos()['PAGOS REGISTRADOS']);
+    }
+
     console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
     process.exit(fallos ? 1 : 0);
   })();

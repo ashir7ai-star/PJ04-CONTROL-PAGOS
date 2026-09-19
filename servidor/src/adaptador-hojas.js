@@ -112,7 +112,15 @@ function crearLibro(foto) {
         // quedaría flotando lejos, con un hueco en el medio.
         const usadas = rectanguloConDatos(filas()).length;
         datos[nombre][usadas] = fila.slice();
-        cambios.push({ tipo: 'agregar', hoja: nombre, valores: fila.slice() });
+        // La fila EXACTA donde quedó, para que la hoja real reciba el dato en
+        // el mismo lugar que la copia en memoria.
+        //
+        // ⚠️ Sin esto quedaba a criterio de la API de Sheets, que agrega
+        // después de la TABLA y no después del último dato: con una Tabla de
+        // 1000 filas, un pago caía en la fila 1041 y desaparecía de la vista.
+        // La copia en memoria decía 45 y la hoja decía 1041 — las dos
+        // "correctas", y ninguna igual a la otra.
+        cambios.push({ tipo: 'agregar', hoja: nombre, fila: usadas + 1, valores: fila.slice() });
       },
 
       deleteRow:  (n)         => { filas().splice(n - 1, 1); cambios.push({ tipo: 'borrar', hoja: nombre, desde: n, cantidad: 1 }); },
