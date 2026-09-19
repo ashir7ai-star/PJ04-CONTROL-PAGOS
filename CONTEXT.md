@@ -24,7 +24,9 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
-**2026-09-19** — ✅ **VERSIÓN ESTABLE: `v1.8-backend-propio`.** Probada en producción con varias cuentas a la vez, después de resolver las dos caídas por cuota de Sheets.
+**2026-09-19** — ✅ **VERSIÓN ESTABLE: `v1.9-filas-en-su-lugar`.** Los pagos quedan en la fila que les toca, **aunque la hoja tenga 1000 filas de sobra**. Confirmado en producción con la Tabla llegando a la fila 1048: el pago cayó en la **48**, pegado al anterior. Con el código anterior habría ido a la 1049.
+
+**2026-09-19** — ✅ Versión estable previa: `v1.8-backend-propio`. Probada en producción con varias cuentas a la vez, después de resolver las dos caídas por cuota de Sheets.
 
 **2026-09-19** — 🚀 **CONMUTADO al backend propio.** La app le habla a `pj04-pagos-api` en EasyPanel, que corre **el mismo `apps-script.gs`** con otra capa de datos debajo.
 
