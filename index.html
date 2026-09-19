@@ -3139,7 +3139,25 @@
     // como Web App. Una sola URL atiende todas las operaciones vía el parámetro "action":
     // registrar_pago, consultar_pagos, solicitar_aprobacion, decidir_solicitud,
     // consultar_solicitudes.
-    const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwngWbZFP9c0Rn5u5efkTNRM1zBlK_wKQ8TaE-kbFCz8FXN85-KahlkkVXab6x5YPoS1A/exec';
+    // ─── A qué servidor le habla la app ───────────────────────────────────
+    //
+    // Desde el 2026-09-19 apunta al backend propio (EasyPanel), que corre la
+    // MISMA lógica de negocio que Apps Script — el mismo `apps-script.gs`, solo
+    // que con otra capa de datos debajo.
+    //
+    // Medido contra las hojas reales, las seis consultas devuelven datos
+    // IDÉNTICOS (`servidor/comparar-backends.js`), entre 2 y 12 veces más
+    // rápido. Apps Script tardaba 18,5 s en listar usuarios.
+    //
+    // ⚠️ PARA VOLVER ATRÁS: cambiar esta constante por la línea de abajo y
+    // subir. Apps Script sigue desplegado y al día, y las sesiones valen en
+    // los dos sentidos, así que nadie tiene que volver a entrar.
+    //
+    //   const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwngWbZFP9c0Rn5u5efkTNRM1zBlK_wKQ8TaE-kbFCz8FXN85-KahlkkVXab6x5YPoS1A/exec';
+    //
+    // Si se cambia esto, actualizar también SIN_CACHE en sw.js: el Service
+    // Worker no debe tocar NUNCA el dominio del backend.
+    const APPS_SCRIPT_URL = 'https://ashir-pj04-pagos-api.nr6aco.easypanel.host/';
 
     // Se declara con `var` y acá arriba a propósito: aplicarTema() la consulta
     // al cargar la página, antes de que exista el bloque de sesión. Con `var`

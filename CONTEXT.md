@@ -24,25 +24,17 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
-**2026-09-17** — ✅ **VERSIÓN ESTABLE** (tag `v1.7-conciliacion`). Confirmada por el usuario probando un traslado real.
+**2026-09-19** — 🚀 **CONMUTADO al backend propio.** La app le habla a `pj04-pagos-api` en EasyPanel, que corre **el mismo `apps-script.gs`** con otra capa de datos debajo.
 
-**Los saldos cuadran de verdad.** Se corrigió una **regresión propia**: al permitir elegir la fecha del traslado, esa fecha pasó a ser un día a las 00:00 y los traslados del mismo día **no se contaban en ningún lado**. `momentoDeTraslado_` usa ahora el instante del registro cuando el traslado se cargó el mismo día, y el final del día cuando es retroactivo — eso suma lo que debe sumar **sin contar dos veces** cuando el saldo real se carga después.
+Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **seis consultas devuelven datos idénticos**, entre 2 y 12 veces más rápido (`listar_usuarios` pasó de **18,5 s a 1,5 s**).
 
-**Conciliación con el banco.** Al cargar el saldo real, la diferencia contra lo calculado queda **registrada** en SALDOS (`SALDO CALCULADO`, `DIFERENCIA`) en vez de perderse. Ahí aparecen el 4x1000, las comisiones y cualquier cobro que el sistema no ve. El modal la muestra **en vivo** mientras se escribe. La primera carga no inventa una conciliación: `DIFERENCIA` queda vacía, no en 0.
+↩️ **Para volver atrás:** cambiar `APPS_SCRIPT_URL` en `index.html` por la línea comentada justo arriba, y subir. **Apps Script sigue desplegado y al día** (revisión `2026-09-19-a`), y las sesiones valen en los dos sentidos, así que **nadie tiene que volver a entrar**.
 
-**Compra Materiales descuenta de Viáticos** (ajuste **temporal** pedido por el usuario). Un solo interruptor para revertirlo: `CUENTA_COMPRA_MATERIALES`.
+⚠️ **Los reportes diario y mensual siguen en Apps Script**, por temporizador. No migrarlos fue deliberado: no pasan por la app.
 
-**Traslados completos:** fecha de la transferencia separada de la de registro, y `REALIZADO POR` —qué administrador la hizo, validado contra los admins activos— separado de `REGISTRADO POR`, que sale de la sesión verificada.
+⚠️ **Cualquier cambio en `apps-script.gs` hay que desplegarlo en LOS DOS lados** — pegar en el editor y redesplegar, y hacer Deploy en EasyPanel — y después correr el comparador.
 
-**Velocidad:** una lectura por hoja y por petición, el cálculo de saldos en caché (10 min, invalidado por pago/traslado/ajuste, y el botón "Actualizar" fuerza el recálculo), y las escrituras devuelven los saldos ya recalculados. Toda respuesta informa `ms` y `hojasLeidas`, visibles en Configuración.
-
-**Atajo a la hoja de cálculo** en Consultar Pagos, solo para administradores y con la dirección enviada por el servidor — nunca escrita en el `index.html`, que es público.
-
-⚠️ **Sigue sin medirse:** el usuario todavía no reportó el `ms` real. Si ese número es bajo y la espera sigue siendo larga, el tiempo se va en el **viaje** a Apps Script, no en leer hojas.
-
-📌 **En gestión del usuario:** conexión con Bancolombia (Cash Management → Extractos Especiales vía H2H, o API Market) para llenar la columna `DIFERENCIA` automáticamente.
-
-`APPS_SCRIPT_URL` → despliegue **`AKfycbwngWbZFP9c…`**. `REVISION_BACKEND` = `2026-09-17-e`. `sw.js` → `control-pagos-v79`. `MODO_LOGIN` = `'estricto'`.
+`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-19-a` · `sw.js` → `control-pagos-v81` · `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).

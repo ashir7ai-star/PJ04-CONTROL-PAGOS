@@ -1,4 +1,4 @@
-const CACHE = 'control-pagos-v80';
+const CACHE = 'control-pagos-v81';
 // Rutas RELATIVAS a propósito: así la app funciona igual en
 // ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/ que en un dominio propio, sin
 // tener que cambiar código el día que se mude. En un Service Worker, './'
@@ -61,6 +61,8 @@ self.addEventListener('activate', e => {
 //
 // Además, nada de esto se debe cachear nunca: son datos vivos.
 const SIN_CACHE = [
+  'ashir-pj04-pagos-api.nr6aco.easypanel.host',   // el backend propio
+  'easypanel.host',
   'script.google.com',
   'script.googleusercontent.com',
   'accounts.google.com',
