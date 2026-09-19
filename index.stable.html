@@ -5359,7 +5359,8 @@
 
         const estadoChip = '<span class="chip-estado ' + escapeHtml(u.estado) + '">' + escapeHtml(u.estado) + '</span>';
         const rolTexto   = esAdmin ? 'Administrador' : 'Usuario';
-        const acceso     = u.acceso ? escapeHtml(u.acceso) : 'Nunca ingresó';
+        // Se muestra igual que todas las fechas del sistema: dd/MM/yyyy HH:mm.
+        const acceso     = u.acceso ? escapeHtml(formatoFechaHora(u.acceso)) : 'Nunca ingresó';
         const boton      = '<button type="button" class="btn-clear" data-editar="' + escapeHtml(u.correo) + '">Editar</button>';
 
         return '<div class="usuario-fila' + (esAdmin ? ' es-admin' : '') + '">' +

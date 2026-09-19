@@ -471,6 +471,14 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-19**: 🔍 **El comparador contra Apps Script encontro TRES errores que 129 pruebas no veian.** Ninguno daba error: los tres devolvian datos distintos.
+  1. **Hashes de sesion distintos** — `base64Encode` de un arreglo de bytes tratado como texto. Al conmutar, **los 9 usuarios expulsados**.
+  2. **Zona horaria** — el contenedor corre en UTC y `apps-script.gs` construye fechas con `new Date(a,m,d,h,min)`, que usa la hora **del proceso**. Todas las fechas de texto corridas **5 horas**. Se corrige con `tzdata` + `TZ` en el Dockerfile, y el servidor **se niega a arrancar** si la zona no coincide.
+  3. **Milisegundos perdidos** — los seriales de Sheets guardan fracciones de segundo (`46282.765494120365` son las 18:22:18,**692**). Se redondeaba al segundo, y ademas la conversion de zona trabajaba con precision de segundos. **No era cosmetico:** los saldos comparan con `>` contra la fecha base, asi que un corte justo en el limite podria caer del lado equivocado.
+  - 🧭 **Leccion:** las pruebas verifican que el sistema haga lo que esperamos; el comparador verifica que haga **lo mismo que el sistema que ya funciona**. Son cosas distintas y la segunda encontro lo que la primera no podia ver.
+  - **Ademas se arreglo un defecto que ya existia antes de migrar:** en Configuracion se mostraba `"Thu Sep 17 2026 18:22:18 GMT-0500 (hora estandar de Colombia)"` — una fecha en crudo de JavaScript, cuyo texto encima **cambiaba segun el idioma del entorno**. Ahora sale `17/09/2026 18:22`, como el resto del sistema.
+  - ⚠️ **Tercera vez que el banco de pruebas resulta ser el problema:** `prueba-permisos.js` no compartia `Date` con el sandbox (asi que `instanceof Date` siempre daba falso) y su `formatDate` devolvia una **constante**. Con eso, cualquier prueba sobre fechas pasaba sin comprobar nada. Corregido. `sw.js` -> `control-pagos-v80`. `REVISION_BACKEND` -> `2026-09-19-a`.
+
 - **2026-09-18**: 🐛 **Error grave encontrado ANTES de conmutar: los hashes de sesion no coincidian.**
   - `hashDeToken_` hace `base64Encode(computeDigest(...))`, o sea codifica un **arreglo de bytes**. La implementacion en `entorno.js` solo contemplaba texto: convertia el arreglo a la cadena `"12,-45,67,..."` y codificaba **eso**.
   - ⚠️ **No fallaba: producia un hash DISTINTO.** Al conmutar, ninguna sesion creada por Apps Script habria valido en el servidor nuevo — **los 9 usuarios expulsados de golpe**, sin mensaje que explicara por que, y volviendo a pasar si se revertia.

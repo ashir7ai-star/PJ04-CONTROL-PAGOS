@@ -1726,7 +1726,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-17-f · sin pagos duplicados';
+const REVISION_BACKEND = '2026-09-19-a · fechas de usuarios formateadas';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -2287,8 +2287,13 @@ function listarUsuarios_(body) {
       rol:       String(u['ROL'] || 'usuario').toLowerCase(),
       secciones: String(u['SECCIONES'] || ''),
       estado:    String(u['ESTADO'] || '').toLowerCase(),
-      registro:  String(u['FECHA REGISTRO'] || ''),
-      acceso:    String(u['ULTIMO ACCESO'] || '')
+      // Formateadas, no en crudo. `String(unaFecha)` produce
+      // "Thu Sep 17 2026 18:22:18 GMT-0500 (hora estandar de Colombia)", que
+      // es lo que se le mostraba al usuario en Configuracion. Ademas ese texto
+      // depende del idioma del entorno, asi que cambiaba segun donde corriera
+      // el codigo.
+      registro:  formatearValorDeCelda_('FECHA REGISTRO', u['FECHA REGISTRO'], null),
+      acceso:    formatearValorDeCelda_('ULTIMO ACCESO',  u['ULTIMO ACCESO'],  null)
     }))
   };
 }

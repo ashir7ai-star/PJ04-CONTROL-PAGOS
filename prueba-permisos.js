@@ -67,6 +67,11 @@ function montar(modoLogin, usuarios, solicitudes) {
 
   const ctx = {
     console,
+    // Date TIENE que ser el mismo del proceso. Sin esto el sandbox se crea uno
+    // propio, `valor instanceof Date` da falso para cualquier fecha que le pase
+    // la prueba, y la distincion entre "fecha real" y "texto" queda sin poder
+    // comprobarse — que es justo donde han estado los errores de este proyecto.
+    Date,
     SpreadsheetApp: {
       getActiveSpreadsheet: () => ({
         getSheets: () => orden.map(n => hojas[n]).filter(Boolean),
@@ -101,7 +106,20 @@ function montar(modoLogin, usuarios, solicitudes) {
     } },
     ContentService: { createTextOutput: (t) => ({ setMimeType: () => t }), MimeType: { JSON: 'json' } },
     Utilities: {
-      formatDate: () => '01/01/2026 00:00',
+      // Tiene que formatear DE VERDAD y respetar el patron pedido. Con una
+      // constante, cualquier prueba sobre formatos de fecha pasa sin comprobar
+      // nada — ya paso dos veces en este proyecto.
+      formatDate: (d, z, f) => {
+        const p = n => String(n).padStart(2, '0');
+        const ymd = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+        const hm  = p(d.getHours()) + ':' + p(d.getMinutes());
+        if (f === 'yyyy-MM-dd')       return ymd;
+        if (f === 'yyyy-MM-dd HH:mm') return ymd + ' ' + hm;
+        if (f === 'yyyy-MM-dd HH.mm') return ymd + ' ' + hm.replace(':', '.');
+        if (f === 'yyyy-MM')          return ymd.slice(0, 7);
+        if (f === 'dd/MM/yyyy')       return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear();
+        return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + hm;
+      },
       base64Encode: (x) => String(x),
       computeDigest: (a, b) => b,
       // Cada llamada devuelve un valor distinto, como el real: si repitiera,
@@ -421,6 +439,39 @@ console.log('\n=== Ningún endpoint del Web App queda sin validar sesión ===');
   chk('"REVISADO POR" sale de la sesión verificada',
       /'REVISADO POR':\s*ctx\.autenticado/.test(codigo),
       'REVISADO POR todavía confía en el cliente');
+}
+
+console.log('\n=== Las fechas de usuarios no salen en crudo ===');
+{
+  // Antes se enviaba String(unaFecha), que produce
+  //   "Thu Sep 17 2026 18:22:18 GMT-0500 (hora estandar de Colombia)"
+  // y eso se le mostraba TAL CUAL al usuario en Configuracion.
+  //
+  // Peor: ese texto depende del idioma del entorno, asi que cambiaba segun
+  // donde corriera el codigo — Apps Script decia "hora estandar de Colombia"
+  // y Node "Colombia Standard Time".
+  const g = montar('estricto', [
+    ['nathan@ylevigroup.com', 'Nathan', '300', 'admin', 'todas', 'activo',
+     new Date(2026, 8, 17, 18, 5, 10), new Date(2026, 8, 17, 18, 22, 18)]
+  ]);
+
+  const u = g.listarUsuarios_({ idToken: 'nathan@ylevigroup.com' }).usuarios[0];
+
+  chk('la fecha de registro sale formateada', u.registro === '2026-09-17 18:05', u.registro);
+  chk('el ultimo acceso sale formateado',     u.acceso === '2026-09-17 18:22', u.acceso);
+
+  // Lo que NO puede volver a aparecer, en ninguna de las dos variantes.
+  chk('no contiene el nombre largo de la zona',
+      !/GMT[+-]\d{4}|Standard Time|hora est/.test(u.acceso + u.registro), u.acceso);
+  chk('no contiene el dia de la semana en ingles',
+      !/Mon|Tue|Wed|Thu|Fri|Sat|Sun/.test(u.acceso + u.registro), u.acceso);
+
+  // Un usuario que nunca entro no puede mostrar una fecha inventada.
+  const g2 = montar('estricto', [
+    ['nathan@ylevigroup.com', 'Nathan', '300', 'admin', 'todas', 'activo', '', '']
+  ]);
+  const u2 = g2.listarUsuarios_({ idToken: 'nathan@ylevigroup.com' }).usuarios[0];
+  chk('sin fecha de acceso queda vacio, no una fecha de 1899', u2.acceso === '', u2.acceso);
 }
 
 console.log('\n=== El atajo a la hoja de calculo: solo para administradores ===');
