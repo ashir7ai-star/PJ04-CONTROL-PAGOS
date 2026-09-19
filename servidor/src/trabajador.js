@@ -31,6 +31,12 @@ const operaciones = {
 
 // Las operaciones de Drive se cargan solo si se piden: así el puente se puede
 // probar sin credenciales, y un problema de Drive no impide arrancar.
+// Las operaciones de red van en su propio modulo, igual que las de Drive.
+function operacionDeRed(nombre) {
+  if (nombre !== 'pedirUrl') return null;
+  return require('./red-api').pedir;
+}
+
 function operacionDeDrive(nombre) {
   let drive;
   try {
@@ -49,7 +55,7 @@ function operacionDeDrive(nombre) {
 parentPort.on('message', async (mensaje) => {
   try {
     const nombre = mensaje && mensaje.operacion;
-    const fn = operaciones[nombre] || operacionDeDrive(nombre);
+    const fn = operaciones[nombre] || operacionDeRed(nombre) || operacionDeDrive(nombre);
     if (typeof fn !== 'function') {
       throw new Error('Operación desconocida en el trabajador: ' + nombre);
     }

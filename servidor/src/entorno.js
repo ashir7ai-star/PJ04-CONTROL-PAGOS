@@ -170,7 +170,27 @@ function crearEntorno(foto, opciones) {
     // resueltas, así la lógica las usa igual que en Apps Script.
     DriveApp: op.sinDrive ? noDisponible('DriveApp') : crearDriveApp(),
     MailApp:     { sendEmail: (m) => { correos.push(m); } },
-    UrlFetchApp: noDisponible('UrlFetchApp'),
+    // UrlFetchApp de verdad. Lo usa `verificarIdToken_` para validar el token
+    // de Google al ingresar: sin esto NADIE puede entrar. Se descubrio al
+    // conmutar, con el login roto en pantalla.
+    UrlFetchApp: {
+      fetch: (url, opciones) => {
+        const r = require('./puente-sincrono').llamar('pedirUrl', { url: url, opciones: opciones || {} });
+        return {
+          getResponseCode: () => r.codigo,
+          getContentText:  () => r.texto,
+          // getBlob solo lo usan los reportes, que siguen corriendo por
+          // temporizador en Apps Script. Si alguien lo llama aca, mejor que lo
+          // diga claro a que devuelva algo inservible.
+          getBlob: () => {
+            throw new Error(
+              'UrlFetchApp.getBlob no esta disponible en el servidor propio. ' +
+              'Los reportes diario y mensual siguen ejecutandose desde Apps Script.'
+            );
+          }
+        };
+      }
+    },
     ScriptApp:   noDisponible('ScriptApp.getOAuthToken'),
 
     console: console,

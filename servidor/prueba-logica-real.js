@@ -167,6 +167,46 @@ console.log('\n=== Las sesiones tienen que valer en los DOS sistemas ===');
       e.globales.Utilities.base64Encode([-1, -2]) === Buffer.from([255, 254]).toString('base64'));
 }
 
+console.log('\n=== UrlFetchApp: sin esto NADIE puede entrar ===');
+{
+  // verificarIdToken_ valida el token de Google contra sus servidores usando
+  // UrlFetchApp. Al conmutar quedo sin implementar y el login se rompio para
+  // todos: "UrlFetchApp no esta disponible en este entorno" en pantalla.
+  const e = crearEntorno({}, {});
+
+  const r = e.globales.UrlFetchApp.fetch(
+    'https://oauth2.googleapis.com/tokeninfo?id_token=token-invalido-de-prueba',
+    { muteHttpExceptions: true }
+  );
+
+  // Tiene que devolver el resultado YA, no una promesa: la logica lo usa
+  // de forma sincrona.
+  chk('devuelve el resultado, no una promesa', typeof r.then !== 'function');
+  chk('responde como Apps Script: getResponseCode()', r.getResponseCode() === 400, r.getResponseCode());
+  chk('y getContentText() trae el detalle',
+      /invalid_token/.test(r.getContentText()), String(r.getContentText()).slice(0, 40));
+
+  // Y lo que de verdad importa: que la logica REAL rechace un token invalido
+  // en vez de explotar.
+  const codigo = require('fs').readFileSync(RUTA, 'utf8')
+    .replace(/^const MODO_LOGIN = '[a-z]+';$/m, "const MODO_LOGIN = 'estricto';");
+  require('vm').createContext(e.globales);
+  require('vm').runInContext(codigo, e.globales);
+
+  chk('la logica real rechaza un token invalido sin romperse',
+      e.globales.verificarIdToken_('token-invalido-de-prueba') === null);
+  chk('y deja dicho por que fallo',
+      /Google respondi/.test(e.globales.motivoUltimoToken), e.globales.motivoUltimoToken);
+
+  // getBlob solo lo usan los reportes, que siguen en Apps Script por
+  // temporizador. Tiene que avisar, no devolver algo inservible.
+  let aviso = false;
+  try { r.getBlob(); } catch (err) { aviso = /Apps Script/.test(err.message); }
+  chk('getBlob avisa que los reportes siguen en Apps Script', aviso);
+
+  require('./src/puente-sincrono').detener();
+}
+
 console.log('\n=== Lo que todavia NO esta, falla en voz alta ===');
 {
   const e = montar({ 'PAGOS REGISTRADOS': [ENC_PAGOS] }, 'off');
