@@ -471,6 +471,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-19**: 🔒 **Solución definitiva al pago que caía al fondo: se dejó de usar `values.append`.**
+  - ⚠️ **El arreglo anterior NO alcanzaba, y lo demostró una prueba del usuario:** agregó 1000 filas a mano desde Sheets y el pago siguiente volvió a caer en la **1047**. Acotarle el rango de búsqueda a `values.append` (`A1:L44`) no sirve — **`append` resuelve la tabla desde el objeto Tabla de la hoja e ignora el rango que se le pasa.**
+  - 🧭 **El aprendizaje:** el primer arreglo pasaba las 228 comprobaciones y **aun así estaba mal**, porque dependía de una *heurística* de Google (dónde cree Sheets que termina la tabla) en vez de decidirlo nosotros. Una prueba solo confirma lo que vos suponés que hace la otra parte.
+  - **Ahora la fila la elige la lógica** —que sabe dónde terminan los datos porque acaba de leerlos— y `escribir.js` escribe ahí, en dos pasos: `insertDimension` abre la fila exacta y `values.update` escribe adentro con `USER_ENTERED` (las fechas siguen quedando como fechas reales). **No queda ninguna heurística en el medio**, y deja de importar cuántas filas de sobra tenga la hoja o hasta dónde llegue la Tabla.
+  - **Insertar en vez de sobrescribir no es un detalle:** si dos pagos llegan a la vez y calculan la misma fila, el segundo **empuja** al primero en vez de pisarlo. Ninguno se pierde.
+  - **Verificado contra la hoja real**, no solo con pruebas: se escribió una fila marcada, cayó en la fila pedida (1048), el vigilante no reportó nada y se borró enseguida. *El arreglo anterior se dio por bueno solo con pruebas y falló en producción.*
+
 - **2026-09-19**: 🚨 **Un pago quedó en la fila 1041 de una hoja con 44 filas de datos.** La app lo mostraba; la hoja, no. **No se perdió** — pero para quien mira el Sheets había desaparecido, y en contabilidad eso es casi tan grave como perderlo.
   - **La causa, y es sutil:** todas las hojas están convertidas en **Tablas de Sheets**, y cada Tabla abarcaba las **1000 filas de la cuadrícula**, no solo las filas con datos.
     - `SpreadsheetApp.appendRow()` (Apps Script) agrega después de la última fila **CON DATOS**.

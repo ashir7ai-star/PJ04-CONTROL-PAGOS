@@ -67,7 +67,9 @@ function filaDelRango(rango) {
 
 function verificarFila(hoja, esperada, respuesta) {
   if (!esperada || !respuesta) return;
-  const real = filaDelRango(respuesta.updates && respuesta.updates.updatedRange);
+  // `values.update` lo devuelve arriba; `values.append`, dentro de `updates`.
+  const real = filaDelRango(respuesta.updatedRange ||
+                            (respuesta.updates && respuesta.updates.updatedRange));
   if (!real || real === esperada) return;
 
   console.warn('[fila fuera de lugar] "' + hoja + '": se esperaba la fila ' + esperada +
@@ -193,6 +195,89 @@ async function aplicar(cambios, apiInyectada, idInyectado) {
     await api.spreadsheets.batchUpdate({ spreadsheetId: id, requestBody: { requests: requests } });
   };
 
+  // ─── Dónde cae una fila nueva: se decide acá, no en Sheets ───────────────
+  //
+  // El 19/09/2026 un pago de $100.000 quedó en la fila 1041 de una hoja con 44
+  // filas de datos. No se perdió —la app lo leía— pero para quien mira la hoja
+  // había desaparecido. En contabilidad eso es casi tan grave como perderlo.
+  //
+  // La causa: las hojas están convertidas en **Tablas de Sheets**.
+  //
+  //   · `appendRow()` de Apps Script agrega tras la última fila CON DATOS.
+  //   · `values.append` agrega tras la TABLA.
+  //
+  // La migración cambió esa semántica sin que nadie tocara la lógica.
+  //
+  // ⚠️ El primer intento fue acotarle el rango de búsqueda a `values.append`
+  // (`A1:L44`). NO SIRVE: la probamos agregando 1000 filas a mano y el pago
+  // siguiente volvió a caer en la 1047. `values.append` resuelve la tabla a
+  // partir del objeto Tabla de la hoja e **ignora el rango que se le pasa**.
+  //
+  // Por eso ya no se usa `append`. La fila la elige la lógica —que sabe dónde
+  // terminan los datos porque acaba de leerlos— y acá se escribe ahí:
+  //
+  //   1. `insertDimension` abre la fila en esa posición exacta.
+  //   2. `values.update` escribe adentro, con USER_ENTERED (las fechas siguen
+  //      quedando como fechas reales, que costó una jornada conseguir).
+  //
+  // Insertar en vez de sobrescribir no es un detalle: si dos pagos llegan a la
+  // vez y los dos calculan la misma fila, el segundo EMPUJA al primero en vez
+  // de pisarlo. Ninguno se pierde.
+  //
+  // Y deja de importar cuántas filas de sobra tenga la hoja o hasta dónde
+  // llegue la Tabla.
+  let porAgregar = [];
+  const bajarAgregados = async () => {
+    if (!porAgregar.length) return;
+
+    const lote = porAgregar;
+    porAgregar = [];
+
+    // Filas consecutivas de la misma hoja van en un solo par de llamadas.
+    const bloques = [];
+    for (const a of lote) {
+      const u = bloques[bloques.length - 1];
+      if (u && u.hoja === a.hoja && a.fila === u.fila + u.valores.length) u.valores.push(a.valores);
+      else bloques.push({ hoja: a.hoja, fila: a.fila, valores: [a.valores] });
+    }
+
+    for (const b of bloques) {
+      const hojaId = await idDeHoja(b.hoja);
+      const alto   = b.valores.length;
+      const ancho  = Math.max.apply(null, b.valores.map(v => v.length));
+
+      // Sin `fila` no hay dónde insertar: no puede pasar (la registra el
+      // adaptador), pero si pasara es mejor fallar que escribir a ciegas.
+      if (!b.fila || hojaId === null) {
+        throw new Error('No se pudo ubicar la fila nueva en "' + b.hoja + '". No se escribió nada.');
+      }
+
+      cupo.anotarEscritura();
+      await api.spreadsheets.batchUpdate({
+        spreadsheetId: id,
+        requestBody: { requests: [{ insertDimension: {
+          range: { sheetId: hojaId, dimension: 'ROWS', startIndex: b.fila - 1, endIndex: b.fila - 1 + alto },
+          // Hereda el formato de la fila de arriba, así la fila nueva se ve
+          // igual que las demás. En la fila 1 no hay nada de donde heredar.
+          inheritFromBefore: b.fila > 1
+        } }] }
+      });
+
+      cupo.anotarEscritura();
+      const r = await api.spreadsheets.values.update({
+        spreadsheetId: id,
+        range: rangoA1(b.hoja, b.fila, 1, alto, ancho),
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: b.valores.map(f => f.map(aCelda)) }
+      });
+
+      // Y se comprueba dónde cayó de verdad. Sin esto, que un dato quede en el
+      // lugar equivocado NO da error: la app lo sigue leyendo y nadie se
+      // entera hasta que alguien mira la hoja.
+      verificarFila(b.hoja, b.fila, r && r.data);
+    }
+  };
+
   for (const c of cambios) {
     if (c.tipo === 'crearHoja' || c.tipo === 'formato' || c.tipo === 'congelar') continue;
 
@@ -200,6 +285,7 @@ async function aplicar(cambios, apiInyectada, idInyectado) {
     // se acumula con los borrados que vengan pegados.
     if (c.tipo === 'borrar') {
       await bajarGrupo();
+      await bajarAgregados();
       porBorrar.push({ hoja: c.hoja, desde: c.desde, cantidad: c.cantidad });
       continue;
     }
@@ -209,49 +295,11 @@ async function aplicar(cambios, apiInyectada, idInyectado) {
 
     if (c.tipo === 'agregar') {
       await bajarGrupo();
-      cupo.anotarEscritura();
-
-      // ─── Dónde cae una fila nueva ────────────────────────────────────────
-      //
-      // El 19/09/2026 un pago de $100.000 quedó en la fila 1041 de una hoja
-      // con 44 filas de datos. No se perdió —la app lo leía— pero para quien
-      // mira la hoja había desaparecido. En contabilidad eso es casi tan
-      // grave como perderlo.
-      //
-      // La causa: las hojas están convertidas en **Tablas de Sheets**, y cada
-      // Tabla abarca las 1000 filas de la cuadrícula.
-      //
-      //   · `appendRow()` de Apps Script agrega tras la última fila CON DATOS.
-      //   · `values.append` agrega tras la TABLA.
-      //
-      // La migración cambió esa semántica sin que nadie tocara la lógica.
-      //
-      // El rango que se manda acota dónde busca la API: dándole el bloque de
-      // datos (A1 hasta la fila anterior), la fila nueva cae pegada a los
-      // datos aunque la Tabla siga siendo enorme.
-      //
-      // Se mantiene INSERT_ROWS a propósito: INSERTA en vez de sobrescribir,
-      // así dos pagos simultáneos nunca pueden pisarse.
-      const nombreHoja = "'" + String(c.hoja).replace(/'/g, "''") + "'";
-      const ancho = Math.max(1, (c.valores || []).length);
-      const rango = (c.fila && c.fila > 1)
-        ? nombreHoja + '!A1:' + letraDeColumna(ancho) + (c.fila - 1)
-        : nombreHoja;
-
-      const r = await api.spreadsheets.values.append({
-        spreadsheetId: id,
-        range: rango,
-        valueInputOption: 'USER_ENTERED',
-        insertDataOption: 'INSERT_ROWS',
-        requestBody: { values: [c.valores.map(aCelda)] }
-      });
-
-      // Y se comprueba dónde cayó de verdad. Sin esta comprobación, que la
-      // fila termine en el lugar equivocado NO da error: la app la sigue
-      // leyendo y nadie se entera hasta que alguien mira la hoja.
-      verificarFila(c.hoja, c.fila, r && r.data);
+      porAgregar.push(c);
       continue;
     }
+
+    await bajarAgregados();
 
     if (c.tipo === 'escribir') {
       const alto  = c.valores.length;
@@ -266,6 +314,7 @@ async function aplicar(cambios, apiInyectada, idInyectado) {
   }
 
   await bajarGrupo();
+  await bajarAgregados();
   await bajarBorrados();
 }
 

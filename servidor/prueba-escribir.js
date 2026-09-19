@@ -59,12 +59,16 @@ console.log('\n=== El orden de las operaciones ===');
     spreadsheets: {
       batchUpdate: async (r) => {
         const req = r.requestBody.requests[0];
-        llamadas.push(req.addSheet ? 'crearHoja:' + req.addSheet.properties.title : 'borrar');
+        llamadas.push(req.addSheet ? 'crearHoja:' + req.addSheet.properties.title
+                    : req.insertDimension ? 'abrirFila' : 'borrar');
         return {};
       },
-      get: async () => ({ data: { sheets: [{ properties: { sheetId: 7, title: 'S' } }] } }),
+      get: async () => ({ data: { sheets: [
+        { properties: { sheetId: 7, title: 'S' } },
+        { properties: { sheetId: 8, title: 'Compra Materiales' } }
+      ] } }),
       values: {
-        append:      async (r) => { llamadas.push('agregar:' + r.range); return {}; },
+        update:      async (r) => { llamadas.push('agregar:' + r.range); return { data: { updatedRange: r.range } }; },
         batchUpdate: async (r) => { llamadas.push('escribir:' + r.requestBody.data.map(d => d.range).join(',')); return {}; }
       }
     }
@@ -76,7 +80,7 @@ console.log('\n=== El orden de las operaciones ===');
     await esc.aplicar([
       { tipo: 'crearHoja', hoja: 'Compra Materiales' },
       { tipo: 'escribir', hoja: 'Compra Materiales', fila: 1, col: 1, valores: [['A', 'B']] },
-      { tipo: 'agregar',  hoja: 'Compra Materiales', valores: ['x', 1] },
+      { tipo: 'agregar',  hoja: 'Compra Materiales', fila: 2, valores: ['x', 1] },
       { tipo: 'escribir', hoja: 'S', fila: 2, col: 3, valores: [[9]] },
       { tipo: 'borrar',   hoja: 'S', desde: 2, cantidad: 1 },
       { tipo: 'escribir', hoja: 'S', fila: 5, col: 1, valores: [['z']] }
@@ -102,30 +106,40 @@ console.log('\n=== El orden de las operaciones ===');
 
     chk('sin cambios no se llama a nada', (await esc.aplicar([], apiFalsa, 'x'), true));
 
-    console.log('\n=== Una fila nueva cae PEGADA a los datos, no al final de la Tabla ===');
+    console.log('\n=== La fila nueva va donde la lógica dice, no donde Sheets quiera ===');
     {
       // El 19/09/2026 un pago de $100.000 quedó en la fila 1041 de una hoja
-      // con 44 filas de datos. No se perdió —la app lo leía— pero para quien
-      // mira la hoja había desaparecido.
+      // con 44 filas de datos. `appendRow()` de Apps Script agrega tras la
+      // última fila CON DATOS; `values.append` agrega tras la TABLA, y todas
+      // las hojas están convertidas en Tablas.
       //
-      // Las hojas están convertidas en Tablas de Sheets y cada Tabla abarca
-      // las 1000 filas de la cuadrícula. `appendRow()` de Apps Script agrega
-      // tras la última fila CON DATOS; `values.append` agrega tras la TABLA.
-      // La migración cambió esa semántica sin que nadie tocara la lógica.
-      const rangos = [];
+      // ⚠️ El primer intento fue acotarle el rango a `values.append`. NO
+      // SIRVE: probado agregando 1000 filas a mano, el pago siguiente volvió a
+      // caer en la 1047. `append` resuelve la tabla desde el objeto Tabla e
+      // IGNORA el rango que se le pasa. Por eso ya no se usa.
+      const pasos = [];
       const api = {
         spreadsheets: {
-          get: async () => ({ data: { sheets: [{ properties: { sheetId: 7, title: 'S' } }] } }),
-          batchUpdate: async () => ({}),
+          get: async () => ({ data: { sheets: [
+            { properties: { sheetId: 7, title: 'S' } },
+            { properties: { sheetId: 1, title: 'PAGOS REGISTRADOS' } }
+          ] } }),
+          batchUpdate: async (p) => {
+            (p.requestBody.requests || []).forEach(r => {
+              if (r.insertDimension) {
+                const g = r.insertDimension.range;
+                pasos.push('inserta filas ' + (g.startIndex + 1) + '-' + g.endIndex +
+                           ' en hoja ' + g.sheetId);
+              }
+            });
+            return {};
+          },
           values: {
             batchUpdate: async () => ({}),
-            append: async (r) => {
-              rangos.push(r.range);
-              // Como responde Sheets de verdad: dice dónde escribió. Acá se
-              // finge que cayó donde correspondía, para no disparar el aviso.
-              const m = /!A1:[A-Z]+(\d+)/.exec(r.range);
-              const fila = m ? Number(m[1]) + 1 : 1;
-              return { data: { updates: { updatedRange: "'x'!A" + fila + ':L' + fila } } };
+            append: async () => { pasos.push('APPEND'); return { data: {} }; },
+            update: async (r) => {
+              pasos.push('escribe ' + r.range);
+              return { data: { updatedRange: r.range } };
             }
           }
         }
@@ -134,15 +148,37 @@ console.log('\n=== El orden de las operaciones ===');
       await esc.aplicar([{ tipo: 'agregar', hoja: 'PAGOS REGISTRADOS', fila: 45,
                            valores: new Array(12).fill('x') }], api, 'doc');
 
-      chk('el rango acota la búsqueda al bloque de datos',
-          rangos[0] === "'PAGOS REGISTRADOS'!A1:L44", rangos[0]);
-      chk('y NO manda la hoja entera, que es lo que la mandaba al fondo',
-          rangos[0].indexOf('!') !== -1, rangos[0]);
+      chk('NO se usa values.append', pasos.indexOf('APPEND') === -1, pasos);
+      chk('primero se abre la fila exacta',
+          pasos[0] === 'inserta filas 45-45 en hoja 1', pasos[0]);
+      chk('y después se escribe en esa fila',
+          pasos[1] === "escribe 'PAGOS REGISTRADOS'!A45:L45", pasos[1]);
 
-      // Una hoja vacía no tiene bloque de datos: ahí va el nombre solo.
-      rangos.length = 0;
-      await esc.aplicar([{ tipo: 'agregar', hoja: 'S', fila: 1, valores: ['a'] }], api, 'doc');
-      chk('una hoja sin datos usa el nombre solo', rangos[0] === "'S'", rangos[0]);
+      // Insertar y no sobrescribir es lo que hace que dos pagos simultáneos
+      // no se pisen: el segundo empuja al primero, ninguno se pierde.
+      chk('se INSERTA la fila, no se pisa la que hubiera',
+          pasos[0].indexOf('inserta') === 0, pasos);
+
+      // Varias filas seguidas de la misma hoja: un solo par de llamadas.
+      pasos.length = 0;
+      await esc.aplicar([
+        { tipo: 'agregar', hoja: 'PAGOS REGISTRADOS', fila: 45, valores: ['a'] },
+        { tipo: 'agregar', hoja: 'PAGOS REGISTRADOS', fila: 46, valores: ['b'] },
+        { tipo: 'agregar', hoja: 'PAGOS REGISTRADOS', fila: 47, valores: ['c'] }
+      ], api, 'doc');
+      chk('tres filas seguidas = un solo par de llamadas', pasos.length === 2, pasos);
+      chk('se abren las tres de una vez',
+          pasos[0] === 'inserta filas 45-47 en hoja 1', pasos[0]);
+      chk('y se escriben juntas',
+          pasos[1] === "escribe 'PAGOS REGISTRADOS'!A45:A47", pasos[1]);
+
+      // Sin fila no se escribe a ciegas.
+      let fallo = null;
+      try {
+        await esc.aplicar([{ tipo: 'agregar', hoja: 'PAGOS REGISTRADOS', valores: ['x'] }], api, 'doc');
+      } catch (err) { fallo = err; }
+      chk('sin saber la fila, falla en voz alta en vez de adivinar',
+          !!fallo && /No se escribió nada/.test(fallo.message), fallo && fallo.message);
     }
 
     console.log('\n=== Si la fila cae en otro lado, se avisa ===');
@@ -152,12 +188,12 @@ console.log('\n=== El orden de las operaciones ===');
       // que comparar dónde dijo Sheets que escribió.
       const api = {
         spreadsheets: {
-          get: async () => ({ data: { sheets: [] } }),
+          get: async () => ({ data: { sheets: [{ properties: { sheetId: 1, title: 'PAGOS REGISTRADOS' } }] } }),
           batchUpdate: async () => ({}),
           values: {
             batchUpdate: async () => ({}),
             // Sheets dice que escribió en la 1041, no en la 45.
-            append: async () => ({ data: { updates: { updatedRange: "'PAGOS REGISTRADOS'!A1041:L1041" } } })
+            update: async () => ({ data: { updatedRange: "'PAGOS REGISTRADOS'!A1041:L1041" } })
           }
         }
       };
