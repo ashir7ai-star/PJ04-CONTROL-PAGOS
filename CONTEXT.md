@@ -34,6 +34,8 @@ Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **se
 
 ⚠️ **Cualquier cambio en `apps-script.gs` hay que desplegarlo en LOS DOS lados** — pegar en el editor y redesplegar, y hacer Deploy en EasyPanel — y después correr el comparador.
 
+⚠️ **La cuota de lectura de Sheets es de TODA la empresa, no de cada usuario.** Con cuenta de servicio, los nueve comparten **60 lecturas por minuto**. Hay un freno propio en 40 (`LECTURAS_POR_MINUTO`) y el consumo real se mira en `GET /salud`. **Antes de agregar cualquier consulta nueva, revisar cuántas lecturas cuesta.**
+
 `API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-19-a` · `sw.js` → `control-pagos-v81` · `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
@@ -463,6 +465,20 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-19**: 🚨 **La app se cayó para una usuaria por CUOTA de la API de Sheets.** En pantalla, en inglés: *"Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user'"*. Nathan estaba probando al mismo tiempo; a Sandra no la dejó entrar.
+  - **La raíz:** Google permite **60 lecturas por minuto "por usuario"**, y con una **cuenta de servicio ese usuario es UNO SOLO para toda la empresa**. Los nueve comparten el mismo balde. No es un límite por persona.
+  - **Cuatro cosas lo multiplicaban:**
+    1. Cada foto costaba **2 lecturas**: una para preguntar cómo se llaman las pestañas y otra para leerlas. La primera casi nunca cambia. → **la lista de pestañas ahora se guarda** (se olvida sola a los 10 min y cuando la lógica crea una hoja).
+    2. **`arranque` estaba en la lista de acciones que exigen leer el estado real** — y es la acción **más frecuente**: se dispara al abrir la app, **incluso en la pantalla de ingreso, antes de que nadie entre**. Cada una forzaba una lectura completa. → ahora solo exigen estado real las que **deciden** sobre él (`registrar_pago`, `decidir_solicitud`, `registrar_traslado`, `ajustar_saldo`, `guardar_usuario`, `registrar_usuario`, `solicitar_aprobacion`).
+    3. **Después de cada escritura se tiraba la foto** y la consulta siguiente volvía a leer. Como `arranque` escribe `ULTIMO ACCESO` en cada apertura, **el caché moría todo el tiempo: era como no tenerlo**. → ahora se conserva la copia que la lógica **ya dejó con el cambio aplicado** (si otro escribió en el medio, sí se tira: quedársela borraría un dato ajeno).
+    4. **La biblioteca de Google reintenta el 429 hasta 3 veces por su cuenta.** Reintentar por cuota agotada no es esperar a que se libere: **es gastar el cupo que hace falta para que se libere**. Una lectura rechazada se volvía cuatro peticiones. → desactivado para el 429; los 5xx se siguen reintentando.
+  - **Freno propio en `servidor/src/cupo-lecturas.js`:** 40 lecturas por minuto, **por debajo** de las 60 de Google. Sin cupo, **una consulta se sirve con lo último leído** (marcado `fotoVencida`) y **una acción que escribe se rehúsa y lo dice** — registrar un pago sobre una foto vencida es exactamente cómo se duplica un pago.
+  - **Dos peticiones simultáneas ya no leen dos veces:** comparten la lectura en curso. Era justo el caso que rompió (dos personas a la vez) y el que nadie prueba a mano.
+  - **El mensaje de Google no vuelve a llegar a pantalla:** se traduce y se responde 503 con `codigo: 'CUOTA'`.
+  - `GET /salud` ahora informa el **consumo real** (`lecturas.enElUltimoMinuto`, `vecesSinCupo`) — el número que faltaba el día que se cayó.
+  - Toda la política vive en **`servidor/src/foto.js`**, aparte del servidor, para poder probarla sin red ni credenciales. **Suite nueva: `servidor/prueba-cuota.js`** (7.ª suite, dentro de `npm run prueba`).
+  - **Medido contra las hojas reales:** foto fría 2 lecturas / 1.837 ms; siguientes **1 lectura** / ~440 ms; consultas encadenadas **0 lecturas**.
+
 - **2026-09-19**: 🚨 **El login se rompio al conmutar: `UrlFetchApp` sin implementar.** En pantalla: *"UrlFetchApp no esta disponible en este entorno"*. `verificarIdToken_` lo usa para validar el token de Google contra sus servidores — **sin eso NADIE puede entrar**.
   - Se dio por sentado que solo lo usaban los reportes (que siguen en Apps Script). **No se verifico el otro uso.**
   - ⚠️ **El comparador NO lo detecto, y ese es el aprendizaje mas importante:** le daba una sesion **ya creada a mano**. Verificaba que el sistema respondiera igual **una vez adentro**, nunca que se pudiera **entrar**. Una prueba que se saltea el primer paso no cubre el primer paso.

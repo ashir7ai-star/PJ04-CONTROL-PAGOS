@@ -16,9 +16,11 @@ const fs   = require('fs');
 const vm   = require('vm');
 const path = require('path');
 
-const { nombresDeHojas, leerHojas } = require('./hojas');
+const { nombresDeHojas, leerHojas, olvidarNombres } = require('./hojas');
 const { convertirFoto } = require('./fechas-sheets');
 const { crearEntorno }  = require('./entorno');
+const cupo = require('./cupo-lecturas');
+const { crearGestorDeFoto } = require('./foto');
 
 const PUERTO = Number(process.env.PORT || 8080);
 const ZONA   = process.env.ZONA_HORARIA || 'America/Bogota';
@@ -65,41 +67,57 @@ const ORIGENES = (process.env.ORIGENES_PERMITIDOS ||
   'https://ashir7ai-star.github.io,http://localhost:8000,http://127.0.0.1:8000'
 ).split(',').map(o => o.trim()).filter(Boolean);
 
-// Acciones que ESCRIBEN. Se las trata distinto: nunca leen de la foto guardada
-// —tienen que decidir sobre el estado real— y la invalidan al terminar.
-const ACCIONES_QUE_ESCRIBEN = [
-  'registrar_pago', 'solicitar_aprobacion', 'decidir_solicitud', 'registrar_traslado',
-  'ajustar_saldo', 'guardar_usuario', 'registrar_usuario', 'iniciar_sesion',
-  'cerrar_sesion', 'arranque'   // arranque escribe ULTIMO ACCESO y puede crear la sesión
+// ─── Qué acciones EXIGEN leer el estado real ──────────────────────────────
+//
+// No es lo mismo "escribir" que "no poder decidir con datos de hace unos
+// segundos". La distinción importa: antes, `arranque` estaba en esta lista
+// —escribe ULTIMO ACCESO— y `arranque` es la acción MÁS frecuente del
+// sistema: se dispara al abrir la app, incluso antes de que nadie entre. Cada
+// una forzaba una lectura completa y además tiraba la foto guardada, así que
+// el caché prácticamente nunca se usaba y el consumo de cuota se disparaba.
+//
+// Acá quedan solo las acciones donde una foto de hace unos segundos podría
+// hacer TOMAR UNA DECISIÓN equivocada: el guardia contra pagos duplicados
+// compara contra lo ya escrito, y una aprobación no puede decidirse sobre un
+// estado viejo.
+//
+// Las demás —entrar, salir, arranque— pueden trabajar sobre la foto guardada
+// sin riesgo, porque después de cada escritura el caché se queda con la foto
+// YA ACTUALIZADA (ver más abajo): una sesión recién creada está ahí.
+const ACCIONES_QUE_EXIGEN_FRESCO = [
+  'registrar_pago',        // el guardia contra duplicados compara con lo ya escrito
+  'solicitar_aprobacion',
+  'decidir_solicitud',
+  'registrar_traslado',
+  'ajustar_saldo',
+  'guardar_usuario',
+  'registrar_usuario'
 ];
+
+// Se conserva el nombre viejo por compatibilidad con lo que ya lo importaba.
+const ACCIONES_QUE_ESCRIBEN = ACCIONES_QUE_EXIGEN_FRESCO;
 
 // ─── La foto de las hojas ─────────────────────────────────────────────────
 //
 // Traerla cuesta ~600 ms (medido: las 12 hojas en UNA llamada). Guardarla unos
 // segundos hace que varias consultas seguidas no la vuelvan a pedir.
 //
-// El riesgo de una foto vieja es real, así que se acota por los dos lados: vive
-// muy poco, y cualquier acción que escriba la tira y vuelve a leer. Lo único
-// que puede quedar desactualizado unos segundos es una edición hecha a mano
-// directamente sobre la hoja.
-const SEGUNDOS_FOTO = Number(process.env.SEGUNDOS_FOTO || 15);
-let fotoCache = null;
+// Toda la política —cuándo reusar, cuándo esperar, qué hacer sin cuota— vive
+// en foto.js, donde se puede probar sin red ni credenciales.
+const SEGUNDOS_FOTO  = Number(process.env.SEGUNDOS_FOTO || 15);
+const MS_ESPERA_CUPO = Number(process.env.MS_ESPERA_CUPO || 8000);
 
-function olvidarFoto() { fotoCache = null; }
+const gestorFoto = crearGestorDeFoto({
+  leerNombres: ()        => nombresDeHojas(false),
+  leerHojas:   (nombres) => leerHojas(nombres, false),
+  convertir:   (crudo)   => convertirFoto(crudo, ZONA),
+  cupo:        cupo,
+  segundos:     SEGUNDOS_FOTO,
+  msEsperaCupo: MS_ESPERA_CUPO
+});
 
-async function traerFoto(forzar) {
-  if (!forzar && fotoCache && fotoCache.vence > Date.now()) {
-    return { foto: fotoCache.foto, deCache: true, ms: 0 };
-  }
-  const a = Date.now();
-  const nombres = await nombresDeHojas(false);
-  const crudo   = await leerHojas(nombres, false);
-  const foto    = convertirFoto(crudo, ZONA);
-  const ms      = Date.now() - a;
-
-  fotoCache = { foto: foto, vence: Date.now() + SEGUNDOS_FOTO * 1000 };
-  return { foto, deCache: false, ms };
-}
+const traerFoto   = (forzar) => gestorFoto.traer(forzar);
+const olvidarFoto = ()       => gestorFoto.olvidar();
 
 // ─── La lógica de negocio ─────────────────────────────────────────────────
 //
@@ -165,7 +183,13 @@ const servidor = http.createServer(async (req, res) => {
 
   // Para que EasyPanel sepa si el servicio está sano.
   if (req.method === 'GET' && (req.url === '/salud' || req.url === '/health')) {
-    return responder(res, 200, { status: 'success', servicio: 'pj04-pagos-api', zona: ZONA });
+    return responder(res, 200, {
+      status: 'success', servicio: 'pj04-pagos-api', zona: ZONA,
+      // Cuánta cuota de lectura se está usando. Es el número que hacía falta
+      // el día que la app se cayó por cuota y solo se podía especular.
+      lecturas: cupo.resumen(),
+      foto: gestorFoto.estado()
+    });
   }
 
   // Comprueba las TRES capacidades contra los servicios reales. Sin esto, una
@@ -177,7 +201,10 @@ const servidor = http.createServer(async (req, res) => {
     const r = { status: 'success', hojas: {}, drive: {}, correo: {} };
 
     try {
-      const nombres = await nombresDeHojas(false);
+      // `true` al final: fuerza la llamada real. Servir la lista guardada acá
+      // convertiría el diagnóstico en una mentira — diría que las credenciales
+      // funcionan sin haberlas usado.
+      const nombres = await nombresDeHojas(false, true);
       r.hojas = { ok: true, pestanas: nombres.length };
     } catch (err) { r.hojas = { ok: false, error: err.message }; }
 
@@ -213,8 +240,9 @@ const servidor = http.createServer(async (req, res) => {
       return responder(res, 400, { status: 'error', message: 'JSON inválido' });
     }
 
-    const escribe = ACCIONES_QUE_ESCRIBEN.indexOf(cuerpo.action) !== -1;
-    const { foto, deCache, ms: msLectura } = await traerFoto(escribe);
+    const exigeFresco = ACCIONES_QUE_EXIGEN_FRESCO.indexOf(cuerpo.action) !== -1;
+    const lectura = await traerFoto(exigeFresco);
+    const { foto, deCache, ms: msLectura, vencida } = lectura;
 
     const { texto, entorno } = ejecutar(foto, cuerpo);
 
@@ -224,9 +252,24 @@ const servidor = http.createServer(async (req, res) => {
     let msEscritura = 0;
     if (cambios.length) {
       const a = Date.now();
-      await require('./escribir').aplicar(cambios);
+      try {
+        await require('./escribir').aplicar(cambios);
+      } catch (err) {
+        // No sabemos cuánto alcanzó a aplicarse: lo guardado ya no es de fiar.
+        gestorFoto.escrituraFallida();
+        throw err;
+      }
       msEscritura = Date.now() - a;
-      olvidarFoto();   // lo que había guardado ya no refleja la hoja
+
+      // Si la lógica creó una pestaña, la lista de pestañas guardada quedó vieja.
+      if (cambios.some(c => c.tipo === 'crearHoja')) olvidarNombres();
+
+      // La foto NO se tira: se reemplaza por la copia que la lógica ya dejó
+      // con el cambio aplicado. Tirarla costaba una lectura de cuota por cada
+      // escritura, y `arranque` escribe ULTIMO ACCESO en CADA apertura de la
+      // app — el caché moría todo el tiempo. (La decisión fina, incluida la
+      // carrera con otra escritura, está en foto.js.)
+      gestorFoto.trasEscribir(lectura.version, entorno.datos());
     }
 
     // La medición viaja en la respuesta, como ya hacía Apps Script. Sin un
@@ -240,7 +283,11 @@ const servidor = http.createServer(async (req, res) => {
           ms: Date.now() - inicio,
           msLectura: msLectura,
           msEscritura: msEscritura,
-          fotoDeCache: deCache
+          fotoDeCache: deCache,
+          // `fotoVencida` avisa que se sirvió lo último leído porque no había
+          // cupo. No es un error, pero conviene que quede registrado.
+          fotoVencida: !!vencida,
+          lecturasEnElMinuto: cupo.usadas()
         };
         salida = JSON.stringify(datos);
       }
@@ -263,6 +310,17 @@ const servidor = http.createServer(async (req, res) => {
 
   } catch (err) {
     console.error('[pj04-pagos-api]', err && err.stack ? err.stack : err);
+
+    // La cuota agotada no es una falla del servidor: es "ahora no, en un
+    // momento". Se devuelve 503 y un mensaje en castellano. El de Google
+    // ("Quota exceeded for quota metric 'Read requests'...") llegó tal cual a
+    // la pantalla de una usuaria, en inglés y con el número de proyecto
+    // adentro; eso no puede volver a pasar.
+    if (err && err.cuota) {
+      console.warn('[cuota] ' + JSON.stringify(cupo.resumen()));
+      return responder(res, 503, { status: 'error', codigo: 'CUOTA', message: err.message });
+    }
+
     return responder(res, 500, {
       status: 'error',
       message: (err && err.message) || 'Error inesperado en el servidor.'
@@ -275,6 +333,10 @@ servidor.listen(PUERTO, () => {
   console.log('  zona horaria: ' + ZONA);
   console.log('  orígenes permitidos: ' + ORIGENES.join(', '));
   console.log('  foto de hojas: ' + SEGUNDOS_FOTO + ' s');
+  console.log('  freno de lecturas: ' + cupo.LIMITE + ' por minuto (Google permite 60)');
 });
 
-module.exports = { servidor, traerFoto, olvidarFoto, ejecutar, ACCIONES_QUE_ESCRIBEN };
+module.exports = {
+  servidor, traerFoto, olvidarFoto, ejecutar,
+  ACCIONES_QUE_ESCRIBEN, ACCIONES_QUE_EXIGEN_FRESCO
+};
