@@ -463,6 +463,14 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-19**: 🚨 **El login se rompio al conmutar: `UrlFetchApp` sin implementar.** En pantalla: *"UrlFetchApp no esta disponible en este entorno"*. `verificarIdToken_` lo usa para validar el token de Google contra sus servidores — **sin eso NADIE puede entrar**.
+  - Se dio por sentado que solo lo usaban los reportes (que siguen en Apps Script). **No se verifico el otro uso.**
+  - ⚠️ **El comparador NO lo detecto, y ese es el aprendizaje mas importante:** le daba una sesion **ya creada a mano**. Verificaba que el sistema respondiera igual **una vez adentro**, nunca que se pudiera **entrar**. Una prueba que se saltea el primer paso no cubre el primer paso.
+  - Implementado por el mismo puente sincrono que Drive. `getBlob` queda sin implementar **a proposito y avisando**: solo lo usan los reportes.
+  - **Auditoria nueva en `prueba-logica-real.js`:** recorre **las 16 acciones** que expone el servidor y comprueba que ninguna choque con una pieza ausente, incluido el camino de **ingresar**. Corre contra una copia en memoria, sin tocar datos reales.
+    - La primera version de esa auditoria **fallaba por su propia configuracion** (armaba el entorno con `sinDrive: true`): comprobaba el banco de pruebas en vez del sistema. Corregido con un entorno completo.
+  - 🧭 **Regla que queda:** cuando una prueba necesita "preparar" algo para empezar (una sesion, un permiso, un dato), **eso que prepara queda sin probar**. Hay que cubrirlo aparte.
+
 - **2026-09-19**: 🏁 **SIN DIFERENCIAS: los dos backends responden exactamente lo mismo, con datos reales.**
 
   | Consulta | Apps Script | Propio | |

@@ -30,9 +30,13 @@ function chk(nombre, cond, detalle) {
 const RUTA = path.join(__dirname, '..', 'apps-script.gs');
 
 // Monta la lógica real sobre una foto de hojas dada.
-function montar(foto, modoLogin) {
+// `conDrive` arma el entorno COMPLETO. Por defecto Drive queda fuera, para que
+// las pruebas no dependan de credenciales ni de la red; pero la auditoria de
+// acciones necesita el entorno real, o estaria comprobando su propia
+// configuracion en vez del sistema.
+function montar(foto, modoLogin, conDrive) {
   // La foto pasa por la MISMA conversion que en produccion.
-  const e = crearEntorno(convertirFoto(foto, 'America/Bogota'), { sinDrive: true });
+  const e = crearEntorno(convertirFoto(foto, 'America/Bogota'), { sinDrive: !conDrive });
   let codigo = fs.readFileSync(RUTA, 'utf8');
 
   const patron = /^const MODO_LOGIN = '[a-z]+';$/m;
@@ -203,6 +207,92 @@ console.log('\n=== UrlFetchApp: sin esto NADIE puede entrar ===');
   let aviso = false;
   try { r.getBlob(); } catch (err) { aviso = /Apps Script/.test(err.message); }
   chk('getBlob avisa que los reportes siguen en Apps Script', aviso);
+
+  require('./src/puente-sincrono').detener();
+}
+
+console.log('\n=== NINGUNA accion puede topar con algo sin implementar ===');
+{
+  // De aca salio el login roto: UrlFetchApp quedo sin implementar y nadie lo
+  // noto hasta que un usuario no pudo entrar. El comparador no lo detecto
+  // porque le daba una sesion ya creada: verificaba que el sistema respondiera
+  // igual UNA VEZ ADENTRO, nunca que se pudiera entrar.
+  //
+  // Esto recorre TODAS las acciones que el servidor expone y comprueba que
+  // ninguna choque con una pieza sin implementar. Corre contra una copia en
+  // memoria, asi que no toca ningun dato real.
+  const ENC_SOL = ['ID SOLICITUD','FECHA SOLICITUD','EMPRESA','TIPO DE PAGO','NOMBRE DEL PAGO',
+                   'PROVEEDOR','FECHA DE PAGO','VALOR','SOLICITADO POR','CORREO','NOTAS',
+                   'URL ARCHIVO','ESTADO','REVISADO POR','FECHA DECISION','COMENTARIO'];
+
+  const foto = {
+    'PAGOS REGISTRADOS': [ENC_PAGOS], 'Viaticos': [ENC_PAGOS], 'Caja Menor': [ENC_PAGOS],
+    'SALDOS':   [['FECHA','CUENTA','SALDO BASE','CONCEPTO','REGISTRADO POR']],
+    'TRASLADOS':[['FECHA','ORIGEN','DESTINO','MONTO','REGISTRADO POR','NOTA','URL COMPROBANTE','FECHA REGISTRO','REALIZADO POR']],
+    'USUARIOS': [['CORREO','NOMBRE','TELEFONO','ROL','SECCIONES','ESTADO','FECHA REGISTRO','ULTIMO ACCESO'],
+                 ['nathan@ylevigroup.com','Nathan','300','admin','todas','activo','','']],
+    'SESIONES': [['HASH','CORREO','CREADA','ULTIMO USO','VENCE']],
+    'SOLICITUDES DE APROBACION': [ENC_SOL]
+  };
+
+  // Cada accion con un cuerpo minimo plausible.
+  const acciones = [
+    ['arranque',              {}],
+    ['consultar_pagos',       {}],
+    ['consultar_saldos',      {}],
+    ['consultar_solicitudes', {}],
+    ['listar_usuarios',       {}],
+    ['consultar_traslados',   {}],
+    ['cerrar_sesion',         { sesionToken: 'x' }],
+    ['iniciar_sesion',        { idToken: 'x' }],
+    ['registrar_usuario',     { nombre: 'X', telefono: '1' }],
+    ['guardar_usuario',       { correo: 'otro@x.com', nombre: 'Otro', telefono: '1', rol: 'usuario', secciones: 'viaticos', estado: 'activo' }],
+    ['ajustar_saldo',         { cuenta: 'banco_ampac', monto: '1000' }],
+    ['registrar_traslado',    { origen: 'banco_ampac', destino: 'viaticos', monto: '1000',
+                                fecha: '2026-09-18', realizado_por: 'nathan@ylevigroup.com',
+                                archivos: [] }],
+    ['solicitar_aprobacion',  { empresa: 'AMPAC SAS', tipo_pago: 'viaticos', nombre_pago: 'X',
+                                proveedor: 'Y', fecha_pago: '2026-09-18', monto: '1000', archivos: [] }],
+    ['decidir_solicitud',     { id: 'inexistente', aprobado: true }],
+    ['registrar_pago',        { tipo_factura: 'viaticos', empresa: 'AMPAC SAS', monto: '1000',
+                                nombre_pago: 'X', proveedor: 'Y', fecha_pago: '2026-09-18',
+                                fecha_envio: 'op-x', archivos: [] }]
+  ];
+
+  let sinImplementar = [];
+  acciones.forEach(function (a) {
+    const e = montar(foto, 'off', true);   // entorno COMPLETO
+    let mensaje = '';
+    try {
+      const salida = e.globales.doPost({ postData: { contents: JSON.stringify(
+        Object.assign({ action: a[0] }, a[1])) } });
+      mensaje = String(salida && (salida._json !== undefined ? salida._json : salida));
+    } catch (err) {
+      mensaje = String(err && err.message);
+    }
+    // Lo que se busca NO es que la accion tenga exito —muchas fallan por datos
+    // de prueba incompletos, y esta bien— sino que no choque con una pieza
+    // ausente del entorno.
+    if (/no est[aá] (disponible|implementado)/i.test(mensaje)) {
+      sinImplementar.push(a[0] + ': ' + mensaje.slice(0, 90));
+    }
+  });
+
+  chk('ninguna accion topa con una pieza sin implementar',
+      sinImplementar.length === 0, sinImplementar);
+
+  // Y el camino de INGRESAR, que es el que se rompio y el comparador no cubria.
+  const e = montar(foto, 'estricto', true);
+  let mensajeLogin = '';
+  try {
+    const s = e.globales.doPost({ postData: { contents: JSON.stringify({ action: 'arranque', idToken: 'token-falso' }) } });
+    mensajeLogin = String(s && (s._json !== undefined ? s._json : s));
+  } catch (err) { mensajeLogin = String(err && err.message); }
+
+  chk('ingresar con un token invalido responde, no explota',
+      !/no est[aá] (disponible|implementado)/i.test(mensajeLogin), mensajeLogin.slice(0, 120));
+  chk('y lo rechaza como corresponde',
+      /SESION_INVALIDA|NO_REGISTRADO/.test(mensajeLogin), mensajeLogin.slice(0, 120));
 
   require('./src/puente-sincrono').detener();
 }
