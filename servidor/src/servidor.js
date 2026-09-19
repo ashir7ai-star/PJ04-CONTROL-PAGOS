@@ -21,6 +21,7 @@ const { convertirFoto } = require('./fechas-sheets');
 const { crearEntorno }  = require('./entorno');
 const cupo = require('./cupo-lecturas');
 const { crearGestorDeFoto } = require('./foto');
+const { traducirError }     = require('./errores');
 
 const PUERTO = Number(process.env.PORT || 8080);
 const ZONA   = process.env.ZONA_HORARIA || 'America/Bogota';
@@ -119,6 +120,24 @@ const gestorFoto = crearGestorDeFoto({
 const traerFoto   = (forzar) => gestorFoto.traer(forzar);
 const olvidarFoto = ()       => gestorFoto.olvidar();
 
+// ─── Los últimos errores, para no quedar a ciegas ─────────────────────────
+//
+// Cuando una persona reporta "me sale este mensaje", hoy no hay forma de saber
+// si su petición siquiera llegó acá. Sin eso, un mensaje viejo pegado en la
+// pantalla y un error real se ven EXACTAMENTE IGUAL, y se termina arreglando
+// lo que no era.
+//
+// Se guarda solo qué acción falló, con qué código y cuándo. NADA de correos,
+// tokens ni texto del error: esto se sirve sin contraseña.
+const ULTIMOS_ERRORES = [];
+function recordarError(accion, http, codigo) {
+  ULTIMOS_ERRORES.unshift({
+    cuando: new Date().toISOString(),
+    accion: accion, http: http, codigo: codigo
+  });
+  ULTIMOS_ERRORES.length = Math.min(ULTIMOS_ERRORES.length, 10);
+}
+
 // ─── La lógica de negocio ─────────────────────────────────────────────────
 //
 // Se lee UNA vez al arrancar. El contexto, en cambio, se crea por petición:
@@ -188,7 +207,10 @@ const servidor = http.createServer(async (req, res) => {
       // Cuánta cuota de lectura se está usando. Es el número que hacía falta
       // el día que la app se cayó por cuota y solo se podía especular.
       lecturas: cupo.resumen(),
-      foto: gestorFoto.estado()
+      foto: gestorFoto.estado(),
+      // Si esto está vacío, ninguna petición falló acá: un mensaje de error en
+      // la pantalla de alguien es entonces una página vieja sin recargar.
+      ultimosErrores: ULTIMOS_ERRORES
     });
   }
 
@@ -231,6 +253,7 @@ const servidor = http.createServer(async (req, res) => {
   }
 
   const inicio = Date.now();
+  let cuerpoAccion = '?';   // se necesita también si algo falla más abajo
   try {
     const crudo = await leerCuerpo(req);
     let cuerpo;
@@ -239,6 +262,7 @@ const servidor = http.createServer(async (req, res) => {
     } catch (err) {
       return responder(res, 400, { status: 'error', message: 'JSON inválido' });
     }
+    cuerpoAccion = String(cuerpo.action || '?').slice(0, 40);
 
     const exigeFresco = ACCIONES_QUE_EXIGEN_FRESCO.indexOf(cuerpo.action) !== -1;
     const lectura = await traerFoto(exigeFresco);
@@ -316,15 +340,16 @@ const servidor = http.createServer(async (req, res) => {
     // ("Quota exceeded for quota metric 'Read requests'...") llegó tal cual a
     // la pantalla de una usuaria, en inglés y con el número de proyecto
     // adentro; eso no puede volver a pasar.
-    if (err && err.cuota) {
-      console.warn('[cuota] ' + JSON.stringify(cupo.resumen()));
-      return responder(res, 503, { status: 'error', codigo: 'CUOTA', message: err.message });
-    }
+    // Qué se le muestra al usuario lo decide errores.js, en un solo lugar y
+    // sin depender de que el error venga marcado: un texto crudo de Google ya
+    // llegó una vez a la pantalla de una usuaria.
+    const t = traducirError(err);
 
-    return responder(res, 500, {
-      status: 'error',
-      message: (err && err.message) || 'Error inesperado en el servidor.'
-    });
+    if (t.codigo === 'CUOTA')  console.warn('[cuota] ' + JSON.stringify(cupo.resumen()) + '  crudo: ' + t.registro);
+    if (t.codigo === 'GOOGLE') console.error('[google] ' + t.registro);
+
+    recordarError(cuerpoAccion, t.http, t.codigo);
+    return responder(res, t.http, { status: 'error', codigo: t.codigo, message: t.message });
   }
 });
 

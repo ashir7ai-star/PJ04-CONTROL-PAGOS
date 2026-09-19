@@ -249,6 +249,92 @@ console.log('\n=== La lista de pestañas no se pregunta en cada lectura ===');
       /statusCodesToRetry: \[\[500, 599\]\]/.test(fuente), 'falta desactivar el reintento de 429');
 }
 
+console.log('\n=== El 429 se reconoce venga como venga ===');
+{
+  // El código del error NO está siempre en el mismo lugar. En gaxios 6 (la
+  // versión instalada) el 429 llega como `err.status` y `err.code` queda SIN
+  // DEFINIR — solo se llena si el error de abajo traía uno propio. Mirar un
+  // solo campo, o encadenarlos con `||` (que se corta con el primer valor no
+  // vacío, aunque sea un texto), deja pasar el error sin traducir: y ahí el
+  // texto en inglés de Google termina en la pantalla de un usuario.
+  const { esDeCuota } = require('./src/hojas');
+
+  chk('como err.status (así lo manda gaxios 6)', esDeCuota({ status: 429 }));
+  chk('como err.code',                            esDeCuota({ code: 429 }));
+  chk('como err.response.status',                 esDeCuota({ response: { status: 429 } }));
+  chk('con code de texto Y status 429 (el caso que se escapaba)',
+      esDeCuota({ code: 'ERR_BAD_REQUEST', response: { status: 429 } }));
+  chk('por el motivo que informa Google',         esDeCuota({ errors: [{ reason: 429 }] }));
+  chk('y como última red, por el texto',
+      esDeCuota({ message: "Quota exceeded for quota metric 'Read requests'" }));
+
+  chk('un 500 NO es cuota',        esDeCuota({ status: 500 }) === false);
+  chk('un error cualquiera tampoco', esDeCuota({ message: 'se cayó la red' }) === false);
+  chk('y un error vacío no explota', esDeCuota(null) === false);
+}
+
+console.log('\n=== Ningún texto de Google llega a pantalla ===');
+{
+  const { traducirError } = require('./src/errores');
+
+  // EL caso. Este texto exacto apareció en la pantalla de ingreso de una
+  // usuaria, en inglés y con el número de proyecto adentro.
+  const elQueSeEscapo = new Error(
+    "Quota exceeded for quota metric 'Read requests' and limit 'Read requests " +
+    "per minute per user' of service 'sheets.googleapis.com' for consumer " +
+    "'project_number:165996240052'."
+  );
+  const r = traducirError(elQueSeEscapo);
+
+  chk('se reconoce como cuota aunque NO venga marcado', r.codigo === 'CUOTA', r);
+  chk('responde 503, no 500: es "ahora no", no una falla', r.http === 503, r.http);
+  chk('el usuario NO lee el texto de Google',
+      !/Quota exceeded|project_number|googleapis/.test(r.message), r.message);
+  chk('lee algo en castellano y accionable', /volvé a intentar/i.test(r.message), r.message);
+  chk('pero el detalle crudo queda para el registro',
+      /project_number/.test(r.registro), r.registro);
+
+  // Un 429 que llegue por código, sin texto reconocible.
+  const porCodigo = traducirError(Object.assign(new Error('Request failed'), { status: 429 }));
+  chk('un 429 por código también se tapa', porCodigo.codigo === 'CUOTA', porCodigo);
+
+  // Cualquier otro mensaje de Google tampoco se muestra crudo.
+  const otro = traducirError(new Error('invalid_grant: Invalid JWT Signature.'));
+  chk('un error de credenciales no se muestra crudo',
+      otro.codigo === 'GOOGLE' && !/invalid_grant/.test(otro.message), otro);
+  chk('pero sí queda registrado', /invalid_grant/.test(otro.registro), otro.registro);
+
+  // Lo NUESTRO sí se muestra: esos mensajes están escritos para que sirvan.
+  const propio = traducirError(new Error('Faltan las credenciales. Definí GOOGLE_CREDENCIALES_JSON.'));
+  chk('un mensaje nuestro se muestra tal cual',
+      propio.http === 500 && /Faltan las credenciales/.test(propio.message), propio);
+
+  // El mensaje propio de cuota es más preciso: aclara que no se registró nada.
+  const deEscritura = Object.assign(new Error('...Esperá unos segundos y volvé a intentar. No se registró nada.'), { cuota: true });
+  chk('en una escritura se conserva el "no se registró nada"',
+      /No se registró nada/.test(traducirError(deEscritura).message), traducirError(deEscritura));
+
+  chk('un error sin mensaje no deja al usuario sin nada',
+      traducirError(new Error('')).message.length > 0, traducirError(new Error('')));
+}
+
+console.log('\n=== Poder distinguir una pantalla vieja de un error real ===');
+{
+  // Cuando alguien reporta "me sale este mensaje", no había forma de saber si
+  // su petición siquiera llegó al servidor. Un mensaje viejo pegado en la
+  // pantalla y un error real se ven EXACTAMENTE IGUAL.
+  const fuente = require('fs').readFileSync(require('path').join(__dirname, 'src', 'servidor.js'), 'utf8');
+
+  chk('/salud informa los últimos errores', /ultimosErrores: ULTIMOS_ERRORES/.test(fuente));
+
+  // Se sirve sin contraseña: no puede llevar datos de nadie.
+  const guardado = (fuente.split('function recordarError')[1] || '').split('\n}')[0];
+  chk('guarda qué acción, qué código y cuándo',
+      /accion/.test(guardado) && /codigo/.test(guardado) && /cuando/.test(guardado), guardado);
+  chk('pero NO el texto del error ni correos ni tokens',
+      !/message|correo|token|idToken/i.test(guardado), guardado);
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);
 

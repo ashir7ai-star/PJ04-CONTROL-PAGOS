@@ -465,6 +465,14 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-19**: 🔎 **Ningún mensaje de Google puede llegar a pantalla, y ahora se puede saber si una petición siquiera llegó.**
+  - Después de arreglar la cuota, **el mensaje en inglés seguía apareciendo en un equipo y no en los otros**. Los contadores de `/salud` decían **5 lecturas desde el arranque** y `vecesSinCupo: 0` — o sea que **no era cuota**. Un cupo agotado deja a todos afuera, no a una sola persona.
+  - ⚠️ **El problema de fondo:** un mensaje viejo pegado en la pantalla y un error real **se ven exactamente igual**. No había forma de distinguirlos, y así se arregla lo que no era.
+  - **`servidor/src/errores.js`** (nuevo): un solo lugar decide qué ve el usuario. Lo de Google se traduce (`CUOTA` → 503, `GOOGLE` → 502) y **el detalle crudo va al registro, no a la pantalla**. Los mensajes propios sí se muestran: están escritos para que sirvan.
+  - **Detección de 429 endurecida:** el código llega en lugares distintos según la versión. En **gaxios 6 (la instalada) viene en `err.status` y `err.code` queda sin definir**; encadenarlos con `||` se corta con el primer valor no vacío aunque sea `'ERR_BAD_REQUEST'`. Ahora se miran los cuatro lugares y, como última red, el texto.
+  - **`GET /salud` informa `ultimosErrores`** (qué acción, qué código HTTP, cuándo). **Sin texto de error, sin correos, sin tokens** — se sirve sin contraseña. Si viene vacío, ninguna petición falló ahí.
+  - 🧭 **Una prueba que miraba el código fuente pasaba con el defecto puesto** (encontraba la frase en un comentario). Rehecha sobre comportamiento real. **Vale la regla de siempre: si no se verifica que pueda fallar, no cuenta.**
+
 - **2026-09-19**: 🚨 **La app se cayó para una usuaria por CUOTA de la API de Sheets.** En pantalla, en inglés: *"Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user'"*. Nathan estaba probando al mismo tiempo; a Sandra no la dejó entrar.
   - **La raíz:** Google permite **60 lecturas por minuto "por usuario"**, y con una **cuenta de servicio ese usuario es UNO SOLO para toda la empresa**. Los nueve comparten el mismo balde. No es un límite por persona.
   - **Cuatro cosas lo multiplicaban:**

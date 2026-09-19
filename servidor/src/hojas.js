@@ -38,9 +38,27 @@ const REINTENTOS = {
 // ("Quota exceeded for quota metric 'Read requests'...") apareció tal cual en
 // la pantalla de una usuaria: en inglés, con el número de proyecto adentro, y
 // sin decirle qué hacer.
+// ⚠️ El código del error viene en lugares distintos según la versión de la
+// biblioteca. En gaxios 6 el 429 llega como `err.status` y `err.code` queda
+// SIN DEFINIR (solo se llena si el error de abajo traía uno propio); en otras
+// versiones es `err.code`. Mirar uno solo —o encadenarlos con `||`, que se
+// corta con el primer valor no vacío aunque sea un texto como
+// 'ERR_BAD_REQUEST'— deja pasar el error sin traducir, y el texto de Google
+// termina en la pantalla de un usuario. Ya pasó.
+//
+// Por eso se miran los cuatro lugares, y como última red, el texto.
 function esDeCuota(err) {
-  const codigo = err && (err.code || (err.response && err.response.status));
-  return Number(codigo) === 429;
+  if (!err) return false;
+
+  const candidatos = [
+    err.status,
+    err.code,
+    err.response && err.response.status,
+    err.errors && err.errors[0] && err.errors[0].reason
+  ];
+  if (candidatos.some(c => Number(c) === 429)) return true;
+
+  return /quota exceeded|rateLimitExceeded|userRateLimitExceeded/i.test(String(err.message || ''));
 }
 
 function comoErrorDeCuota(err) {
