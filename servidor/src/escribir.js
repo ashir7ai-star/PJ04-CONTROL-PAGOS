@@ -13,6 +13,7 @@
 const { google } = require('googleapis');
 
 const { idDocumento } = require('./credenciales');
+const cupo = require('./cupo-lecturas');
 
 let clienteCache = null;
 async function cliente() {
@@ -61,9 +62,27 @@ async function aplicar(cambios, apiInyectada, idInyectado) {
   const api = apiInyectada || await cliente();
   const id  = idInyectado  || idDocumento();
 
+  // El id numérico de cada pestaña, preguntado UNA sola vez.
+  //
+  // Antes se preguntaba por cada fila a borrar. Con 867 filas eso eran 867
+  // lecturas de cuota, para una respuesta que no cambia durante la petición.
+  let metaHojas = null;
+  const idDeHoja = async (nombre) => {
+    if (!metaHojas) {
+      cupo.anotar();
+      const meta = await api.spreadsheets.get({
+        spreadsheetId: id, fields: 'sheets.properties(sheetId,title)'
+      });
+      metaHojas = {};
+      (meta.data.sheets || []).forEach(x => { metaHojas[x.properties.title] = x.properties.sheetId; });
+    }
+    return Object.prototype.hasOwnProperty.call(metaHojas, nombre) ? metaHojas[nombre] : null;
+  };
+
   // Primero las hojas nuevas: no se puede escribir en algo que no existe.
   const nuevas = cambios.filter(c => c.tipo === 'crearHoja').map(c => c.hoja);
   if (nuevas.length) {
+    cupo.anotarEscritura();
     await api.spreadsheets.batchUpdate({
       spreadsheetId: id,
       requestBody: { requests: nuevas.map(n => ({ addSheet: { properties: { title: n } } })) }
@@ -78,6 +97,7 @@ async function aplicar(cambios, apiInyectada, idInyectado) {
   let grupo = [];
   const bajarGrupo = async () => {
     if (!grupo.length) return;
+    cupo.anotarEscritura();
     await api.spreadsheets.values.batchUpdate({
       spreadsheetId: id,
       requestBody: {
@@ -90,11 +110,77 @@ async function aplicar(cambios, apiInyectada, idInyectado) {
     grupo = [];
   };
 
+  // ─── Los borrados se bajan JUNTOS ────────────────────────────────────────
+  //
+  // Acá estuvo el problema que tiró la app el 19/09/2026. La hoja SESIONES
+  // tenía 884 filas de las que **867 estaban vacías** (quedaron al convertirla
+  // en Tabla). `limpiarSesionesVencidas_` las borra —correcto: son basura—
+  // pero las borra **de a una**, y cada `deleteRow` acá costaba DOS llamadas a
+  // la API: un `spreadsheets.get` para averiguar el id de la hoja y un
+  // `batchUpdate` para borrar.
+  //
+  // O sea ~867 lecturas y ~867 escrituras **en un solo ingreso**, contra un
+  // límite de 60 por minuto de cada tipo. En Apps Script esto era lento; acá
+  // agota la cuota de toda la empresa.
+  //
+  // La corrección no cambia el ORDEN ni el significado: un `batchUpdate`
+  // aplica sus pedidos en secuencia, exactamente igual que mandarlos de a uno.
+  // Solo deja de gastar una llamada HTTP por fila.
+  let porBorrar = [];
+  const bajarBorrados = async () => {
+    if (!porBorrar.length) return;
+
+    // Filas contiguas → un solo pedido. Como la lógica borra de abajo hacia
+    // arriba, 867 filas seguidas se vuelven UN rango.
+    //
+    // ⚠️ No se reordena nada: dos borrados fuera de orden borran filas
+    // distintas, porque cada uno corre las de abajo. Solo se fusiona lo que ya
+    // venía pegado.
+    const rangos = [];
+    for (const b of porBorrar) {
+      const ult = rangos[rangos.length - 1];
+      if (ult && ult.hoja === b.hoja && b.desde + b.cantidad === ult.desde) {
+        ult.desde = b.desde;
+        ult.cantidad += b.cantidad;
+      } else {
+        rangos.push({ hoja: b.hoja, desde: b.desde, cantidad: b.cantidad });
+      }
+    }
+
+    const requests = [];
+    for (const r of rangos) {
+      const hojaId = await idDeHoja(r.hoja);
+      if (hojaId === null) continue;
+      requests.push({ deleteDimension: { range: {
+        sheetId: hojaId, dimension: 'ROWS',
+        startIndex: r.desde - 1, endIndex: r.desde - 1 + r.cantidad
+      } } });
+    }
+
+    porBorrar = [];
+    if (!requests.length) return;
+
+    cupo.anotarEscritura();
+    await api.spreadsheets.batchUpdate({ spreadsheetId: id, requestBody: { requests: requests } });
+  };
+
   for (const c of cambios) {
     if (c.tipo === 'crearHoja' || c.tipo === 'formato' || c.tipo === 'congelar') continue;
 
+    // Un borrado corta el grupo de escrituras (cambia el mapa de filas), pero
+    // se acumula con los borrados que vengan pegados.
+    if (c.tipo === 'borrar') {
+      await bajarGrupo();
+      porBorrar.push({ hoja: c.hoja, desde: c.desde, cantidad: c.cantidad });
+      continue;
+    }
+
+    // Cualquier otra cosa cierra el grupo de borrados pendiente.
+    await bajarBorrados();
+
     if (c.tipo === 'agregar') {
       await bajarGrupo();
+      cupo.anotarEscritura();
       await api.spreadsheets.values.append({
         spreadsheetId: id,
         range: "'" + String(c.hoja).replace(/'/g, "''") + "'",
@@ -115,22 +201,10 @@ async function aplicar(cambios, apiInyectada, idInyectado) {
       continue;
     }
 
-    if (c.tipo === 'borrar') {
-      await bajarGrupo();
-      const meta = await api.spreadsheets.get({ spreadsheetId: id, fields: 'sheets.properties(sheetId,title)' });
-      const h = (meta.data.sheets || []).filter(x => x.properties.title === c.hoja)[0];
-      if (!h) continue;
-      await api.spreadsheets.batchUpdate({
-        spreadsheetId: id,
-        requestBody: { requests: [{ deleteDimension: { range: {
-          sheetId: h.properties.sheetId, dimension: 'ROWS',
-          startIndex: c.desde - 1, endIndex: c.desde - 1 + c.cantidad
-        } } }] }
-      });
-    }
   }
 
   await bajarGrupo();
+  await bajarBorrados();
 }
 
 module.exports = { aplicar, rangoA1, aCelda };

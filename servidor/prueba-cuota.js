@@ -335,7 +335,113 @@ console.log('\n=== Poder distinguir una pantalla vieja de un error real ===');
       !/message|correo|token|idToken/i.test(guardado), guardado);
 }
 
-console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
-process.exit(fallos ? 1 : 0);
+console.log('\n=== Borrar 867 filas no puede costar 867 llamadas ===');
+{
+  // EL caso real del 19/09/2026. La hoja SESIONES tenía 884 filas y 867 de
+  // ellas estaban VACÍAS (quedaron al convertirla en Tabla). Una fila vacía no
+  // tiene fecha de vencimiento, así que `limpiarSesionesVencidas_` la borra
+  // —correcto— pero emitía un `deleteRow` por fila.
+  //
+  // Cada uno costaba DOS llamadas a la API: un `spreadsheets.get` para saber
+  // el id de la hoja y un `batchUpdate` para borrar. O sea ~867 lecturas y
+  // ~867 escrituras en UN SOLO ingreso, contra 60 por minuto de cada tipo.
+  const esc = require('./src/escribir');
+  cupo.reiniciar();
+
+  const llamadas = [];
+  const apiFalsa = {
+    spreadsheets: {
+      get: async () => { llamadas.push('get'); return { data: { sheets: [
+        { properties: { sheetId: 77, title: 'SESIONES' } }
+      ] } }; },
+      batchUpdate: async (p) => {
+        llamadas.push('batchUpdate');
+        (p.requestBody.requests || []).forEach(r => {
+          if (r.deleteDimension) {
+            const g = r.deleteDimension.range;
+            llamadas.push('borra filas ' + (g.startIndex + 1) + '-' + g.endIndex);
+          }
+        });
+        return {};
+      },
+      values: {
+        batchUpdate: async () => { llamadas.push('values.batchUpdate'); return {}; },
+        append:      async () => { llamadas.push('append'); return {}; }
+      }
+    }
+  };
+
+  (async () => {
+    // Igual que la lógica: de abajo hacia arriba, una fila por vez.
+    const cambios = [];
+    for (let fila = 884; fila >= 18; fila--) {
+      cambios.push({ tipo: 'borrar', hoja: 'SESIONES', desde: fila, cantidad: 1 });
+    }
+    await esc.aplicar(cambios, apiFalsa, 'doc');
+
+    const gets  = llamadas.filter(l => l === 'get').length;
+    const bu    = llamadas.filter(l => l === 'batchUpdate').length;
+    const rango = llamadas.filter(l => l.indexOf('borra filas') === 0);
+
+    chk('867 borrados = UNA consulta del id de hoja', gets === 1, gets);
+    chk('867 borrados = UNA escritura',               bu === 1, bu);
+    chk('y las filas contiguas van como UN rango',    rango.length === 1, rango);
+    chk('borra exactamente las filas 18 a 884',       rango[0] === 'borra filas 18-884', rango[0]);
+    chk('quedan contadas como 1 lectura y 1 escritura',
+        cupo.usadas() === 1 && cupo.escriturasUsadas() === 1,
+        [cupo.usadas(), cupo.escriturasUsadas()]);
+
+    // Lo que NO se puede romper: el orden y el significado.
+    llamadas.length = 0;
+    await esc.aplicar([
+      { tipo: 'escribir', hoja: 'SESIONES', fila: 2, col: 1, valores: [['antes']] },
+      { tipo: 'borrar',   hoja: 'SESIONES', desde: 10, cantidad: 1 },
+      { tipo: 'escribir', hoja: 'SESIONES', fila: 3, col: 1, valores: [['despues']] }
+    ], apiFalsa, 'doc');
+
+    const iAntes   = llamadas.indexOf('values.batchUpdate');
+    const iBorrado = llamadas.indexOf('batchUpdate');
+    const iDespues = llamadas.lastIndexOf('values.batchUpdate');
+    chk('lo escrito ANTES de un borrado se baja antes', iAntes !== -1 && iAntes < iBorrado, llamadas);
+    chk('y lo escrito DESPUÉS se baja después',         iDespues > iBorrado, llamadas);
+
+    // Borrados NO contiguos no se pueden fusionar: borrarían filas distintas.
+    llamadas.length = 0;
+    await esc.aplicar([
+      { tipo: 'borrar', hoja: 'SESIONES', desde: 50, cantidad: 1 },
+      { tipo: 'borrar', hoja: 'SESIONES', desde: 20, cantidad: 1 }
+    ], apiFalsa, 'doc');
+    const sueltos = llamadas.filter(l => l.indexOf('borra filas') === 0);
+    chk('dos borrados separados siguen siendo dos rangos', sueltos.length === 2, sueltos);
+    chk('en el mismo orden que los pidió la lógica',
+        sueltos[0] === 'borra filas 50-50' && sueltos[1] === 'borra filas 20-20', sueltos);
+    chk('pero en UNA sola llamada',
+        llamadas.filter(l => l === 'batchUpdate').length === 1, llamadas);
+    // Con DOS rangos se nota si el id de hoja se vuelve a preguntar por cada
+    // uno. Con un rango solo no se nota — y ahí la prueba no probaría nada.
+    chk('el id de hoja se pregunta UNA vez, no una por rango',
+        llamadas.filter(l => l === 'get').length === 1,
+        llamadas.filter(l => l === 'get').length);
+
+    console.log('\n=== La limpieza de sesiones borra por bloques ===');
+    {
+      // La fuente del problema: si vuelve a emitir un borrado por fila, el
+      // arreglo de arriba lo amortigua pero la lógica sigue estando mal — y en
+      // Apps Script (que es la vuelta atrás) volvería a ser 867 llamadas.
+      const gs = require('fs').readFileSync(
+        require('path').join(__dirname, '..', 'apps-script.gs'), 'utf8');
+      const cuerpo = gs.split('function limpiarSesionesVencidas_')[1].split('\n}')[0];
+
+      chk('usa deleteRows por bloques', /deleteRows\(/.test(cuerpo), 'sigue borrando de a una');
+      chk('y ya no llama a deleteRow fila por fila',
+          !/deleteRow\(/.test(cuerpo), 'quedó un deleteRow suelto');
+      chk('de abajo hacia arriba, para no correr los índices',
+          /reverse\(\)/.test(cuerpo), 'falta el reverse');
+    }
+
+    console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
+    process.exit(fallos ? 1 : 0);
+  })();
+}
 
 })();

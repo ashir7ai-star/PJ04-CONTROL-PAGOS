@@ -62,24 +62,60 @@ function msHastaCupo() {
 
 function anotarRechazo() { vecesSinCupo++; }
 
+// ─── Las ESCRITURAS son un cupo aparte, y también se agotan ───────────────
+//
+// Google lleva dos contadores distintos: 'Read requests' y 'Write requests',
+// 60 por minuto cada uno. Acá solo se contaban las lecturas, y por eso un
+// ingreso que emitía ~867 escrituras (borrar de a una las filas vacías de
+// SESIONES) se veía inofensivo desde `/salud`: el contador de lecturas decía 8
+// mientras Google rechazaba por escrituras.
+//
+// No hay freno sobre las escrituras, a propósito: se aplican DESPUÉS de que la
+// lógica decidió, así que frenarlas a mitad de camino dejaría una operación
+// hecha por la mitad. El arreglo correcto es no emitir cientos — se emiten
+// juntas. Esto es para VERLO, que es lo que faltó.
+const marcasEscritura = [];
+let totalEscrituras = 0;
+
+function purgarEscrituras() {
+  const corte = Date.now() - VENTANA_MS;
+  while (marcasEscritura.length && marcasEscritura[0] < corte) marcasEscritura.shift();
+}
+
+function anotarEscritura() {
+  purgarEscrituras();
+  marcasEscritura.push(Date.now());
+  totalEscrituras++;
+}
+
+function escriturasUsadas() { purgarEscrituras(); return marcasEscritura.length; }
+
 function resumen() {
   return {
     limitePropio: LIMITE,
     limiteDeGoogle: 60,
     enElUltimoMinuto: usadas(),
     desdeElArranque: totalHistorico,
-    vecesSinCupo: vecesSinCupo
+    vecesSinCupo: vecesSinCupo,
+    escrituras: {
+      limiteDeGoogle: 60,
+      enElUltimoMinuto: escriturasUsadas(),
+      desdeElArranque: totalEscrituras
+    }
   };
 }
 
 // Solo para las pruebas: deja el contador como recién arrancado.
 function reiniciar() {
   marcas.length = 0;
+  marcasEscritura.length = 0;
   totalHistorico = 0;
+  totalEscrituras = 0;
   vecesSinCupo = 0;
 }
 
 module.exports = {
   anotar, usadas, hayCupo, msHastaCupo, anotarRechazo, resumen, reiniciar,
+  anotarEscritura, escriturasUsadas,
   LIMITE, VENTANA_MS
 };

@@ -465,6 +465,18 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-19**: 🎯 **CAUSA RAÍZ de las caídas por cuota: 867 filas vacías en SESIONES, borradas de a una.**
+  - El mensaje cambió de `'Read requests'` a **`'Write requests'`** y apareció **también en incógnito** → era real, no una pantalla vieja. Pero `/salud` decía **8 lecturas** y el freno nunca actuó. Las dos cosas eran ciertas: **las escrituras no se contaban, y el `spreadsheets.get` de cada borrado tampoco.**
+  - **Medido sobre la hoja real:** `SESIONES` tenía **884 filas y solo 16 sesiones**. Las otras **867 estaban completamente vacías** — quedaron al convertir la hoja en **Tabla** (llegó a tener hasta "Column 21").
+  - Una fila vacía no tiene fecha de vencimiento, así que `limpiarSesionesVencidas_` la trataba como vencida y la borraba. Correcto: son basura. **El problema es que las borraba de a una.**
+  - ⚠️ **Amplificación propia de la migración:** en Apps Script cada `deleteRow` era lento pero local. En el servidor propio cada uno se volvía **DOS llamadas a la API** (un `spreadsheets.get` para el id de la hoja + un `batchUpdate`). → **~867 lecturas y ~867 escrituras en un solo ingreso**, contra 60 por minuto de cada tipo, **compartidas por toda la empresa**.
+  - **Por eso le pasaba solo a quien entraba de nuevo:** la limpieza corre en `crearSesionPropia_`. Quien ya tenía sesión viva no la disparaba nunca.
+  - **Arreglado en los dos niveles:**
+    - `servidor/src/escribir.js`: los borrados consecutivos se bajan **juntos**, las filas contiguas se fusionan en **un solo rango**, y el id de la hoja se pregunta **una vez**. 867 borrados = **1 lectura + 1 escritura**. No se reordena nada: dos borrados fuera de orden borran filas distintas.
+    - `apps-script.gs`: `limpiarSesionesVencidas_` ahora agrupa por bloques (el mismo patrón que ya usaba `archivarPagosViejos_`). Importa para la **vuelta atrás**: en Apps Script también eran 867 llamadas.
+  - **Las escrituras ahora se cuentan** y salen en `/salud` (`lecturas.escrituras`). **No tienen freno a propósito:** se aplican después de que la lógica decidió, y frenarlas a mitad dejaría una operación hecha por la mitad.
+  - 🧭 **Una de las pruebas nuevas NO detectaba su defecto** (con un solo rango, el id de hoja se pide una vez igual). Se agregó el caso de dos rangos. **Verificar que pueda fallar no es un trámite: la primera versión no probaba nada.**
+
 - **2026-09-19**: 🔎 **Ningún mensaje de Google puede llegar a pantalla, y ahora se puede saber si una petición siquiera llegó.**
   - Después de arreglar la cuota, **el mensaje en inglés seguía apareciendo en un equipo y no en los otros**. Los contadores de `/salud` decían **5 lecturas desde el arranque** y `vecesSinCupo: 0` — o sea que **no era cuota**. Un cupo agotado deja a todos afuera, no a una sola persona.
   - ⚠️ **El problema de fondo:** un mensaje viejo pegado en la pantalla y un error real **se ven exactamente igual**. No había forma de distinguirlos, y así se arregla lo que no era.

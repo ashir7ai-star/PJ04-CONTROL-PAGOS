@@ -1955,15 +1955,43 @@ function cerrarSesionPropia_(token) {
 }
 
 // Las sesiones vencidas no sirven para nada y harían crecer la hoja sin fin.
+//
+// ⚠️ Se borra POR BLOQUES, no fila por fila. El 19/09/2026 esto tiró la app:
+// la hoja tenía 884 filas de las que 867 estaban VACÍAS (quedaron al
+// convertirla en Tabla). Una fila vacía no tiene fecha de vencimiento, así que
+// entra por el `!vence` y se borraba — correcto, son basura, pero de a una.
+//
+// En Apps Script eso eran 867 llamadas lentas. En el servidor propio cada
+// `deleteRow` se vuelve una llamada a la API de Google, y 867 en un solo
+// ingreso agotan la cuota de LA EMPRESA ENTERA (60 por minuto, compartidas).
+// Resultado: nadie más podía entrar, con un mensaje en inglés en pantalla.
+//
+// Es el mismo agrupamiento que ya usa `archivarPagosViejos_`, por la misma
+// razón.
 function limpiarSesionesVencidas_(hoja) {
   try {
     const valores = valoresDeHoja_(hoja);
     if (valores.length < 200) return;   // no vale la pena hasta que crezca
+
     const ahora = Date.now();
-    for (let i = valores.length - 1; i >= 1; i--) {
+    const filasAEliminar = [];
+    for (let i = 1; i < valores.length; i++) {
       const vence = new Date(valores[i][4]).getTime();
-      if (!vence || vence < ahora) hoja.deleteRow(i + 1);
+      if (!vence || vence < ahora) filasAEliminar.push(i + 1);
     }
+    if (!filasAEliminar.length) return;
+
+    // Filas contiguas → un solo deleteRows. Las 867 vacías son un bloque.
+    const bloques = [];
+    filasAEliminar.forEach(n => {
+      const ultimo = bloques[bloques.length - 1];
+      if (ultimo && n === ultimo.inicio + ultimo.cantidad) ultimo.cantidad++;
+      else bloques.push({ inicio: n, cantidad: 1 });
+    });
+
+    // De abajo hacia arriba: borrar arriba primero correría los índices de todo
+    // lo de abajo y se terminaría borrando la fila equivocada.
+    bloques.reverse().forEach(b => hoja.deleteRows(b.inicio, b.cantidad));
     olvidarHoja_(hoja);
   } catch (err) { /* la limpieza nunca debe romper un ingreso */ }
 }
