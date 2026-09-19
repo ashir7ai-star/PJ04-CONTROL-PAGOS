@@ -18,6 +18,34 @@ chk('no pierde un minuto por redondeo',
     formatDate(serieADate(serial2,'America/Bogota'),'America/Bogota','yyyy-MM-dd HH:mm') === '2026-09-15 09:05',
     formatDate(serieADate(serial2,'America/Bogota'),'America/Bogota','yyyy-MM-dd HH:mm'));
 
+// Los seriales guardan FRACCIONES DE SEGUNDO reales. Redondear al segundo
+// corria los instantes hasta medio segundo, y perder los milisegundos al
+// convertir de zona los corria otro tanto. No es solo cosmetico: los saldos
+// comparan con > contra la fecha base, asi que un corte justo en el limite
+// podria caer del lado equivocado.
+console.log('\n=== Precision: los milisegundos no se pierden ===');
+{
+  // Valores REALES de la hoja USUARIOS, con la hora que muestra Apps Script.
+  const reales = [
+    [46282.765494120365, 18, 22, 18, 692],
+    [46282.621137511574, 14, 54, 26, 281],
+    [46282.75646451389,  18,  9, 18, 534]
+  ];
+  reales.forEach(function (c) {
+    const d = serieADate(c[0], 'America/Bogota');
+    chk('serial ' + c[0] + ' -> ' + c[1] + ':' + c[2] + ':' + c[3] + '.' + c[4],
+        d.getHours() === c[1] && d.getMinutes() === c[2] &&
+        d.getSeconds() === c[3] && Math.abs(d.getMilliseconds() - c[4]) <= 1,
+        d.getHours() + ':' + d.getMinutes() + ':' + d.getSeconds() + '.' + d.getMilliseconds());
+  });
+
+  // Un serial sin fraccion de segundo no puede inventar milisegundos.
+  const exacto = (Date.UTC(2026, 8, 15, 18, 40) - Date.UTC(1899, 11, 30)) / 86400000;
+  chk('una hora exacta no inventa milisegundos',
+      serieADate(exacto, 'America/Bogota').getMilliseconds() === 0,
+      serieADate(exacto, 'America/Bogota').getMilliseconds());
+}
+
 console.log('\n=== Que columnas se convierten ===');
 chk('FECHA REGISTRO si', esColumnaDeFecha('FECHA REGISTRO'));
 chk('FECHA DE PAGO si',  esColumnaDeFecha('FECHA DE PAGO'));

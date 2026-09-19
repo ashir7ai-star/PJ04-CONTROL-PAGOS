@@ -54,16 +54,35 @@ function instanteDeParedEnZona(ms, zona) {
 // Número de serie de Sheets → Date.
 //
 // El 0 de Sheets es el 30/12/1899. La parte entera son días y la decimal, la
-// fracción del día. Se redondea al segundo: la aritmética de coma flotante
-// deja restos (18:40 sale como 18:39:59,9999) y truncar convertiría un minuto
-// en el anterior.
+// fracción del día.
+//
+// ⚠️ Se redondea al MILISEGUNDO, no al segundo. Los seriales guardan
+// fracciones de segundo reales (46282.765494120365 son las 18:22:18,692), y
+// redondear al segundo las corría hasta medio segundo: ese 18,692 se volvía
+// 19. Apps Script conserva el valor, así que las dos versiones mostraban
+// segundos distintos para el mismo dato.
+//
+// Y no es solo cosmético: los saldos comparan con `>` contra la fecha del
+// saldo base, así que un corte justo en el límite podría caer del lado
+// equivocado. El error de coma flotante acá es de microsegundos, muy por
+// debajo del milisegundo, así que redondear a milisegundos es exacto.
 function serieADate(serie, zona) {
   const n = Number(serie);
   if (!isFinite(n)) return null;
 
   const MS_DIA = 86400000;
-  const msUTC  = Math.round((n - 25569) * MS_DIA / 1000) * 1000;
-  return instanteDeParedEnZona(msUTC, zona || 'America/Bogota');
+  const msTotal = Math.round((n - 25569) * MS_DIA);
+
+  // Los milisegundos se apartan y se vuelven a sumar al final.
+  //
+  // `instanteDeParedEnZona` trabaja con la hora que muestra un reloj, y un
+  // reloj no tiene milisegundos: al convertir se perdían. Ese era el desfase
+  // que hacía que 18:22:18,692 saliera como 18:22:19,076.
+  const seg   = Math.floor(msTotal / 1000) * 1000;
+  const resto = msTotal - seg;
+
+  const instante = instanteDeParedEnZona(seg, zona || 'America/Bogota');
+  return new Date(instante.getTime() + resto);
 }
 
 // Convierte la foto de las hojas: donde el encabezado dice que hay una fecha y
