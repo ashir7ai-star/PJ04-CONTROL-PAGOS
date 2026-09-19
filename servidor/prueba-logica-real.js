@@ -143,6 +143,30 @@ console.log('\n=== La logica real ESCRIBE a traves del adaptador ===');
       e.cambios().some(c => c.hoja === 'SALDOS'), e.cambios().map(c => c.hoja));
 }
 
+console.log('\n=== Las sesiones tienen que valer en los DOS sistemas ===');
+{
+  const crypto = require('crypto');
+  const e = montar({ 'SESIONES': [['HASH','CORREO','CREADA','ULTIMO USO','VENCE']] }, 'off');
+
+  // hashDeToken_ hace base64Encode(computeDigest(...)), o sea codifica un
+  // ARREGLO DE BYTES. Tratarlo como texto daria el base64 de "12,-45,67,..."
+  // en vez del de los bytes: no falla, produce un hash DISTINTO. Y con hashes
+  // distintos, las sesiones creadas por Apps Script dejan de valer en este
+  // servidor — todos los usuarios expulsados al conmutar, sin explicacion.
+  const token = 'token-de-prueba-123';
+  const esperado = crypto.createHash('sha256').update(token, 'utf8').digest('base64');
+
+  chk('el hash de sesion es IDENTICO al de Apps Script',
+      e.globales.hashDeToken_(token) === esperado, e.globales.hashDeToken_(token));
+
+  // Y las dos formas de base64Encode que usa Apps Script.
+  chk('base64Encode de un texto', e.globales.Utilities.base64Encode('hola') === 'aG9sYQ==');
+  chk('base64Encode de bytes con signo (como los devuelve computeDigest)',
+      e.globales.Utilities.base64Encode([104, 111, 108, 97]) === 'aG9sYQ==');
+  chk('los bytes negativos se interpretan como Java (-1 es 255)',
+      e.globales.Utilities.base64Encode([-1, -2]) === Buffer.from([255, 254]).toString('base64'));
+}
+
 console.log('\n=== Lo que todavia NO esta, falla en voz alta ===');
 {
   const e = montar({ 'PAGOS REGISTRADOS': [ENC_PAGOS] }, 'off');

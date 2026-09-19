@@ -471,6 +471,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-18**: 🐛 **Error grave encontrado ANTES de conmutar: los hashes de sesion no coincidian.**
+  - `hashDeToken_` hace `base64Encode(computeDigest(...))`, o sea codifica un **arreglo de bytes**. La implementacion en `entorno.js` solo contemplaba texto: convertia el arreglo a la cadena `"12,-45,67,..."` y codificaba **eso**.
+  - ⚠️ **No fallaba: producia un hash DISTINTO.** Al conmutar, ninguna sesion creada por Apps Script habria valido en el servidor nuevo — **los 9 usuarios expulsados de golpe**, sin mensaje que explicara por que, y volviendo a pasar si se revertia.
+  - Corregido: `base64Encode` distingue texto de bytes, y convierte los bytes **con signo** (−128..127, como Java) a sin signo. Verificado contra el resultado exacto de Apps Script: `base64(sha256(token))`.
+  - 🧭 **Aparecio al preparar el comparador**, no al usarlo: para comparar hacia falta una sesion valida en los dos sistemas, y al mirar como se construye salto la diferencia. **Preparar una prueba ya encuentra errores, antes de correrla.**
+  - 4 comprobaciones nuevas que fijan la equivalencia, incluidas las dos formas de `base64Encode` y el manejo de bytes negativos.
+
 - **2026-09-18**: ✅✅ **El backend propio hace TODO lo que hacia Apps Script, verificado en EasyPanel.**
   ```
   GET /diagnostico

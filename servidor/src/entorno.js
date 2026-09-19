@@ -123,7 +123,22 @@ function crearEntorno(foto, opciones) {
         return Array.from(buf).map(b => (b > 127 ? b - 256 : b));
       },
       DigestAlgorithm: { SHA_256: 'SHA_256' },
-      base64Encode: (x) => Buffer.from(String(x), 'utf8').toString('base64'),
+      // Apps Script acepta DOS cosas distintas acá: un texto (lo codifica como
+      // UTF-8) o un arreglo de bytes (los codifica tal cual). `hashDeToken_`
+      // usa la segunda forma, con la salida de computeDigest.
+      //
+      // ⚠️ Tratar ese arreglo como texto daría el base64 de "12,-45,67,..."
+      // en vez del de los bytes. No falla: produce un hash DISTINTO. Las
+      // sesiones creadas por Apps Script dejarían de valer en este servidor y
+      // al revés — todos los usuarios expulsados al conmutar, sin explicación.
+      base64Encode: (x) => {
+        if (Buffer.isBuffer(x)) return x.toString('base64');
+        if (Array.isArray(x)) {
+          // computeDigest devuelve bytes CON SIGNO (-128..127), como Java.
+          return Buffer.from(x.map(b => (b < 0 ? b + 256 : b))).toString('base64');
+        }
+        return Buffer.from(String(x), 'utf8').toString('base64');
+      },
       // Devuelve un Buffer y no un arreglo de bytes: es lo que después sube a
       // Drive sin pasos intermedios. Nada en la lógica recorre estos bytes;
       // solo se los entrega a newBlob.
