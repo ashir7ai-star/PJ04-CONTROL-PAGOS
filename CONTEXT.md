@@ -471,6 +471,21 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-19**: 🏁 **SIN DIFERENCIAS: los dos backends responden exactamente lo mismo, con datos reales.**
+
+  | Consulta | Apps Script | Propio | |
+  |---|---|---|---|
+  | arranque | 7.089 ms | 1.694 ms | 4,2× |
+  | consultar_saldos | 1.761 ms | 831 ms | 2,1× |
+  | consultar_pagos | 5.745 ms | 980 ms | 5,9× |
+  | consultar_solicitudes | 1.597 ms | 169 ms | 9,4× |
+  | listar_usuarios | **18.565 ms** | 1.574 ms | **11,8×** |
+  | consultar_traslados | 2.224 ms | 159 ms | 14,0× |
+
+  - `comparar-backends.js` manda la MISMA peticion a los dos y compara campo por campo, ignorando lo que cambia legitimamente (`ms`, `medicion`, `revision`). Crea una **sesion temporal** de 10 minutos en la hoja SESIONES y la **borra al terminar, pase lo que pase** (`finally`).
+  - **Volver a correrlo es el paso obligado** despues de cualquier cambio en `apps-script.gs`: es lo unico que garantiza que los dos lados sigan diciendo lo mismo.
+  - ⚠️ **Los dos lados tienen que estar en la misma revision** para que la comparacion valga. Se verifica con `?action=estado_login` contra Apps Script.
+
 - **2026-09-19**: 🔍 **El comparador contra Apps Script encontro TRES errores que 129 pruebas no veian.** Ninguno daba error: los tres devolvian datos distintos.
   1. **Hashes de sesion distintos** — `base64Encode` de un arreglo de bytes tratado como texto. Al conmutar, **los 9 usuarios expulsados**.
   2. **Zona horaria** — el contenedor corre en UTC y `apps-script.gs` construye fechas con `new Date(a,m,d,h,min)`, que usa la hora **del proceso**. Todas las fechas de texto corridas **5 horas**. Se corrige con `tzdata` + `TZ` en el Dockerfile, y el servidor **se niega a arrancar** si la zona no coincide.
