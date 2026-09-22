@@ -40,9 +40,12 @@ console.log('\n=== Valores: las fechas NO pueden volver a guardarse como texto =
   // pero "22/09/2026" NO (no hay mes 22) y Sheets lo guarda como TEXTO, sin
   // avisar. Comprobado contra el documento real: dd/MM -> texto, ISO -> fecha.
   chk('una fecha sale en ISO yyyy-MM-dd HH:mm:ss', aCelda(d) === '2026-09-15 18:40:05', aCelda(d));
-  // El caso que lo destapó: un dia mayor que 12 no puede ser un mes.
-  chk('un dia > 12 tambien sale en ISO',
-      aCelda(new Date(2026, 8, 22, 0, 0, 0)) === '2026-09-22 00:00:00', aCelda(new Date(2026, 8, 22, 0, 0, 0)));
+  // FECHA DE PAGO es un DIA, no un instante. Mandar "00:00:00" hacia que la
+  // hoja mostrara "22/09/2026 0:00:00", que no le dice nada a quien lee.
+  chk('una fecha sin hora sale SIN hora',
+      aCelda(new Date(2026, 8, 22, 0, 0, 0)) === '2026-09-22', aCelda(new Date(2026, 8, 22, 0, 0, 0)));
+  chk('pero una con hora la conserva',
+      aCelda(new Date(2026, 8, 22, 0, 0, 1)) === '2026-09-22 00:00:01', aCelda(new Date(2026, 8, 22, 0, 0, 1)));
   chk('NUNCA en dd/MM, que en en_US queda como texto',
       !/^\d{2}\/\d{2}\//.test(aCelda(d)), aCelda(d));
 

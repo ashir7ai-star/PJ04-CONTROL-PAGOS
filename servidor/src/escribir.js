@@ -45,11 +45,18 @@ async function cliente() {
 //
 // Sin zona a propósito: se manda la hora de pared y el documento la interpreta
 // con SU zona horaria, que es como venía funcionando con Apps Script.
+//
+// Y una fecha SIN hora se manda sin hora. `FECHA DE PAGO` es un día, no un
+// instante: la lógica la arma a las 00:00 y mandar "00:00:00" hacía que la
+// hoja mostrara "22/09/2026 0:00:00", que no significa nada para quien lee.
 function aCelda(v) {
   if (v instanceof Date) {
     const p = n => String(n).padStart(2, '0');
-    return v.getFullYear() + '-' + p(v.getMonth() + 1) + '-' + p(v.getDate()) +
-           ' ' + p(v.getHours()) + ':' + p(v.getMinutes()) + ':' + p(v.getSeconds());
+    const dia = v.getFullYear() + '-' + p(v.getMonth() + 1) + '-' + p(v.getDate());
+    if (v.getHours() === 0 && v.getMinutes() === 0 && v.getSeconds() === 0 && v.getMilliseconds() === 0) {
+      return dia;
+    }
+    return dia + ' ' + p(v.getHours()) + ':' + p(v.getMinutes()) + ':' + p(v.getSeconds());
   }
   return v;
 }

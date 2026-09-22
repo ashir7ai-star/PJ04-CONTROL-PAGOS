@@ -42,6 +42,8 @@ Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **se
 - **Antes de agregar cualquier consulta nueva, revisar cuántas llamadas cuesta.**
 - ⚠️ **Nunca escribir ni borrar fila por fila.** Lo que en Apps Script era lento, acá es una llamada a la API por fila: 867 filas agotaron la cuota de todos. Agrupar siempre.
 
+⚠️ **`FECHA DE PAGO` va SIN hora** (es un día, no un instante). El formato de cada columna lo fija `servidor/formato-fechas.js`.
+
 ⚠️ **El documento está en `en_US`: las fechas se escriben en ISO `yyyy-MM-dd HH:mm:ss`.** En `dd/MM/yyyy`, Sheets no reconoce un día mayor que 12 como fecha y lo guarda como TEXTO, en silencio. Nunca escribir fechas en `dd/MM`.
 
 ⚠️ **La API de Sheets NO agranda la hoja sola** (Apps Script sí). `escribir.js` lo cubre: si un `setValue` cae fuera de la cuadrícula, agranda y reintenta. Pero **no contar con eso desde la lógica**: reusar columnas libres antes de crear.
@@ -477,6 +479,12 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-22**: ✅ **Hoja saneada: todas las fechas son fechas reales, `FECHA DE PAGO` sin hora, y sin columnas basura.**
+  - **88 celdas convertidas** de texto a fecha real (`reparar-fechas-texto.js --aplicar`). Verificado después: **346 celdas de fecha, 0 en texto**.
+  - **Formato por columna** (`formato-fechas.js`, nuevo): `FECHA DE PAGO` → `dd/mm/yyyy` **sin hora** (pedido expreso); el resto (`FECHA REGISTRO`, `ULTIMO ACCESO`, `FECHA SOLICITUD`, …) → `dd/mm/yyyy hh:mm:ss`, porque la hora hace falta para ordenar los pagos del mismo día. Se aplica a la columna entera, así las filas nuevas lo heredan.
+  - `aCelda` **manda una fecha sin hora cuando no tiene hora**: `FECHA DE PAGO` es un día, no un instante.
+  - **174 columnas basura borradas** (`limpiar-columnas-vacias.js`, nuevo). Eran los `Column N` que dejó la conversión a Tabla — ninguna tenía datos. Con eso **`FECHA REGISTRO` y `REALIZADO POR` de TRASLADOS volvieron de la columna 27-28 a la 8-9**, y `SALDO CALCULADO`/`DIFERENCIA` de SALDOS a su lugar. Ya se ven en la hoja.
+  - **Verificado de punta a punta después de la cirugía:** saldos (traslado de $1.000.000 descontado y sumado, `traslados=1` en los dos lados), 154 pagos sin ninguna fecha vacía ni mal formada, 7 traslados con su autor, 9 usuarios con fechas legibles.
 - **2026-09-22**: 🚨 **Las fechas volvieron a guardarse como TEXTO, sin avisar.** Se destapó revisando por qué un traslado "no movía los saldos".
   - **La causa:** el documento está en **`en_US`** y `escribir.js` mandaba `dd/MM/yyyy HH:mm:ss`. En `en_US`, **"22/09/2026" no es una fecha** (no existe el mes 22): Sheets la guarda como texto, alineada a la izquierda, sin ordenar ni filtrar como fecha. **No da ningún error.**
   - **Comprobado contra el documento real:** con `dd/MM` queda TEXTO, con **ISO `yyyy-MM-dd HH:mm:ss` queda FECHA REAL**. `aCelda` ahora manda ISO.
