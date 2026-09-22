@@ -1600,6 +1600,11 @@
       .mov-fila { grid-template-columns: 1fr auto; }
       .mov-saldo { grid-column: 2; }
     }
+    /* Cuándo se actualizó por última vez. Sin esto, un número que se
+       refresca solo es indistinguible de uno congelado. */
+    .saldos-frescura { margin: 3px 0 0; font-size: .72rem; color: var(--text-muted); min-height: 1em; }
+    .saldos-frescura.viejo { color: var(--error); }
+
     .saldo-editar {
       position: absolute;
       top: 12px; right: 12px;
@@ -2285,6 +2290,7 @@
         <div>
           <p class="saldos-titulo">Dinero disponible</p>
           <p class="saldos-nota" id="saldosNota">Cargando saldos…</p>
+          <p class="saldos-frescura" id="saldosFrescura"></p>
         </div>
         <button type="button" class="btn-refrescar" id="btnRefrescarSaldos" title="Actualizar saldos">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -5583,6 +5589,12 @@
       if (!r || r.status !== 'success') return;
       saldosPuedeEditar = !!r.puedeEditar;
       pintarSaldos(r);
+      // Cualquier camino que pinte saldos cuenta como refresco: los que vienen
+      // dentro de la respuesta de un pago o un traslado también son datos
+      // frescos. Si no se marcara acá, el contador mentiría.
+      ultimoRefresco = Date.now();
+      pintarFrescura();
+      arrancarRefrescoDeSaldos();
     }
 
     // `yaTraidos` son los saldos que el servidor ya mandó dentro de la
@@ -5684,6 +5696,88 @@
         btn.addEventListener('click', () => abrirMovimientos(btn.dataset.movimientos));
       });
     }
+
+    // ─── Los saldos se actualizan solos ──────────────────────────────────
+    //
+    // Pedido: "que los valores se mantengan actualizados sin tener que darle
+    // click al botón".
+    //
+    // ⚠️ Acá hay que ser cuidadoso. La cuota de lectura de Google Sheets es de
+    // TODA la empresa (60 por minuto entre los nueve, no 60 por persona), y ya
+    // nos dejó a todos afuera una vez. Un refresco automático mal hecho —nueve
+    // pestañas abiertas todo el día pidiendo sin parar— la agota sola.
+    //
+    // Por eso el pedido NO es "forzado": el servidor lo responde con lo que ya
+    // tiene calculado, y ese cálculo se tira solo cada vez que alguien registra
+    // un pago o un traslado. O sea que un movimiento nuevo aparece enseguida,
+    // pero estar mirando la pantalla no cuesta lecturas.
+    //
+    // Y no se pide nunca:
+    //   · con la pestaña en segundo plano — nadie está mirando;
+    //   · sin conexión;
+    //   · si la sección de saldos no se está mostrando;
+    //   · si ya hay un pedido en curso.
+    const SEGUNDOS_REFRESCO_SALDOS = 60;
+
+    let tempSaldos     = null;
+    let ultimoRefresco = 0;
+    let refrescando    = false;
+
+    function seVenLosSaldos() {
+      const s = document.getElementById('seccionSaldos');
+      return !!s && s.style.display !== 'none' &&
+             loginOverlay.style.display === 'none' &&
+             document.visibilityState === 'visible';
+    }
+
+    function pintarFrescura() {
+      const el = document.getElementById('saldosFrescura');
+      if (!el) return;
+      if (!ultimoRefresco) { el.textContent = ''; return; }
+
+      const seg = Math.round((Date.now() - ultimoRefresco) / 1000);
+      el.textContent = seg < 10  ? 'Actualizado recién'
+                     : seg < 60  ? 'Actualizado hace ' + seg + ' s'
+                     : seg < 3600 ? 'Actualizado hace ' + Math.round(seg / 60) + ' min'
+                     : 'Actualizado hace más de una hora';
+      // Si pasó mucho, es que algo no está andando: mejor decirlo.
+      el.classList.toggle('viejo', seg > SEGUNDOS_REFRESCO_SALDOS * 4);
+    }
+
+    async function refrescarSaldosSolo() {
+      if (refrescando || !seVenLosSaldos()) return;
+      if (!navigator.onLine) return;
+      refrescando = true;
+      try {
+        // `true` = en silencio: sin "Cargando saldos…" ni vaciar la grilla.
+        // Un parpadeo cada minuto es peor que no actualizar.
+        await cargarSaldos(true);
+        ultimoRefresco = Date.now();
+      } catch (err) {
+        // Un refresco que falla no puede romper nada: quedan los números de
+        // antes y el indicador va a mostrar que están viejos.
+      } finally {
+        refrescando = false;
+        pintarFrescura();
+      }
+    }
+
+    function arrancarRefrescoDeSaldos() {
+      if (tempSaldos) return;
+      tempSaldos = setInterval(() => {
+        pintarFrescura();
+        if (Date.now() - ultimoRefresco >= SEGUNDOS_REFRESCO_SALDOS * 1000) refrescarSaldosSolo();
+      }, 5000);   // el reloj corre cada 5 s solo para el texto; el pedido, cada 60
+    }
+
+    // Volver a la pestaña es justo cuando la persona mira los números: ahí se
+    // refresca en el acto en vez de esperar al próximo turno.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      pintarFrescura();
+      if (Date.now() - ultimoRefresco >= 15000) refrescarSaldosSolo();
+    });
+    window.addEventListener('online', () => refrescarSaldosSolo());
 
     // ─── Historial de movimientos de una cuenta ──────────────────────────
     //
@@ -5829,7 +5923,14 @@
 
     document.getElementById('btnCancelarSaldo').addEventListener('click', cerrarModalSaldo);
     modalSaldo.addEventListener('click', e => { if (e.target === modalSaldo) cerrarModalSaldo(); });
-    document.getElementById('btnRefrescarSaldos').addEventListener('click', () => cargarSaldos(false));
+    // El botón sigue existiendo y sigue FORZANDO el recálculo: es la salida
+    // para cuando alguien tocó la hoja a mano, que el refresco automático no
+    // puede detectar (pide sin forzar, para no gastar cuota).
+    document.getElementById('btnRefrescarSaldos').addEventListener('click', async () => {
+      await cargarSaldos(false);
+      ultimoRefresco = Date.now();
+      pintarFrescura();
+    });
 
     // Abre la hoja de cálculo en otra pestaña. `noopener` para que la página
     // que se abre no pueda manipular esta.

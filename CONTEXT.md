@@ -50,7 +50,7 @@ Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **se
 
 ⚠️ **Las hojas son TABLAS de Sheets, y eso cambia dónde caen los datos nuevos.** `appendRow()` agrega tras la última fila con datos; `values.append` agrega tras la **Tabla**. Si una Tabla abarca más filas que sus datos, un pago nuevo cae al fondo y **desaparece de la vista sin dar ningún error**. Vigilarlo en `GET /salud` → `filasFueraDeLugar` (tiene que estar siempre vacío) y, si aparece algo, correr `node servidor/limpiar-filas-vacias.js` (simula; `--aplicar` para borrar).
 
-`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-22-a` · `sw.js` → `control-pagos-v82` · `MODO_LOGIN` = `'estricto'`.
+`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-22-a` · `sw.js` → `control-pagos-v83` · `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -479,6 +479,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-22**: 🔄 **Los saldos se actualizan solos cada 60 s**, sin tocar "Actualizar".
+  - ⚠️ **Lo delicado acá es la cuota**, no el temporizador: las lecturas de Sheets son de TODA la empresa (60/min entre los nueve) y ya dejaron a todos afuera una vez. Nueve pestañas abiertas todo el día pidiendo sin parar la agotan solas.
+  - **El pedido automático NO fuerza el recálculo.** El servidor responde con lo que ya tiene, y ese cálculo se tira solo cada vez que alguien registra un pago o un traslado: un movimiento nuevo aparece enseguida, pero mirar la pantalla no cuesta lecturas.
+  - **No se pide nunca** con la pestaña en segundo plano, sin conexión, con la sección oculta, ni si ya hay un pedido en curso. Al volver a la pestaña se refresca en el acto, que es cuando la persona mira.
+  - **Medido contra producción:** 3 usuarios pidiendo **cada 5 s durante un minuto** (mucho más agresivo que el diseño) = **15 peticiones y solo 4 lecturas** de Sheets; 3 de 40 permitidas en el minuto. El caché de foto de 15 s las absorbe.
+  - Indicador **"Actualizado hace X"** bajo el título: un número que se refresca solo es indistinguible de uno congelado, así que tiene que decir cuándo se actualizó. Se pone en rojo si pasan más de 4 minutos.
+  - El botón "Actualizar" sigue **forzando** el recálculo: es la salida para cuando alguien editó la hoja a mano, que el refresco automático no puede detectar.
 - **2026-09-22**: 🆕 **Historial de movimientos por cuenta.** Nace de una pregunta concreta: *"apareció en rojo el saldo de Viáticos y no sé por qué"*. El saldo dice CUÁNTO hay; esto dice POR QUÉ.
   - Cada tarjeta de saldo tiene un botón de **reloj** que abre el detalle: pagos y traslados desde el saldo base, con **saldo corriente en cada línea** y la fila donde la cuenta **cruzó a rojo** marcada.
   - ⚠️ **Los movimientos NO se recalculan aparte:** se registran en el MISMO recorrido de `calcularSaldosCrudos_` que produce los totales. Si el historial se calculara por su cuenta, podría mostrar una cosa y el saldo otra — el tipo de error silencioso que más caro salió en este proyecto.
