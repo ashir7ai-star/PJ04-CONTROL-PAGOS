@@ -338,6 +338,125 @@ console.log('\n=== Una columna nueva reusa los "Column N" que deja la Tabla ==='
 }
 
 
+console.log('\n=== Historial de movimientos: tiene que CUADRAR con el saldo ===');
+{
+  // Nace de "aparecio en rojo Viaticos y no se por que". Un historial que no
+  // suma el saldo es peor que no tenerlo: parece una explicacion y no lo es.
+  const ENC_SALDOS = [['FECHA','CUENTA','SALDO BASE','CONCEPTO','REGISTRADO POR']];
+  const ENC_TRAS   = [['FECHA','ORIGEN','DESTINO','MONTO','REGISTRADO POR','NOTA','URL COMPROBANTE','FECHA REGISTRO','REALIZADO POR']];
+  const base = new Date(2026, 8, 17, 10, 0, 0);
+  const pago = (d, nombre, valor) =>
+    [d, 'AMPAC SAS', 'viaticos', 'Laura', nombre, 'Proveedor', d, valor, '', '', ''];
+
+  const foto = {
+    'PAGOS REGISTRADOS': [ENC_PAGOS],
+    'Viaticos': [ENC_PAGOS,
+      pago(new Date(2026, 8, 18, 9, 0, 0), 'ALMUERZO', 300000),
+      pago(new Date(2026, 8, 19, 9, 0, 0), 'HOSPEDAJE', 900000),
+      // Anterior al saldo base: NO cuenta, ya esta incluido en la base.
+      pago(new Date(2026, 8, 16, 9, 0, 0), 'VIEJO', 500000)],
+    'Caja Menor': [ENC_PAGOS],
+    'SALDOS':   [ENC_SALDOS[0], [base, 'viaticos', 1000000, 'inicial', 'Nathan']],
+    'TRASLADOS':[ENC_TRAS[0],
+      [new Date(2026, 8, 20), 'banco_ampac', 'viaticos', 400000, 'Nathan', 'refuerzo', '',
+       new Date(2026, 8, 20, 15, 0, 0), 'Nathan <n@x.com>']],
+    'USUARIOS': [['CORREO','NOMBRE','TELEFONO','ROL','SECCIONES','ESTADO','FECHA REGISTRO','ULTIMO ACCESO'],
+                 ['nathan@ylevigroup.com','Nathan','300','admin','todas','activo','',''],
+                 ['laura@energy-millennium.com','Laura','300','usuario','viaticos','activo','','']],
+    'SESIONES': [['HASH','CORREO','CREADA','ULTIMO USO','VENCE']],
+    'SOLICITUDES DE APROBACION': [['ID SOLICITUD','FECHA SOLICITUD','EMPRESA','TIPO DE PAGO','NOMBRE DEL PAGO',
+      'PROVEEDOR','FECHA DE PAGO','VALOR','SOLICITADO POR','CORREO','NOTAS','URL ARCHIVO','ESTADO',
+      'REVISADO POR','FECHA DECISION','COMENTARIO']]
+  };
+
+  const e = montar(foto, 'off');
+  const pedir = a => JSON.parse(e.globales.doPost({ postData:{ contents: JSON.stringify(a) } })._json);
+
+  const r = pedir({ action: 'consultar_movimientos', cuenta: 'viaticos', forzar: true });
+  chk('responde bien', r.status === 'success', r);
+  chk('trae la base', r.base === 1000000, r.base);
+
+  // 1.000.000 − 300.000 − 900.000 + 400.000 = 200.000
+  chk('el saldo es el esperado', r.saldo === 200000, r.saldo);
+  chk('tres movimientos: dos pagos y un traslado', r.movimientos.length === 3, r.movimientos.length);
+  chk('el pago anterior al saldo base NO aparece',
+      !r.movimientos.some(m => m.texto === 'VIEJO'), r.movimientos.map(m => m.texto));
+
+  // LO QUE IMPORTA: base + movimientos = saldo. Si un dia alguien toca el
+  // calculo y el historial deja de sumar, esto lo agarra.
+  const suma = r.movimientos.reduce((a, m) => a + m.monto, 0);
+  chk('base + movimientos = saldo', r.base + suma === r.saldo, [r.base, suma, r.saldo]);
+  chk('y el servidor lo comprueba solo', r.cuadra === true && r.descuadre === 0, r);
+
+  chk('del mas nuevo al mas viejo',
+      r.movimientos[0].orden > r.movimientos[r.movimientos.length-1].orden,
+      r.movimientos.map(m => m.fecha));
+
+  // El saldo corriente es lo que deja ver EN QUE momento se puso en rojo.
+  const viejoANuevo = r.movimientos.slice().reverse();
+  chk('cada movimiento lleva su saldo corriente',
+      viejoANuevo[0].saldo === 700000, viejoANuevo.map(m => m.saldo));
+  chk('y el ultimo coincide con el saldo de la cuenta',
+      r.movimientos[0].saldo === r.saldo, r.movimientos[0].saldo);
+
+  const entra = r.movimientos.filter(m => m.tipo === 'entra')[0];
+  chk('un traslado que ENTRA suma', entra && entra.monto === 400000, entra);
+  chk('y dice de donde vino', entra && /AMPAC/.test(entra.texto), entra && entra.texto);
+  chk('un pago RESTA', r.movimientos.filter(m => m.tipo === 'pago').every(m => m.monto < 0));
+
+  // Permisos: un banco no es para cualquiera.
+  // Se llama la funcion directo, como en prueba-permisos.js: lo que se prueba
+  // es la regla de permisos, no el camino de la sesion.
+  const g = montar(foto, 'estricto');
+  // Google no participa de esto: se prueba la REGLA de permisos, no el
+  // ingreso. El token se cambia por el correo que representa.
+  require('vm').runInContext(
+    'verificarIdToken_ = function (t) { return t ? { correo: String(t), nombre: String(t) } : null; };',
+    g.globales);
+  const laura = { idToken: 'laura@energy-millennium.com' };
+
+  let malo = null;
+  try { g.globales.consultarMovimientos_(Object.assign({ cuenta: 'banco_ampac' }, laura)); }
+  catch (err) { malo = err.message; }
+  chk('un usuario comun NO ve los movimientos de un banco',
+      /SIN_PERMISO/.test(String(malo)), malo);
+
+  const suyo = g.globales.consultarMovimientos_(Object.assign({ cuenta: 'viaticos' }, laura));
+  chk('pero SI los de su propio fondo', suyo.status === 'success', suyo);
+
+  // Y un fondo que NO es suyo tampoco.
+  let ajeno = null;
+  try { g.globales.consultarMovimientos_(Object.assign({ cuenta: 'caja_menor' }, laura)); }
+  catch (err) { ajeno = err.message; }
+  chk('ni los de un fondo que no tiene asignado', /SIN_PERMISO/.test(String(ajeno)), ajeno);
+
+  const inexistente = pedir({ action:'consultar_movimientos', cuenta:'no_existe' });
+  chk('una cuenta que no existe se rechaza', inexistente.status === 'error', inexistente);
+
+  // Y LO MAS IMPORTANTE: que la comprobacion de cuadre sirva de verdad.
+  // Se mete en el cache un calculo adulterado —el saldo dice una cosa y los
+  // movimientos otra— y tiene que avisarlo en vez de mostrarlo como si nada.
+  {
+    const e2 = montar(foto, 'off');
+    const crudos = {
+      porCuenta: {
+        viaticos: { configurado: true, base: 1000000, desde: '17/09/2026 10:00', concepto: '',
+                    gastado: 0, pagos: 0, enviado: 0, recibido: 0, traslados: 0,
+                    // 1.000.000 - 300.000 = 700.000, pero el saldo dice otra cosa.
+                    saldo: 999999,
+                    movimientos: [{ orden: 1, fecha: '18/09/2026 09:00', tipo: 'pago',
+                                    monto: -300000, texto: 'ALMUERZO', detalle: '' }] }
+      },
+      sinCuenta: 0
+    };
+    e2.globales.CacheService.getScriptCache().put('saldos_calculados_v1', JSON.stringify(crudos), 600);
+    const r2 = e2.globales.consultarMovimientos_({ cuenta: 'viaticos' });
+    chk('si el historial no suma el saldo, lo DICE', r2.cuadra === false, r2.cuadra);
+    chk('y dice cuanto falta', r2.descuadre === 299999, r2.descuadre);
+  }
+}
+
+
 console.log('\n=== Lo que todavia NO esta, falla en voz alta ===');
 {
   const e = montar({ 'PAGOS REGISTRADOS': [ENC_PAGOS] }, 'off');

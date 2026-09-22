@@ -50,7 +50,7 @@ Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **se
 
 ⚠️ **Las hojas son TABLAS de Sheets, y eso cambia dónde caen los datos nuevos.** `appendRow()` agrega tras la última fila con datos; `values.append` agrega tras la **Tabla**. Si una Tabla abarca más filas que sus datos, un pago nuevo cae al fondo y **desaparece de la vista sin dar ningún error**. Vigilarlo en `GET /salud` → `filasFueraDeLugar` (tiene que estar siempre vacío) y, si aparece algo, correr `node servidor/limpiar-filas-vacias.js` (simula; `--aplicar` para borrar).
 
-`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-21-a` · `sw.js` → `control-pagos-v81` · `MODO_LOGIN` = `'estricto'`.
+`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-22-a` · `sw.js` → `control-pagos-v82` · `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -479,6 +479,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-22**: 🆕 **Historial de movimientos por cuenta.** Nace de una pregunta concreta: *"apareció en rojo el saldo de Viáticos y no sé por qué"*. El saldo dice CUÁNTO hay; esto dice POR QUÉ.
+  - Cada tarjeta de saldo tiene un botón de **reloj** que abre el detalle: pagos y traslados desde el saldo base, con **saldo corriente en cada línea** y la fila donde la cuenta **cruzó a rojo** marcada.
+  - ⚠️ **Los movimientos NO se recalculan aparte:** se registran en el MISMO recorrido de `calcularSaldosCrudos_` que produce los totales. Si el historial se calculara por su cuenta, podría mostrar una cosa y el saldo otra — el tipo de error silencioso que más caro salió en este proyecto.
+  - **Y se comprueba antes de responder:** `base + movimientos` tiene que dar exactamente el saldo. Si no da, la respuesta trae `cuadra: false` y la pantalla lo muestra. **Un historial que no cuadra es peor que no tenerlo: parece una explicación.**
+  - Permisos en un solo lugar (`puedeVerCuenta_`), compartido con la pantalla de saldos: los bancos son solo para administradores, y un usuario común ve únicamente los fondos que tiene asignados.
+  - **Verificado contra los datos reales:** las 4 cuentas cuadran. Viáticos: base $1.663.100, 40 movimientos, saldo −$728.450, **se puso en rojo el 22/09 a las 10:31 con "HOSPEDAJE" ($340.000)**.
+  - 🧭 Dos pruebas nuevas **no detectaban su defecto** al principio: la del cuadre solo cubría el caso que cuadra, y la de permisos usaba una mutación que no cambiaba nada. Se agregó un cálculo adulterado inyectado en el caché y una mutación real.
 - **2026-09-22**: ✅ **Hoja saneada: todas las fechas son fechas reales, `FECHA DE PAGO` sin hora, y sin columnas basura.**
   - **88 celdas convertidas** de texto a fecha real (`reparar-fechas-texto.js --aplicar`). Verificado después: **346 celdas de fecha, 0 en texto**.
   - **Formato por columna** (`formato-fechas.js`, nuevo): `FECHA DE PAGO` → `dd/mm/yyyy` **sin hora** (pedido expreso); el resto (`FECHA REGISTRO`, `ULTIMO ACCESO`, `FECHA SOLICITUD`, …) → `dd/mm/yyyy hh:mm:ss`, porque la hora hace falta para ordenar los pagos del mismo día. Se aplica a la columna entera, así las filas nuevas lo heredan.
@@ -497,7 +504,7 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 - **2026-09-21**: 🚨 **Registrar un pago en Viáticos fallaba: `Range (Viaticos!AA1) exceeds grid limits`.** Una usuaria lo reportó; el servidor tenía **4 intentos fallidos desde el sábado 19 a la mañana** — todo pago fuera de PAGOS REGISTRADOS fallaba (Viáticos, Caja Menor, Nómina, Impuestos, Seguridad Social). **Ninguno quedó a medias**: el encabezado se escribe antes que la fila, y al fallar no se llegó a la fila. Hay que volver a registrarlos.
   - **La causa, otra diferencia Apps Script ↔ API:** `getRange(1, 27).setValue()` en Apps Script **agranda la hoja sola**; la API responde `exceeds grid limits` y no escribe nada. `asegurarColumnas_` quiso crear `ID REGISTRO` (el guardia contra duplicados) en la **columna 27** de una hoja de 26.
   - **Por qué la 27 y no la 12:** la conversión a Tabla dejó **15 encabezados basura `Column 1`…`Column 15`** después de los 11 reales, y la lógica los contaba como ocupados.
-  - **Arreglo en `apps-script.gs`** (`asegurarColumnas_`): los `Column N` y los vacíos son **lugares libres** y se reusan antes de agrandar. `ID REGISTRO` cae en la columna 12. `REVISION_BACKEND` = `2026-09-21-a`. ⚠️ **Falta pegarlo en el editor de Google** (solo importa para la vuelta atrás y los reportes).
+  - **Arreglo en `apps-script.gs`** (`asegurarColumnas_`): los `Column N` y los vacíos son **lugares libres** y se reusan antes de agrandar. `ID REGISTRO` cae en la columna 12. `REVISION_BACKEND` = `2026-09-22-a`. ⚠️ **Falta pegarlo en el editor de Google** (solo importa para la vuelta atrás y los reportes).
   - **Red de seguridad en `escribir.js`:** si Sheets rechaza una escritura por tamaño, **se agranda lo justo (filas y/o columnas) y se reintenta una vez**. No se comprueba antes —costaría una lectura por petición— porque el rechazo es de validación y ocurre antes de escribir nada. Un error que no es de tamaño se deja pasar tal cual.
   - **Verificado contra la hoja real, en los dos niveles:** (1) `asegurarColumnas_` con la lógica real sobre las 5 hojas sin `ID REGISTRO` → las 5 lo tienen ahora en la **columna 12**, con una sola escritura; (2) escritura en la columna 27 de una hoja de 26 → rechazo, +1 columna, reintento OK, y se limpió después.
   - 🧭 **`/salud` ya tenía los 4 errores registrados desde el sábado y nadie lo miró.** El monitoreo existe; falta que avise solo. Anotado como pendiente.

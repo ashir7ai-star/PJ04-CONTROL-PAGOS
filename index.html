@@ -1562,6 +1562,44 @@
       border-top: 1px solid var(--border);
     }
 
+    /* ─── Historial de movimientos de una cuenta ─────────────────────────
+       Nace de "apareció en rojo Viáticos y no sé por qué": el número solo no
+       alcanza, hay que poder ver de dónde sale. */
+    .saldo-acciones { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; }
+    .saldo-acciones .saldo-editar { position: static; }
+    .mov-caja { max-width: 680px; width: 100%; }
+    .mov-resumen {
+      display: flex; flex-wrap: wrap; gap: 6px 18px;
+      padding: 12px 14px; margin: 0 0 14px;
+      background: var(--surface-2); border: 1px solid var(--border-subtle); border-radius: 10px;
+      font-size: .82rem; color: var(--text-2);
+    }
+    .mov-resumen strong { color: var(--text-1); }
+    .mov-lista { max-height: 52vh; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+    .mov-fila {
+      display: grid; grid-template-columns: 1fr auto auto; gap: 4px 14px;
+      align-items: baseline; padding: 10px 2px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .mov-fila:last-child { border-bottom: 0; }
+    .mov-texto { font-weight: 600; color: var(--text-1); font-size: .9rem; }
+    .mov-meta  { grid-column: 1; font-size: .76rem; color: var(--text-muted); }
+    .mov-monto { font-variant-numeric: tabular-nums; font-weight: 700; font-size: .9rem; white-space: nowrap; }
+    .mov-monto.entra { color: var(--success, #16a34a); }
+    .mov-monto.sale  { color: var(--error); }
+    .mov-saldo {
+      font-variant-numeric: tabular-nums; font-size: .78rem; color: var(--text-muted);
+      white-space: nowrap; min-width: 92px; text-align: right;
+    }
+    .mov-saldo.negativo { color: var(--error); font-weight: 700; }
+    /* La fila donde la cuenta se puso en rojo: es lo que se viene a buscar. */
+    .mov-fila.cruce { background: rgba(239,68,68,.07); border-radius: 8px; }
+    .mov-fila.cruce .mov-meta::after { content: ' · acá quedó en rojo'; color: var(--error); font-weight: 600; }
+    .mov-base { padding: 10px 2px; border-top: 1px dashed var(--border-strong); margin-top: 6px; }
+    @media (max-width: 520px) {
+      .mov-fila { grid-template-columns: 1fr auto; }
+      .mov-saldo { grid-column: 2; }
+    }
     .saldo-editar {
       position: absolute;
       top: 12px; right: 12px;
@@ -3014,6 +3052,23 @@
   </main>
 
   <!-- Cargar / corregir el saldo de una cuenta (solo administradores) -->
+  <!-- Historial de movimientos de una cuenta. Responde "¿por qué quedó en este
+       número?", que es distinto de "¿cuánto hay?". -->
+  <div class="modal-fondo" id="modalMovimientos" style="display:none;">
+    <div class="modal-caja mov-caja">
+      <h3 id="movTitulo">Movimientos</h3>
+      <p class="modal-sub" id="movSub"></p>
+
+      <div class="mov-resumen" id="movResumen"></div>
+      <div class="login-aviso error" id="movDescuadre" style="display:none;margin:0 0 14px;"></div>
+      <div class="mov-lista" id="movLista"></div>
+
+      <div class="modal-acciones">
+        <button type="button" class="btn-sec" id="movCerrar">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-fondo" id="modalSaldo" style="display:none;">
     <div class="modal-caja">
       <h3 id="modalSaldoTitulo">Saldo disponible</h3>
@@ -3200,7 +3255,8 @@
 
     const ACCIONES_DE_LECTURA = [
       'arranque', 'consultar_pagos', 'consultar_solicitudes', 'consultar_saldos',
-      'listar_usuarios', 'iniciar_sesion', 'estado_login'
+      'listar_usuarios', 'iniciar_sesion', 'estado_login', 'consultar_movimientos',
+      'consultar_traslados'
     ];
 
     // Medición de la última respuesta del servidor. Se declara con var porque
@@ -5577,6 +5633,9 @@
 
       const lapiz = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+      // Un reloj con la aguja hacia atrás: historial.
+      const reloj = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>';
 
       saldosGrid.innerHTML = r.cuentas.map(c => {
         const enRojo  = c.configurado && c.saldo < 0;
@@ -5591,9 +5650,14 @@
           : 'Un administrador tiene que cargar el saldo inicial.';
 
         return '<div class="' + clases.join(' ') + '">' +
-          (saldosPuedeEditar
-            ? '<button type="button" class="saldo-editar" data-cuenta="' + escapeHtml(c.clave) + '" title="Editar saldo">' + lapiz + '</button>'
-            : '') +
+          '<div class="saldo-acciones">' +
+            (c.configurado
+              ? '<button type="button" class="saldo-editar" data-movimientos="' + escapeHtml(c.clave) + '" title="Ver movimientos">' + reloj + '</button>'
+              : '') +
+            (saldosPuedeEditar
+              ? '<button type="button" class="saldo-editar" data-cuenta="' + escapeHtml(c.clave) + '" title="Editar saldo">' + lapiz + '</button>'
+              : '') +
+          '</div>' +
           '<div class="saldo-etiqueta">' + escapeHtml(c.etiqueta) + '</div>' +
           '<div class="saldo-detalle">' + escapeHtml(c.detalle) + '</div>' +
           '<div class="saldo-monto">' + (c.configurado ? formatoPesos(c.saldo) : 'Sin configurar') + '</div>' +
@@ -5615,6 +5679,98 @@
           if (c) abrirModalSaldo(c);
         });
       });
+
+      saldosGrid.querySelectorAll('[data-movimientos]').forEach(btn => {
+        btn.addEventListener('click', () => abrirMovimientos(btn.dataset.movimientos));
+      });
+    }
+
+    // ─── Historial de movimientos de una cuenta ──────────────────────────
+    //
+    // "Apareció en rojo el saldo de Viáticos y no sé por qué". El saldo dice
+    // CUÁNTO hay; esto dice POR QUÉ. Se muestra el saldo corriente en cada
+    // línea y se marca en qué movimiento exacto la cuenta cruzó a negativo.
+    const modalMov = document.getElementById('modalMovimientos');
+
+    function cerrarMovimientos() { modalMov.style.display = 'none'; }
+    document.getElementById('movCerrar').addEventListener('click', cerrarMovimientos);
+    modalMov.addEventListener('click', e => { if (e.target === modalMov) cerrarMovimientos(); });
+
+    async function abrirMovimientos(clave) {
+      document.getElementById('movTitulo').textContent = 'Movimientos';
+      document.getElementById('movSub').textContent    = 'Cargando…';
+      document.getElementById('movResumen').innerHTML  = '';
+      document.getElementById('movLista').innerHTML    = '';
+      document.getElementById('movDescuadre').style.display = 'none';
+      modalMov.style.display = 'flex';
+
+      let r;
+      try {
+        r = await postAppsScript({ action: 'consultar_movimientos', cuenta: clave }, 60000);
+      } catch (err) {
+        document.getElementById('movSub').textContent = mensajeDeError(err);
+        return;
+      }
+      if (!r || r.status !== 'success') {
+        document.getElementById('movSub').textContent = (r && r.message) || 'No se pudieron cargar los movimientos.';
+        return;
+      }
+
+      document.getElementById('movTitulo').textContent = r.etiqueta;
+
+      if (!r.configurado) {
+        document.getElementById('movSub').textContent = r.mensaje || 'Esta cuenta no tiene saldo base cargado.';
+        return;
+      }
+
+      document.getElementById('movSub').textContent =
+        'Desde el saldo base del ' + r.desde + '. Lo anterior ya está incluido en ese número.';
+
+      document.getElementById('movResumen').innerHTML =
+        '<span>Base <strong>' + formatoPesos(r.base) + '</strong></span>' +
+        '<span>Movimientos <strong>' + r.movimientos.length + '</strong></span>' +
+        '<span>Saldo <strong>' + formatoPesos(r.saldo) + '</strong></span>';
+
+      // Si el historial no suma el saldo, hay un error de cálculo. Se dice, no
+      // se disimula: un historial que no cuadra parece una explicación y no lo es.
+      if (!r.cuadra) {
+        const d = document.getElementById('movDescuadre');
+        d.innerHTML = 'Estos movimientos no suman el saldo mostrado (faltan ' +
+                      formatoPesos(r.descuadre) + '). Avisá para que lo revisemos.';
+        d.style.display = '';
+      }
+
+      if (!r.movimientos.length) {
+        document.getElementById('movLista').innerHTML =
+          '<p class="modal-sub" style="margin:8px 0 0;">Sin movimientos desde que se cargó el saldo base. ' +
+          'El saldo es igual a la base.</p>';
+        return;
+      }
+
+      // Dónde cruzó a negativo: el primero (yendo del más viejo al más nuevo)
+      // que deja el saldo por debajo de cero.
+      let cruce = null;
+      for (let i = r.movimientos.length - 1; i >= 0; i--) {
+        if (r.movimientos[i].saldo < 0) { cruce = r.movimientos[i].orden; break; }
+      }
+
+      document.getElementById('movLista').innerHTML = r.movimientos.map(m => {
+        const entra = m.monto > 0;
+        return '<div class="mov-fila' + (m.orden === cruce ? ' cruce' : '') + '">' +
+          '<div class="mov-texto">' + escapeHtml(m.texto || '—') + '</div>' +
+          '<div class="mov-monto ' + (entra ? 'entra' : 'sale') + '">' +
+            (entra ? '+' : '−') + formatoPesos(Math.abs(m.monto)) + '</div>' +
+          '<div class="mov-saldo' + (m.saldo < 0 ? ' negativo' : '') + '">' + formatoPesos(m.saldo) + '</div>' +
+          '<div class="mov-meta">' + escapeHtml(m.fecha) +
+            (m.detalle ? ' · ' + escapeHtml(m.detalle) : '') + '</div>' +
+        '</div>';
+      }).join('') +
+      '<div class="mov-base mov-fila">' +
+        '<div class="mov-texto">Saldo base' + (r.concepto ? ' — ' + escapeHtml(r.concepto) : '') + '</div>' +
+        '<div class="mov-monto"></div>' +
+        '<div class="mov-saldo">' + formatoPesos(r.base) + '</div>' +
+        '<div class="mov-meta">' + escapeHtml(r.desde) + '</div>' +
+      '</div>';
     }
 
     // Lo que el sistema tiene calculado para la cuenta que se está editando.

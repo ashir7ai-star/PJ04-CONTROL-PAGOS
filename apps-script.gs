@@ -1349,6 +1349,7 @@ function doPost(e) {
     if (body.action === 'ajustar_saldo')        return respuestaJson_(ajustarSaldo_(body));
     if (body.action === 'registrar_traslado')   return respuestaJson_(registrarTraslado_(body));
     if (body.action === 'consultar_traslados')  return respuestaJson_(consultarTraslados_(body));
+    if (body.action === 'consultar_movimientos') return respuestaJson_(consultarMovimientos_(body));
     return respuestaJson_({ status: 'error', message: 'Acción no reconocida: ' + body.action });
   } catch (err) {
     return errorJson_(err);
@@ -1726,7 +1727,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-21-a · columnas nuevas reusan los lugares libres';
+const REVISION_BACKEND = '2026-09-22-a · historial de movimientos por cuenta';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -2476,6 +2477,31 @@ const CUENTAS = {
   viaticos:         { etiqueta: 'Viáticos',       detalle: 'Fondo compartido', empresa: null,        grupo: 'fondo' }
 };
 
+function etiquetaDeCuenta_(clave) {
+  const c = CUENTAS[String(clave || '').trim()];
+  return c ? c.etiqueta : String(clave || '');
+}
+
+// Quién puede VER una cuenta. Vive en un solo lugar porque lo usan la pantalla
+// de saldos y el historial de movimientos: si cada uno tuviera su propia
+// regla, un día una dejaría pasar lo que la otra bloquea.
+//
+// Regla (definida por el usuario): los saldos de los BANCOS son solo para
+// administradores. Un usuario común ve únicamente los fondos (Viáticos y Caja
+// Menor), y solo aquellos cuya sección tenga asignada.
+function puedeVerCuenta_(contexto, clave) {
+  if (MODO_LOGIN === 'off' || esAdmin_(contexto)) return true;
+  const cfg = CUENTAS[clave];
+  if (!cfg || cfg.grupo !== 'fondo') return false;
+  if (contexto.secciones.indexOf(clave) !== -1) return true;
+  // Quien gasta de un fondo tiene que poder verlo, aunque su sección se llame
+  // distinto: con el ajuste temporal, Compra Materiales descuenta de Viáticos.
+  // Se deriva del MISMO valor que decide el descuento, así que no pueden
+  // quedar desalineados.
+  return CUENTA_COMPRA_MATERIALES === clave &&
+         contexto.secciones.indexOf('compra_materiales') !== -1;
+}
+
 // De qué bolsa sale un pago. Devuelve null si no debe tocar ningún saldo.
 // ⚠️ AJUSTE TEMPORAL (2026-09-17, pedido del usuario).
 //
@@ -2631,9 +2657,27 @@ function calcularSaldosCrudos_() {
 
   const acumulado = {};
   Object.keys(CUENTAS).forEach(c => {
-    acumulado[c] = { gastado: 0, pagos: 0, enviado: 0, recibido: 0, traslados: 0 };
+    // `movimientos` se llena EN EL MISMO RECORRIDO que los totales, a
+    // propósito: si el historial se calculara aparte, podría mostrar una cosa
+    // y el saldo otra. Acá, por construcción, la suma de los movimientos es el
+    // saldo. Y se comprueba antes de responder (ver consultarMovimientos_).
+    acumulado[c] = { gastado: 0, pagos: 0, enviado: 0, recibido: 0, traslados: 0, movimientos: [] };
   });
   let sinCuenta = 0;
+
+  // Un movimiento, ya en JSON: tiene que sobrevivir al viaje por el caché, así
+  // que nada de objetos Date.
+  const anotarMov = (cuenta, cuando, tipo, monto, texto, detalle) => {
+    acumulado[cuenta].movimientos.push({
+      // `orden` es para ordenar sin depender del texto; `fecha` es para leer.
+      orden:   cuando.getTime(),
+      fecha:   Utilities.formatDate(cuando, ZONA_HORARIA, 'dd/MM/yyyy HH:mm'),
+      tipo:    tipo,                       // 'pago' | 'sale' | 'entra'
+      monto:   monto,                      // con signo: lo que le hace al saldo
+      texto:   String(texto || ''),
+      detalle: String(detalle || '')
+    });
+  };
 
   // Traslados: restan del origen y suman al destino. Se aplica la MISMA regla
   // de corte que con los pagos —solo los posteriores al saldo base de cada
@@ -2647,12 +2691,16 @@ function calcularSaldosCrudos_() {
     if (salida && momento.getTime() > salida.fecha.getTime()) {
       acumulado[t.origen].enviado   += t.monto;
       acumulado[t.origen].traslados += 1;
+      anotarMov(t.origen, momento, 'sale', -t.monto,
+                'Traslado a ' + etiquetaDeCuenta_(t.destino), t.nota || '');
     }
 
     const entrada = bases[t.destino];
     if (entrada && momento.getTime() > entrada.fecha.getTime()) {
       acumulado[t.destino].recibido  += t.monto;
       acumulado[t.destino].traslados += 1;
+      anotarMov(t.destino, momento, 'entra', t.monto,
+                'Traslado desde ' + etiquetaDeCuenta_(t.origen), t.nota || '');
     }
   });
 
@@ -2680,8 +2728,17 @@ function calcularSaldosCrudos_() {
       // todo lo anterior, así que volver a restarlo sería contarlo dos veces.
       if (!fecha || fecha.getTime() <= base.fecha.getTime()) return;
 
-      acumulado[cuenta].gastado += montoANumero_(fila[cValor]);
+      const valor = montoANumero_(fila[cValor]);
+      acumulado[cuenta].gastado += valor;
       acumulado[cuenta].pagos   += 1;
+
+      const cNombre    = enc.indexOf('NOMBRE DE PAGO');
+      const cProveedor = enc.indexOf('PROVEEDOR');
+      const cQuien     = enc.indexOf('REGISTRADO POR');
+      anotarMov(cuenta, fecha, 'pago', -valor,
+                cNombre === -1 ? etiquetaTipo_(fila[cTipo]) : String(fila[cNombre] || etiquetaTipo_(fila[cTipo])),
+                [cProveedor === -1 ? '' : fila[cProveedor],
+                 cQuien     === -1 ? '' : fila[cQuien]].filter(String).join(' · '));
     });
   });
 
@@ -2701,7 +2758,9 @@ function calcularSaldosCrudos_() {
       traslados:   acumulado[clave].traslados,
       saldo:       base
         ? base.monto - acumulado[clave].gastado - acumulado[clave].enviado + acumulado[clave].recibido
-        : 0
+        : 0,
+      // Del más nuevo al más viejo: es el orden en que uno busca "qué pasó".
+      movimientos: acumulado[clave].movimientos.sort((a, b) => b.orden - a.orden)
     };
   });
 
@@ -2722,19 +2781,7 @@ function consultarSaldos_(ctx, forzar) {
   // administradores. Un usuario común ve únicamente los fondos (Viáticos y
   // Caja Menor) y solo aquellos cuya sección tenga asignada.
   const esAdministrador = MODO_LOGIN === 'off' || esAdmin_(contexto);
-  const visibles = Object.keys(CUENTAS).filter(clave => {
-    if (esAdministrador) return true;
-    if (CUENTAS[clave].grupo !== 'fondo') return false;
-    // La clave de la cuenta coincide con la de la sección ('viaticos', 'caja_menor')
-    if (contexto.secciones.indexOf(clave) !== -1) return true;
-    // Y quien gasta de un fondo tiene que poder verlo, aunque su sección se
-    // llame distinto: con el ajuste temporal, Compra Materiales descuenta de
-    // Viáticos. Dejarlo gastar de un saldo que no ve sería pedirle que trabaje
-    // a ciegas. Se deriva del MISMO valor que decide el descuento, así que no
-    // pueden quedar desalineados.
-    return CUENTA_COMPRA_MATERIALES === clave &&
-           contexto.secciones.indexOf('compra_materiales') !== -1;
-  });
+  const visibles = Object.keys(CUENTAS).filter(clave => puedeVerCuenta_(contexto, clave));
 
   const cuentas = visibles.map(clave => {
     const cfg = CUENTAS[clave];
@@ -2764,6 +2811,72 @@ function consultarSaldos_(ctx, forzar) {
     // solo le sirve (y solo le corresponde) a un administrador.
     sinCuenta:   esAdministrador ? crudos.sinCuenta : 0,
     cuentas:     cuentas
+  };
+}
+
+// ─── Historial de movimientos de una cuenta ───────────────────────────────
+//
+// Nace de una pregunta concreta: "apareció en rojo el saldo de Viáticos y no
+// sé por qué". El número solo no alcanza — hay que poder ver de dónde sale.
+//
+// ⚠️ Los movimientos NO se recalculan acá. Salen del mismo recorrido que
+// produjo el saldo (`calcularSaldosCrudos_`), así que no pueden contar una
+// cosa distinta. Y antes de responder se COMPRUEBA: base + movimientos tiene
+// que dar exactamente el saldo. Si no da, se avisa en vez de mostrar un
+// historial que no cuadra — un historial que no cuadra es peor que no tenerlo,
+// porque parece una explicación.
+function consultarMovimientos_(body) {
+  const ctx   = contextoDe_(body);
+  const clave = String((body && body.cuenta) || '').trim();
+
+  if (!CUENTAS[clave]) {
+    return { status: 'error', message: 'Esa cuenta no existe.' };
+  }
+  if (!puedeVerCuenta_(ctx, clave)) {
+    throw new Error('SIN_PERMISO_SECCION');
+  }
+
+  const crudos = saldosCrudos_(body && body.forzar === true);
+  const c = crudos.porCuenta[clave] || {};
+
+  if (!c.configurado) {
+    return {
+      status: 'success', cuenta: clave, etiqueta: etiquetaDeCuenta_(clave),
+      configurado: false, movimientos: [],
+      mensaje: 'Esta cuenta todavía no tiene saldo base cargado.'
+    };
+  }
+
+  const movimientos = (c.movimientos || []).slice();
+
+  // El cuadre. `saldo` ya lo calculó `calcularSaldosCrudos_` con los totales;
+  // acá se rehace sumando los movimientos uno por uno.
+  const suma = movimientos.reduce((a, m) => a + m.monto, 0);
+  const cuadra = (c.base + suma) === c.saldo;
+
+  // Saldo corriente: del más viejo al más nuevo se va acumulando, y se guarda
+  // en cada movimiento. Así se ve en qué momento exacto la cuenta se puso en
+  // rojo, que es justo lo que se quería saber.
+  let corriente = c.base;
+  movimientos.slice().reverse().forEach(m => {
+    corriente += m.monto;
+    m.saldo = corriente;
+  });
+
+  return {
+    status:      'success',
+    cuenta:      clave,
+    etiqueta:    etiquetaDeCuenta_(clave),
+    configurado: true,
+    base:        c.base,
+    desde:       c.desde,
+    concepto:    c.concepto,
+    saldo:       c.saldo,
+    movimientos: movimientos,
+    // Si esto viniera en false habría un error de cálculo: la pantalla lo
+    // muestra en vez de disimularlo.
+    cuadra:      cuadra,
+    descuadre:   cuadra ? 0 : c.saldo - (c.base + suma)
   };
 }
 
