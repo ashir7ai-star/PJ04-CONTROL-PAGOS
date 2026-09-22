@@ -1726,7 +1726,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-19-a · fechas de usuarios formateadas';
+const REVISION_BACKEND = '2026-09-21-a · columnas nuevas reusan los lugares libres';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -2824,14 +2824,29 @@ function administradoresActivos_() {
     .filter(a => a.correo);
 }
 
+// ⚠️ Las Tablas de Sheets rellenan las columnas sin nombre con "Column 1",
+// "Column 2", ... Eso NO son encabezados: son lugares libres. Contarlos como
+// ocupados mandaba la columna nueva al final de la Tabla (la 27 en una hoja de
+// 26), y ahí el servidor propio fallaba con "exceeds grid limits" — Apps
+// Script agranda la hoja solo; la API de Sheets no. Una usuaria no pudo
+// registrar un pago por esto el 21/09/2026.
+//
+// Por eso primero se reusan esos lugares, y solo si no hay se agranda.
 function asegurarColumnas_(hoja, esperados) {
   const valores  = valoresDeHoja_(hoja);
   const actuales = (valores[0] || []).map(h => String(h).trim());
   const faltan   = esperados.filter(h => actuales.indexOf(h) === -1);
   if (!faltan.length) return;
 
-  hoja.getRange(1, actuales.length + 1, 1, faltan.length)
-      .setValues([faltan]).setFontWeight('bold');
+  const esLibre = h => h === '' || /^Column \d+$/i.test(h);
+
+  let col = 0;   // índice desde 0 sobre `actuales`
+  faltan.forEach(h => {
+    while (col < actuales.length && !esLibre(actuales[col])) col++;
+    hoja.getRange(1, col + 1, 1, 1).setValues([[h]]).setFontWeight('bold');
+    if (col < actuales.length) actuales[col] = h; else actuales.push(h);
+    col++;
+  });
   olvidarHoja_(hoja);
 }
 

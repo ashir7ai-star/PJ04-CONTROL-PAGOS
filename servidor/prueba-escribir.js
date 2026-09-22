@@ -209,6 +209,75 @@ console.log('\n=== El orden de las operaciones ===');
       chk('y con la hoja', reg[0] && reg[0].hoja === 'PAGOS REGISTRADOS', reg[0]);
     }
 
+    console.log('\n=== La cuadrícula se agranda sola, como en Apps Script ===');
+    {
+      // El 21/09/2026 una usuaria no pudo registrar un pago: la lógica quiso
+      // crear la columna ID REGISTRO en la 27 de una hoja de 26 y Sheets
+      // respondió "Range (Viaticos!AA1) exceeds grid limits". Apps Script
+      // agrandaba la hoja solo; la API no.
+      const pasos = [];
+      let rechazos = 1;   // la primera escritura se rechaza por tamaño
+      const api = {
+        spreadsheets: {
+          get: async () => { pasos.push('meta'); return { data: { sheets: [
+            { properties: { sheetId: 5, title: 'Viaticos', gridProperties: { rowCount: 68, columnCount: 26 } } }
+          ] } }; },
+          batchUpdate: async (p) => {
+            (p.requestBody.requests || []).forEach(r => {
+              if (r.appendDimension) pasos.push('agranda ' + r.appendDimension.dimension + ' +' + r.appendDimension.length);
+            });
+            return {};
+          },
+          values: {
+            batchUpdate: async (p) => {
+              if (rechazos-- > 0) {
+                pasos.push('rechazo');
+                throw new Error("Invalid data[0]: Range (Viaticos!AA1) exceeds grid limits. Max rows: 68, max columns: 26");
+              }
+              pasos.push('escribe ' + p.requestBody.data.map(d => d.range).join(','));
+              return {};
+            },
+            update: async () => ({ data: {} })
+          }
+        }
+      };
+
+      // El encabezado nuevo en la columna 27 (AA).
+      let fallo = null;
+      try {
+        await esc.aplicar([{ tipo: 'escribir', hoja: 'Viaticos', fila: 1, col: 27, valores: [['ID REGISTRO']] }], api, 'doc');
+      } catch (err) { fallo = err; }
+      chk('la escritura fuera de la cuadrícula NO termina en error', fallo === null, fallo && fallo.message);
+
+      chk('primero intenta escribir sin preguntar el tamaño (no gasta cuota de más)',
+          pasos[0] === 'rechazo', pasos);
+      chk('ante el rechazo por tamaño, agranda lo justo: 1 columna',
+          pasos.indexOf('agranda COLUMNS +1') !== -1, pasos);
+      chk('no agranda filas que no hacen falta',
+          !pasos.some(x => /agranda ROWS/.test(x)), pasos);
+      chk('y reintenta la MISMA escritura',
+          pasos[pasos.length - 1] === "escribe 'Viaticos'!AA1:AA1", pasos);
+
+      // Filas también: escribir en la 69 de una hoja de 68.
+      pasos.length = 0; rechazos = 1;
+      try {
+        await esc.aplicar([{ tipo: 'escribir', hoja: 'Viaticos', fila: 69, col: 1, valores: [['x', 'y']] }], api, 'doc');
+      } catch (err) { /* lo reporta la comprobación de abajo */ }
+      chk('con filas pasa lo mismo: agranda 1 fila',
+          pasos.indexOf('agranda ROWS +1') !== -1, pasos);
+
+      // Un error que NO es de tamaño no se reintenta ni se disfraza.
+      pasos.length = 0; rechazos = 0;
+      api.spreadsheets.values.batchUpdate = async () => { throw new Error('The caller does not have permission'); };
+      let otro = null;
+      try { await esc.aplicar([{ tipo: 'escribir', hoja: 'Viaticos', fila: 1, col: 1, valores: [['x']] }], api, 'doc'); }
+      catch (err) { otro = err; }
+      chk('un error que no es de tamaño se deja pasar tal cual',
+          otro && /permission/.test(otro.message), otro && otro.message);
+      chk('y no se agranda nada', !pasos.some(x => /agranda/.test(x)), pasos);
+    }
+
+
     console.log('\n=== La copia en memoria y la hoja tienen que coincidir ===');
     {
       // La copia decía 45 y la hoja decía 1041: las dos "correctas" y ninguna

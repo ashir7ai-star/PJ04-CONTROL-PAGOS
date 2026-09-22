@@ -98,16 +98,64 @@ async function aplicar(cambios, apiInyectada, idInyectado) {
   // Antes se preguntaba por cada fila a borrar. Con 867 filas eso eran 867
   // lecturas de cuota, para una respuesta que no cambia durante la petición.
   let metaHojas = null;
-  const idDeHoja = async (nombre) => {
-    if (!metaHojas) {
+  const metaDeHoja = async (nombre, refrescar) => {
+    if (!metaHojas || refrescar) {
       cupo.anotar();
       const meta = await api.spreadsheets.get({
-        spreadsheetId: id, fields: 'sheets.properties(sheetId,title)'
+        spreadsheetId: id, fields: 'sheets.properties(sheetId,title,gridProperties(rowCount,columnCount))'
       });
       metaHojas = {};
-      (meta.data.sheets || []).forEach(x => { metaHojas[x.properties.title] = x.properties.sheetId; });
+      (meta.data.sheets || []).forEach(x => {
+        const g = x.properties.gridProperties || {};
+        metaHojas[x.properties.title] = { id: x.properties.sheetId, filas: g.rowCount || 0, columnas: g.columnCount || 0 };
+      });
     }
     return Object.prototype.hasOwnProperty.call(metaHojas, nombre) ? metaHojas[nombre] : null;
+  };
+  const idDeHoja = async (nombre) => { const m = await metaDeHoja(nombre); return m ? m.id : null; };
+
+  // ─── La cuadrícula se agranda sola, como en Apps Script ──────────────────
+  //
+  // `getRange(1, 27).setValue(...)` en Apps Script agranda la hoja si hace
+  // falta. La API de Sheets NO: responde "Range (Viaticos!AA1) exceeds grid
+  // limits" y no escribe nada. Así falló el registro de un pago el 21/09/2026:
+  // la lógica quiso crear la columna ID REGISTRO en la 27 de una hoja de 26.
+  //
+  // No se comprueba antes de cada escritura —costaría una lectura de cuota
+  // por petición— sino que se intenta, y SOLO si Sheets rechaza por tamaño se
+  // agranda y se reintenta una vez. Se puede reintentar sin riesgo: ese
+  // rechazo es de validación, ocurre antes de escribir nada.
+  const ES_TAMANO = /exceeds grid limits/i;
+  const agrandar = async (necesario) => {
+    const requests = [];
+    metaHojas = null;   // fresco: el tamaño pudo cambiar desde que se leyó
+    for (const hoja of Object.keys(necesario)) {
+      const m = await metaDeHoja(hoja);
+      if (!m) continue;
+      const n = necesario[hoja];
+      if (n.filas > m.filas)       requests.push({ appendDimension: { sheetId: m.id, dimension: 'ROWS',    length: n.filas - m.filas } });
+      if (n.columnas > m.columnas) requests.push({ appendDimension: { sheetId: m.id, dimension: 'COLUMNS', length: n.columnas - m.columnas } });
+    }
+    if (!requests.length) return false;
+    cupo.anotarEscritura();
+    await api.spreadsheets.batchUpdate({ spreadsheetId: id, requestBody: { requests: requests } });
+    return true;
+  };
+  const conCuadriculaSuficiente = async (necesario, escribir) => {
+    try {
+      return await escribir();
+    } catch (err) {
+      if (!ES_TAMANO.test(String(err && err.message))) throw err;
+      const crecio = await agrandar(necesario);
+      if (!crecio) throw err;   // no era por tamaño nuestro: que se vea el error real
+      return await escribir();
+    }
+  };
+  // Acumula el rincón más lejano que toca cada hoja.
+  const anotarNecesario = (necesario, hoja, fila, columna) => {
+    const n = necesario[hoja] || (necesario[hoja] = { filas: 0, columnas: 0 });
+    if (fila    > n.filas)    n.filas    = fila;
+    if (columna > n.columnas) n.columnas = columna;
   };
 
   // Primero las hojas nuevas: no se puede escribir en algo que no existe.
@@ -126,19 +174,23 @@ async function aplicar(cambios, apiInyectada, idInyectado) {
   // hoja nueva cortan el grupo, porque cambian el mapa de filas y aplicarlos
   // fuera de orden pondría datos en el lugar equivocado.
   let grupo = [];
+  let necesarioGrupo = {};
   const bajarGrupo = async () => {
     if (!grupo.length) return;
-    cupo.anotarEscritura();
-    await api.spreadsheets.values.batchUpdate({
-      spreadsheetId: id,
-      requestBody: {
-        // USER_ENTERED hace que Sheets interprete el valor como si alguien lo
-        // hubiera tecleado: una fecha queda como FECHA REAL, no como texto.
-        valueInputOption: 'USER_ENTERED',
-        data: grupo
-      }
+    const datos = grupo, necesario = necesarioGrupo;
+    grupo = []; necesarioGrupo = {};
+    await conCuadriculaSuficiente(necesario, async () => {
+      cupo.anotarEscritura();
+      await api.spreadsheets.values.batchUpdate({
+        spreadsheetId: id,
+        requestBody: {
+          // USER_ENTERED hace que Sheets interprete el valor como si alguien lo
+          // hubiera tecleado: una fecha queda como FECHA REAL, no como texto.
+          valueInputOption: 'USER_ENTERED',
+          data: datos
+        }
+      });
     });
-    grupo = [];
   };
 
   // ─── Los borrados se bajan JUNTOS ────────────────────────────────────────
@@ -263,12 +315,16 @@ async function aplicar(cambios, apiInyectada, idInyectado) {
         } }] }
       });
 
-      cupo.anotarEscritura();
-      const r = await api.spreadsheets.values.update({
-        spreadsheetId: id,
-        range: rangoA1(b.hoja, b.fila, 1, alto, ancho),
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: b.valores.map(f => f.map(aCelda)) }
+      const necesario = {};
+      anotarNecesario(necesario, b.hoja, b.fila + alto - 1, ancho);
+      const r = await conCuadriculaSuficiente(necesario, async () => {
+        cupo.anotarEscritura();
+        return await api.spreadsheets.values.update({
+          spreadsheetId: id,
+          range: rangoA1(b.hoja, b.fila, 1, alto, ancho),
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: b.valores.map(f => f.map(aCelda)) }
+        });
       });
 
       // Y se comprueba dónde cayó de verdad. Sin esto, que un dato quede en el
@@ -304,6 +360,7 @@ async function aplicar(cambios, apiInyectada, idInyectado) {
     if (c.tipo === 'escribir') {
       const alto  = c.valores.length;
       const ancho = c.valores[0].length;
+      anotarNecesario(necesarioGrupo, c.hoja, c.fila + alto - 1, c.col + ancho - 1);
       grupo.push({
         range: rangoA1(c.hoja, c.fila, c.col, alto, ancho),
         values: c.valores.map(f => f.map(aCelda))

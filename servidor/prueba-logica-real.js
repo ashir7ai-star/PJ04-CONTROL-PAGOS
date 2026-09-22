@@ -297,6 +297,47 @@ console.log('\n=== NINGUNA accion puede topar con algo sin implementar ===');
   require('./src/puente-sincrono').detener();
 }
 
+console.log('\n=== Una columna nueva reusa los "Column N" que deja la Tabla ===');
+{
+  // El 21/09/2026 una usuaria no pudo registrar un pago. Viaticos tenia 11
+  // encabezados reales y 15 "Column N" (los pone la Tabla de Sheets en las
+  // columnas sin nombre). La logica los contaba como ocupados y quiso crear
+  // ID REGISTRO en la columna 27 de una hoja de 26: "exceeds grid limits".
+  const encViaticos = ['FECHA REGISTRO','EMPRESA','TIPO FACTURA','REGISTRADO POR','NOMBRE DE PAGO',
+                       'PROVEEDOR','FECHA DE PAGO','VALOR FACTURA','NOTAS','URL ARCHIVO','NOMBRE DEL ARCHIVO'];
+  for (let i = 1; i <= 15; i++) encViaticos.push('Column ' + i);
+
+  const e = montar({ 'Viaticos': [encViaticos] }, 'off');
+  const hoja = e.globales.SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Viaticos');
+  e.globales.asegurarColumnas_(hoja, ['ID REGISTRO']);
+
+  const escrituras = e.cambios().filter(c => c.tipo === 'escribir');
+  chk('escribe UN encabezado', escrituras.length === 1, escrituras);
+  chk('en la fila 1', escrituras[0] && escrituras[0].fila === 1, escrituras[0]);
+  chk('en la columna 12 —el primer "Column N"—, NO en la 27',
+      escrituras[0] && escrituras[0].col === 12, escrituras[0] && escrituras[0].col);
+  chk('con el nombre correcto',
+      escrituras[0] && escrituras[0].valores[0][0] === 'ID REGISTRO', escrituras[0]);
+
+  // La copia en memoria ya lo ve ahi.
+  chk('la copia en memoria tiene ID REGISTRO en la columna 12',
+      e.datos()['Viaticos'][0][11] === 'ID REGISTRO', e.datos()['Viaticos'][0].slice(10, 13));
+
+  // Sin lugares libres, se agranda como siempre.
+  const e2 = montar({ 'X': [['A', 'B', 'C']] }, 'off');
+  e2.globales.asegurarColumnas_(e2.globales.SpreadsheetApp.getActiveSpreadsheet().getSheetByName('X'), ['D']);
+  const w = e2.cambios().filter(c => c.tipo === 'escribir')[0];
+  chk('sin lugares libres va al final, como antes', w && w.col === 4, w);
+
+  // Dos faltantes con un solo lugar libre: uno lo reusa, el otro va al final.
+  const e3 = montar({ 'Y': [['A', 'Column 1', 'C']] }, 'off');
+  e3.globales.asegurarColumnas_(e3.globales.SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Y'), ['P', 'Q']);
+  const cols = e3.cambios().filter(c => c.tipo === 'escribir').map(c => c.col);
+  chk('dos faltantes: el primero reusa la 2, el segundo va a la 4',
+      cols.join(',') === '2,4', cols);
+}
+
+
 console.log('\n=== Lo que todavia NO esta, falla en voz alta ===');
 {
   const e = montar({ 'PAGOS REGISTRADOS': [ENC_PAGOS] }, 'off');

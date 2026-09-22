@@ -42,9 +42,11 @@ Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **se
 - **Antes de agregar cualquier consulta nueva, revisar cuántas llamadas cuesta.**
 - ⚠️ **Nunca escribir ni borrar fila por fila.** Lo que en Apps Script era lento, acá es una llamada a la API por fila: 867 filas agotaron la cuota de todos. Agrupar siempre.
 
+⚠️ **La API de Sheets NO agranda la hoja sola** (Apps Script sí). `escribir.js` lo cubre: si un `setValue` cae fuera de la cuadrícula, agranda y reintenta. Pero **no contar con eso desde la lógica**: reusar columnas libres antes de crear.
+
 ⚠️ **Las hojas son TABLAS de Sheets, y eso cambia dónde caen los datos nuevos.** `appendRow()` agrega tras la última fila con datos; `values.append` agrega tras la **Tabla**. Si una Tabla abarca más filas que sus datos, un pago nuevo cae al fondo y **desaparece de la vista sin dar ningún error**. Vigilarlo en `GET /salud` → `filasFueraDeLugar` (tiene que estar siempre vacío) y, si aparece algo, correr `node servidor/limpiar-filas-vacias.js` (simula; `--aplicar` para borrar).
 
-`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-19-a` · `sw.js` → `control-pagos-v81` · `MODO_LOGIN` = `'estricto'`.
+`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-21-a` · `sw.js` → `control-pagos-v81` · `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -473,6 +475,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-21**: 🚨 **Registrar un pago en Viáticos fallaba: `Range (Viaticos!AA1) exceeds grid limits`.** Una usuaria lo reportó; el servidor tenía **4 intentos fallidos desde el sábado 19 a la mañana** — todo pago fuera de PAGOS REGISTRADOS fallaba (Viáticos, Caja Menor, Nómina, Impuestos, Seguridad Social). **Ninguno quedó a medias**: el encabezado se escribe antes que la fila, y al fallar no se llegó a la fila. Hay que volver a registrarlos.
+  - **La causa, otra diferencia Apps Script ↔ API:** `getRange(1, 27).setValue()` en Apps Script **agranda la hoja sola**; la API responde `exceeds grid limits` y no escribe nada. `asegurarColumnas_` quiso crear `ID REGISTRO` (el guardia contra duplicados) en la **columna 27** de una hoja de 26.
+  - **Por qué la 27 y no la 12:** la conversión a Tabla dejó **15 encabezados basura `Column 1`…`Column 15`** después de los 11 reales, y la lógica los contaba como ocupados.
+  - **Arreglo en `apps-script.gs`** (`asegurarColumnas_`): los `Column N` y los vacíos son **lugares libres** y se reusan antes de agrandar. `ID REGISTRO` cae en la columna 12. `REVISION_BACKEND` = `2026-09-21-a`. ⚠️ **Falta pegarlo en el editor de Google** (solo importa para la vuelta atrás y los reportes).
+  - **Red de seguridad en `escribir.js`:** si Sheets rechaza una escritura por tamaño, **se agranda lo justo (filas y/o columnas) y se reintenta una vez**. No se comprueba antes —costaría una lectura por petición— porque el rechazo es de validación y ocurre antes de escribir nada. Un error que no es de tamaño se deja pasar tal cual.
+  - **Verificado contra la hoja real, en los dos niveles:** (1) `asegurarColumnas_` con la lógica real sobre las 5 hojas sin `ID REGISTRO` → las 5 lo tienen ahora en la **columna 12**, con una sola escritura; (2) escritura en la columna 27 de una hoja de 26 → rechazo, +1 columna, reintento OK, y se limpió después.
+  - 🧭 **`/salud` ya tenía los 4 errores registrados desde el sábado y nadie lo miró.** El monitoreo existe; falta que avise solo. Anotado como pendiente.
 - **2026-09-19**: 🔒 **Solución definitiva al pago que caía al fondo: se dejó de usar `values.append`.**
   - ⚠️ **El arreglo anterior NO alcanzaba, y lo demostró una prueba del usuario:** agregó 1000 filas a mano desde Sheets y el pago siguiente volvió a caer en la **1047**. Acotarle el rango de búsqueda a `values.append` (`A1:L44`) no sirve — **`append` resuelve la tabla desde el objeto Tabla de la hoja e ignora el rango que se le pasa.**
   - 🧭 **El aprendizaje:** el primer arreglo pasaba las 228 comprobaciones y **aun así estaba mal**, porque dependía de una *heurística* de Google (dónde cree Sheets que termina la tabla) en vez de decidirlo nosotros. Una prueba solo confirma lo que vos suponés que hace la otra parte.
