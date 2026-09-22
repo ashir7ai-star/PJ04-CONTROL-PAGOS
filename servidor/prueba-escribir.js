@@ -36,10 +36,18 @@ console.log('\n=== Valores: las fechas NO pueden volver a guardarse como texto =
   // mandara un formato que Sheets no reconoce, volvería el problema completo
   // de dia/mes — y esta vez sobre datos nuevos.
   const d = new Date(2026, 8, 15, 18, 40, 5);   // 15/09/2026 18:40:05
-  chk('una fecha sale en dd/MM/yyyy HH:mm:ss', aCelda(d) === '15/09/2026 18:40:05', aCelda(d));
+  // ⚠️ En ISO, no en dd/MM. El documento está en en_US: ahí "15/09/2026" pasa,
+  // pero "22/09/2026" NO (no hay mes 22) y Sheets lo guarda como TEXTO, sin
+  // avisar. Comprobado contra el documento real: dd/MM -> texto, ISO -> fecha.
+  chk('una fecha sale en ISO yyyy-MM-dd HH:mm:ss', aCelda(d) === '2026-09-15 18:40:05', aCelda(d));
+  // El caso que lo destapó: un dia mayor que 12 no puede ser un mes.
+  chk('un dia > 12 tambien sale en ISO',
+      aCelda(new Date(2026, 8, 22, 0, 0, 0)) === '2026-09-22 00:00:00', aCelda(new Date(2026, 8, 22, 0, 0, 0)));
+  chk('NUNCA en dd/MM, que en en_US queda como texto',
+      !/^\d{2}\/\d{2}\//.test(aCelda(d)), aCelda(d));
 
   const conCeros = new Date(2026, 0, 5, 9, 5, 0);
-  chk('rellena con ceros a la izquierda', aCelda(conCeros) === '05/01/2026 09:05:00', aCelda(conCeros));
+  chk('rellena con ceros a la izquierda', aCelda(conCeros) === '2026-01-05 09:05:00', aCelda(conCeros));
 
   chk('un numero se manda como numero', aCelda(119900) === 119900);
   chk('un texto se manda como texto',   aCelda('AMPAC SAS') === 'AMPAC SAS');

@@ -42,6 +42,8 @@ Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **se
 - **Antes de agregar cualquier consulta nueva, revisar cuántas llamadas cuesta.**
 - ⚠️ **Nunca escribir ni borrar fila por fila.** Lo que en Apps Script era lento, acá es una llamada a la API por fila: 867 filas agotaron la cuota de todos. Agrupar siempre.
 
+⚠️ **El documento está en `en_US`: las fechas se escriben en ISO `yyyy-MM-dd HH:mm:ss`.** En `dd/MM/yyyy`, Sheets no reconoce un día mayor que 12 como fecha y lo guarda como TEXTO, en silencio. Nunca escribir fechas en `dd/MM`.
+
 ⚠️ **La API de Sheets NO agranda la hoja sola** (Apps Script sí). `escribir.js` lo cubre: si un `setValue` cae fuera de la cuadrícula, agranda y reintenta. Pero **no contar con eso desde la lógica**: reusar columnas libres antes de crear.
 
 ⚠️ **Las hojas son TABLAS de Sheets, y eso cambia dónde caen los datos nuevos.** `appendRow()` agrega tras la última fila con datos; `values.append` agrega tras la **Tabla**. Si una Tabla abarca más filas que sus datos, un pago nuevo cae al fondo y **desaparece de la vista sin dar ningún error**. Vigilarlo en `GET /salud` → `filasFueraDeLugar` (tiene que estar siempre vacío) y, si aparece algo, correr `node servidor/limpiar-filas-vacias.js` (simula; `--aplicar` para borrar).
@@ -475,6 +477,15 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-22**: 🚨 **Las fechas volvieron a guardarse como TEXTO, sin avisar.** Se destapó revisando por qué un traslado "no movía los saldos".
+  - **La causa:** el documento está en **`en_US`** y `escribir.js` mandaba `dd/MM/yyyy HH:mm:ss`. En `en_US`, **"22/09/2026" no es una fecha** (no existe el mes 22): Sheets la guarda como texto, alineada a la izquierda, sin ordenar ni filtrar como fecha. **No da ningún error.**
+  - **Comprobado contra el documento real:** con `dd/MM` queda TEXTO, con **ISO `yyyy-MM-dd HH:mm:ss` queda FECHA REAL**. `aCelda` ahora manda ISO.
+  - Es **el mismo problema que ya había costado una jornada entera**, de vuelta por otra puerta. Las filas viejas son números de serie y las escritas desde la conmutación, texto: **82 celdas** en 6 hojas.
+  - **`servidor/reparar-fechas-texto.js`** (nuevo, simula por defecto) convierte las 84 celdas. ⚠️ **Su primera versión habría convertido `18/09/2026 23:17:00` en `2026-09-17 19:00:00`** —un día antes y sin la hora— porque reconstruía la fecha aplicando zona horaria. **La simulación lo atajó antes de escribir.** Ahora se exige **ida y vuelta exacta**: se rearma el texto original desde la fecha y, si no coincide carácter por carácter, la celda no se toca.
+  - 🧭 **La regla que vale acá:** para reparar datos, no alcanza con interpretarlos bien — hay que **poder reconstruir el original**. Sin esa vuelta, un error de zona o de formato pasa desapercibido y corrompe en silencio.
+
+- **2026-09-22**: 🔎 **Los traslados SÍ suman y restan: verificado con la lógica real sobre la hoja real.** Reconstruyendo la foto sin el traslado de $1.000.000 y volviéndolo a aplicar: `banco_millennium` 637.983.726 → **636.983.726** y `viaticos` −939.400 → **60.600**. Los dos lados, con `traslados=1`. El cálculo no estaba roto.
+  - Hallazgo de paso: en `TRASLADOS`, **`FECHA REGISTRO` y `REALIZADO POR` están en las columnas 27 y 28**, detrás de 19 `Column N` de la Tabla; en `SALDOS` pasa lo mismo con `SALDO CALCULADO` y `DIFERENCIA`. Los datos se escriben bien pero quedan **invisibles** para quien mira la hoja. Es el rastro del `asegurarColumnas_` viejo (ya corregido para columnas nuevas); **falta moverlas a su lugar**.
 - **2026-09-21**: 🚨 **Registrar un pago en Viáticos fallaba: `Range (Viaticos!AA1) exceeds grid limits`.** Una usuaria lo reportó; el servidor tenía **4 intentos fallidos desde el sábado 19 a la mañana** — todo pago fuera de PAGOS REGISTRADOS fallaba (Viáticos, Caja Menor, Nómina, Impuestos, Seguridad Social). **Ninguno quedó a medias**: el encabezado se escribe antes que la fila, y al fallar no se llegó a la fila. Hay que volver a registrarlos.
   - **La causa, otra diferencia Apps Script ↔ API:** `getRange(1, 27).setValue()` en Apps Script **agranda la hoja sola**; la API responde `exceeds grid limits` y no escribe nada. `asegurarColumnas_` quiso crear `ID REGISTRO` (el guardia contra duplicados) en la **columna 27** de una hoja de 26.
   - **Por qué la 27 y no la 12:** la conversión a Tabla dejó **15 encabezados basura `Column 1`…`Column 15`** después de los 11 reales, y la lógica los contaba como ocupados.

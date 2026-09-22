@@ -28,14 +28,27 @@ async function cliente() {
 }
 
 // Los valores van tal cual salieron de la lógica. Un Date se manda como texto
-// ISO y Sheets lo guarda como FECHA REAL gracias a USER_ENTERED — que es
-// justo lo que costó una jornada conseguir: nada de fechas como texto.
+// y Sheets lo guarda como FECHA REAL gracias a USER_ENTERED.
+//
+// ⚠️ EL FORMATO IMPORTA, Y DEPENDE DEL IDIOMA DEL DOCUMENTO. Este documento
+// está en **en_US**, donde "22/09/2026" no es una fecha válida (no hay mes 22):
+// Sheets no la interpreta y la guarda como TEXTO, alineada a la izquierda, sin
+// poder ordenarse ni filtrarse como fecha.
+//
+// No da ningún error. Desde la migración, TODAS las fechas se guardaron así
+// —comprobado: las filas viejas son números de serie y las nuevas, texto—,
+// justo el problema que ya había costado una jornada entera.
+//
+// El formato ISO (yyyy-MM-dd HH:mm:ss) lo entienden todos los idiomas.
+// Verificado contra este documento: con dd/MM queda TEXTO, con ISO queda
+// FECHA REAL.
+//
+// Sin zona a propósito: se manda la hora de pared y el documento la interpreta
+// con SU zona horaria, que es como venía funcionando con Apps Script.
 function aCelda(v) {
   if (v instanceof Date) {
-    // Sin zona: se manda la hora de pared y el documento la interpreta con SU
-    // zona horaria, que es como venía funcionando con Apps Script.
     const p = n => String(n).padStart(2, '0');
-    return p(v.getDate()) + '/' + p(v.getMonth() + 1) + '/' + v.getFullYear() +
+    return v.getFullYear() + '-' + p(v.getMonth() + 1) + '-' + p(v.getDate()) +
            ' ' + p(v.getHours()) + ':' + p(v.getMinutes()) + ':' + p(v.getSeconds());
   }
   return v;
