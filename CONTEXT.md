@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-09-23** — ✅ **VERSIÓN ESTABLE: `v2.0-saldos-en-vivo`.** Los saldos se actualizan solos cada 60 s (medido: no mueve la cuota), cada cuenta tiene su **historial de movimientos** que cuadra con el saldo, y la hoja quedó saneada: **346 celdas de fecha, 0 en texto**, `FECHA DE PAGO` sin hora y sin columnas basura.
+
 **2026-09-19** — ✅ **VERSIÓN ESTABLE: `v1.9-filas-en-su-lugar`.** Los pagos quedan en la fila que les toca, **aunque la hoja tenga 1000 filas de sobra**. Confirmado en producción con la Tabla llegando a la fila 1048: el pago cayó en la **48**, pegado al anterior. Con el código anterior habría ido a la 1049.
 
 **2026-09-19** — ✅ Versión estable previa: `v1.8-backend-propio`. Probada en producción con varias cuentas a la vez, después de resolver las dos caídas por cuota de Sheets.
