@@ -52,7 +52,7 @@ Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **se
 
 ⚠️ **Las hojas son TABLAS de Sheets, y eso cambia dónde caen los datos nuevos.** `appendRow()` agrega tras la última fila con datos; `values.append` agrega tras la **Tabla**. Si una Tabla abarca más filas que sus datos, un pago nuevo cae al fondo y **desaparece de la vista sin dar ningún error**. Vigilarlo en `GET /salud` → `filasFueraDeLugar` (tiene que estar siempre vacío) y, si aparece algo, correr `node servidor/limpiar-filas-vacias.js` (simula; `--aplicar` para borrar).
 
-`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-22-a` · `sw.js` → `control-pagos-v83` · `MODO_LOGIN` = `'estricto'`.
+`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-22-a` · `sw.js` → `control-pagos-v84` · `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -481,6 +481,15 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-27**: 🚨 **"Error desconocido" al subir un pago desde el celular: el error estaba TAPADO, no era desconocido.**
+  - Pasaba cada tanto y **nunca llegaba al servidor** (`/salud` no registraba ningún fallo de `registrar_pago`), así que el corte era en el teléfono.
+  - ⚠️ **La causa:** `reader.onerror = reject`. Parece correcto y no lo es — **`onerror` entrega un `ProgressEvent`, no un `Error`**. Un evento no tiene `.message`, así que `mensajeDeError` caía en su texto de último recurso y el motivo real se perdía para siempre.
+  - **Por qué fallaba la lectura:** en Android, una foto de la galería llega como archivo temporal que el sistema puede reclamar. Entre elegirla y enviar el pago pasan minutos (proveedor, monto, fecha), y para entonces el archivo ya no está.
+  - **Arreglo de fondo: los archivos se leen AL ELEGIRLOS, no al enviar.** Los bytes quedan en memoria mientras el archivo todavía existe, y el envío ya no toca el sistema de archivos. Si algo falla, falla **cuando la persona está mirando la lista y puede volver a adjuntarlo**, no al final con todo el formulario cargado.
+  - Cada archivo muestra su estado (`Leyendo…` / `listo` / el error en rojo), hay **un reintento** automático, y `archivos()` **se niega a enviar** si alguno no está listo: un comprobante a medias es peor que no mandarlo.
+  - **`mensajeDeError` ya no dice "Error desconocido" a secas:** si no hay `.message`, informa qué llegó (`evento "error"`), para que la próxima vez haya algo que seguir.
+  - **Suite nueva `servidor/prueba-archivos.js`** (8.ª): monta un `FileReader` falso y reproduce los fallos del celular contra el código real extraído de `index.html`. Verificada reintroduciendo los tres defectos.
+  - 🧭 **La regla:** un error sin `.message` no es "desconocido", es **un objeto que no es un Error**. Decirle "desconocido" al usuario entierra la causa — este estuvo semanas escondido detrás de esa frase.
 - **2026-09-22**: 🔄 **Los saldos se actualizan solos cada 60 s**, sin tocar "Actualizar".
   - ⚠️ **Lo delicado acá es la cuota**, no el temporizador: las lecturas de Sheets son de TODA la empresa (60/min entre los nueve) y ya dejaron a todos afuera una vez. Nueve pestañas abiertas todo el día pidiendo sin parar la agotan solas.
   - **El pedido automático NO fuerza el recálculo.** El servidor responde con lo que ya tiene, y ese cálculo se tira solo cada vez que alguien registra un pago o un traslado: un movimiento nuevo aparece enseguida, pero mirar la pantalla no cuesta lecturas.

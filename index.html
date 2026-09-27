@@ -1602,6 +1602,9 @@
     }
     /* Cuándo se actualizó por última vez. Sin esto, un número que se
        refresca solo es indistinguible de uno congelado. */
+    .file-preview.con-error { border-color: var(--error); background: rgba(239,68,68,.06); }
+    .file-size.file-error { color: var(--error); font-weight: 600; }
+
     .saldos-frescura { margin: 3px 0 0; font-size: .72rem; color: var(--text-muted); min-height: 1em; }
     .saldos-frescura.viejo { color: var(--error); }
 
@@ -3365,6 +3368,12 @@
     // agotado de una sesión vencida ni de un error del servidor. Con ese
     // mensaje único no hay forma de saber qué arreglar — ni para el usuario,
     // ni para nosotros cuando nos lo reporta.
+    // ⚠️ Un error sin `.message` NO es "desconocido": casi siempre es un
+    // objeto que no es un Error —un evento del navegador, por ejemplo— y decir
+    // "Error desconocido" tapa la causa para siempre. Pasó con el lector de
+    // archivos durante semanas: `reader.onerror = reject` entrega un
+    // ProgressEvent, y el usuario solo veía "Error desconocido. Intentá de
+    // nuevo.". Acá se rescata lo que se pueda para que quede algo que seguir.
     function mensajeDeError(err) {
       if (!err) return 'Error desconocido. Intentá de nuevo.';
       if (err.name === 'AbortError') {
@@ -3372,7 +3381,13 @@
                'si se repite, avisá para revisarlo.';
       }
       if (!navigator.onLine) return 'No hay conexión a internet.';
-      return err.message || 'Error desconocido. Intentá de nuevo.';
+      if (err.message) return err.message;
+
+      // Sin mensaje: al menos decir QUÉ llegó, para poder diagnosticarlo.
+      const pista = err.type ? 'evento "' + err.type + '"'
+                  : err.name ? err.name
+                  : Object.prototype.toString.call(err);
+      return 'Falló sin dar un motivo (' + pista + '). Intentá de nuevo y, si se repite, avisá con esta pantalla.';
     }
 
     // Traduce una respuesta que no es JSON a algo accionable.
@@ -3436,13 +3451,55 @@
       return rows.filter(r => r['ID SOLICITUD'] || r['SOLICITADO POR']);
     }
 
+    // ⚠️ `reader.onerror = reject` parecía correcto y no lo era: onerror recibe
+    // un ProgressEvent, no un Error. Un evento no tiene `.message`, así que el
+    // usuario terminaba viendo "Error desconocido. Intentá de nuevo." y nadie
+    // —ni él ni nosotros— podía saber qué había fallado. Pasó varias veces al
+    // subir pagos desde el celular.
+    //
+    // Por qué falla de verdad: en Android, una foto elegida de la galería llega
+    // como un archivo temporal que el sistema puede reclamar entre el momento
+    // en que se elige y el momento en que se lee. Si el pago se envía un rato
+    // después, el archivo ya no está.
     function fileToBase64(file) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload  = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
+        reader.onload = () => {
+          const r = String(reader.result || '');
+          const coma = r.indexOf(',');
+          if (coma === -1) {
+            reject(new Error('No se pudo leer "' + file.name + '": el archivo llegó vacío.'));
+            return;
+          }
+          resolve(r.slice(coma + 1));
+        };
+        reader.onerror = () => {
+          // `reader.error` sí es un error de verdad, con nombre y motivo.
+          const e = reader.error;
+          reject(new Error(
+            'No se pudo leer "' + file.name + '"' +
+            (e && e.name ? ' (' + e.name + ')' : '') +
+            '. Quitalo de la lista y volvé a adjuntarlo.'
+          ));
+        };
+        reader.onabort = () => reject(new Error('La lectura de "' + file.name + '" se interrumpió.'));
+        try {
+          reader.readAsDataURL(file);
+        } catch (err) {
+          reject(new Error('No se pudo abrir "' + file.name + '": ' + (err && err.message ? err.message : 'el archivo ya no está disponible') + '.'));
+        }
       });
+    }
+
+    // Un reintento corto: en el celular, una lectura que falla por memoria o
+    // por un archivo temporal ocupado suele andar al segundo intento.
+    async function leerArchivo(file) {
+      try {
+        return await fileToBase64(file);
+      } catch (err) {
+        await new Promise(r => setTimeout(r, 250));
+        return await fileToBase64(file);
+      }
     }
 
     // ─── Vista restringida por link (?vista=gastos) ─────────────────
@@ -4200,37 +4257,74 @@
     });
 
     // ─── Upload (múltiples archivos) ───────────────────────────────
-    const svgFile  = '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>';
-    const svgImage = '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>';
-    const svgTrash = '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>';
-
+    //
+    // ⚠️ Los archivos se leen AL ELEGIRLOS, no al enviar.
+    //
+    // Antes se guardaba la referencia al archivo y se leía recién al apretar
+    // "Enviar Pago". En Android eso es una apuesta: una foto elegida de la
+    // galería llega como un archivo temporal que el sistema puede reclamar en
+    // cualquier momento, y entre elegirla y enviar el pago pasan minutos
+    // —llenar proveedor, monto, fecha—. Si el archivo ya no estaba, el envío
+    // fallaba entero y el pago se perdía.
+    //
+    // Leyéndolo en el momento, los bytes quedan en memoria mientras el archivo
+    // todavía existe, y el envío ya no depende del sistema de archivos. Si algo
+    // falla, falla ACÁ, cuando la persona está mirando la lista y puede volver
+    // a adjuntarlo — en vez de al final, cuando ya cargó todo el formulario.
     function initUploadZone(zoneId, inputId, previewListId) {
       const uploadZone      = document.getElementById(zoneId);
       const fileInput       = document.getElementById(inputId);
       const filePreviewList = document.getElementById(previewListId);
       let selectedFiles = [];
 
-      function addFiles(fileList) {
+      async function addFiles(fileList) {
+        const nuevos = [];
         for (const file of fileList) {
           if (file.size > 15 * 1024 * 1024) {
             showToast('error', 'Archivo muy grande', `"${file.name}" supera el límite de 15 MB.`);
             continue;
           }
-          if (selectedFiles.some(f => f.name === file.name && f.size === file.size)) continue;
-          selectedFiles.push(file);
+          if (selectedFiles.some(f => f.nombre === file.name && f.tamano === file.size)) continue;
+          const entrada = {
+            nombre: file.name,
+            tamano: file.size,
+            tipo:   file.type || 'application/octet-stream',
+            datos:  null,     // base64, cuando termine de leerse
+            error:  null,
+            leyendo: true
+          };
+          selectedFiles.push(entrada);
+          nuevos.push({ entrada: entrada, file: file });
         }
         render();
+
+        // De a uno: leer varios a la vez en un celular es la forma más rápida
+        // de quedarse sin memoria.
+        for (const n of nuevos) {
+          try {
+            n.entrada.datos = await leerArchivo(n.file);
+          } catch (err) {
+            n.entrada.error = (err && err.message) || 'No se pudo leer el archivo.';
+            showToast('error', 'No se pudo leer el archivo', n.entrada.error);
+          } finally {
+            n.entrada.leyendo = false;
+            render();
+          }
+        }
       }
 
       function render() {
-        filePreviewList.innerHTML = selectedFiles.map((file, i) => {
-          const ext  = file.name.split('.').pop().toLowerCase();
+        filePreviewList.innerHTML = selectedFiles.map((f, i) => {
+          const ext  = String(f.nombre).split('.').pop().toLowerCase();
           const icon = ['jpg','jpeg','png','webp'].includes(ext) ? svgImage : svgFile;
-          return `<div class="file-preview">
+          const estado = f.error   ? `<div class="file-size file-error">${escapeHtml(f.error)}</div>`
+                       : f.leyendo ? '<div class="file-size">Leyendo…</div>'
+                       : `<div class="file-size">${formatBytes(f.tamano)} · listo</div>`;
+          return `<div class="file-preview${f.error ? ' con-error' : ''}">
             <div class="file-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${icon}</svg></div>
             <div class="file-info">
-              <div class="file-name">${escapeHtml(file.name)}</div>
-              <div class="file-size">${formatBytes(file.size)}</div>
+              <div class="file-name">${escapeHtml(f.nombre)}</div>
+              ${estado}
             </div>
             <button type="button" class="file-remove" data-index="${i}" title="Quitar archivo">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">${svgTrash}</svg>
@@ -4257,6 +4351,19 @@
 
       return {
         getFiles: () => selectedFiles,
+        // Lo que se manda al servidor. Falla en voz alta si algo no está listo:
+        // mandar un pago con un comprobante a medias es peor que no mandarlo.
+        archivos: () => {
+          const sinLeer = selectedFiles.filter(f => f.leyendo);
+          if (sinLeer.length) {
+            throw new Error('Esperá a que termine de leerse "' + sinLeer[0].nombre + '".');
+          }
+          const malos = selectedFiles.filter(f => f.error || !f.datos);
+          if (malos.length) {
+            throw new Error(malos[0].error || 'No se pudo leer "' + malos[0].nombre + '". Quitalo y volvé a adjuntarlo.');
+          }
+          return selectedFiles.map(f => ({ nombre: f.nombre, tipo: f.tipo, datos: f.datos }));
+        },
         reset: () => { selectedFiles = []; render(); }
       };
     }
@@ -4325,14 +4432,9 @@
       if (!idPagoPendiente) idPagoPendiente = nuevoIdOperacion();
 
       try {
-        const archivos = [];
-        for (const file of uploadNuevoPago.getFiles()) {
-          archivos.push({
-            nombre: file.name,
-            tipo:   file.type || 'application/octet-stream',
-            datos:  await fileToBase64(file)
-          });
-        }
+        // Ya están leídos desde que se eligieron: acá no se toca el sistema
+        // de archivos, que es donde fallaba en el celular.
+        const archivos = uploadNuevoPago.archivos();
 
         const result = await postAppsScript({
           action:         'registrar_pago',
@@ -4432,13 +4534,7 @@
       const idEnvio = new Date().toISOString();
 
       try {
-        const archivos = await Promise.all(
-          uploadSolicitud.getFiles().map(async file => ({
-            nombre: file.name,
-            tipo:   file.type || 'application/octet-stream',
-            datos:  await fileToBase64(file)
-          }))
-        );
+        const archivos = uploadSolicitud.archivos();
 
         setLoadingSolicitud(true, 'Enviando, puede tardar...');
 
@@ -6052,10 +6148,7 @@
       btn.disabled = true; spinner.style.display = 'block'; texto.textContent = 'Registrando…';
 
       try {
-        const archivos = [];
-        for (const file of uploadTraslado.getFiles()) {
-          archivos.push({ nombre: file.name, tipo: file.type || 'application/octet-stream', datos: await fileToBase64(file) });
-        }
+        const archivos = uploadTraslado.archivos();
 
         const r = await postAppsScript({
           action: 'registrar_traslado',
