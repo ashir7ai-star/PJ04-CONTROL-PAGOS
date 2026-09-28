@@ -1502,7 +1502,11 @@ function crearSolicitud_(body) {
 
   const fila = {
     'ID SOLICITUD':    id,
-    'FECHA SOLICITUD': id,
+    // ⚠️ La fecha es una FECHA, no el id. Se estaba guardando `id`, que es un
+    // texto ISO ("2026-09-22T16:38:43.802Z"): en la hoja quedaba como TEXTO,
+    // sin poder ordenarse ni filtrarse, y si algún día el id dejara de ser una
+    // marca de tiempo, la columna tendría cualquier cosa.
+    'FECHA SOLICITUD': new Date(),
     'EMPRESA':         body.empresa || '',
     'TIPO DE PAGO':    body.tipo_factura || '',
     'NOMBRE DEL PAGO': body.nombre_pago || '',

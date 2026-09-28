@@ -481,6 +481,15 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-28**: 🔍 **Revisión completa del sistema tras un reporte de "no están subiendo los reportes".** Resultado: **el sistema está sano**; la queja no se corresponde con ninguna falla medible. Lo que sí apareció fueron dos cosas de fondo, ya corregidas.
+  - **Los reportes diarios SÍ corren.** Apps Script → Ejecuciones: **7 de 7 en "Completed"** (21 al 27/09), 6-11 s cada una. Mi primera hipótesis —que `ID REGISTRO` faltaba en las hojas de sección y hacía fallar `setValues` con `undefined`— **era falsa**; la desmintió la propia pantalla de ejecuciones.
+  - **Y su contenido es correcto:** simulado contra los datos reales, el reporte del 27/09 lleva **17 pagos**, que es exactamente lo registrado ese día. Las **7 hojas de pagos tienen los mismos 12 encabezados** y hay **0 celdas `undefined`** (que es lo que haría fallar el PDF).
+  - **Backend sano:** 857 lecturas y 263 escrituras desde que arrancó, **un solo error** (un 502 transitorio de Google el 27/09 a las 09:17), `filasFueraDeLugar` vacío. `/diagnostico`: hojas, Drive y correo los tres en OK.
+  - **Los pagos entran todos los días:** 24 el 26/09, 17 el 27/09.
+  - 🐛 **Encontrado y corregido: 14 celdas de fecha habían vuelto a ser TEXTO.** Se escribieron el 22/09 en la ventana entre la reparación (11:00) y el despliegue del arreglo ISO (17:19). Reparadas; quedan **0**.
+  - 🐛 **Encontrado y corregido: `FECHA SOLICITUD` guardaba el ID de la solicitud, no una fecha.** `crearSolicitud_` hacía `'FECHA SOLICITUD': id`, y ese id es un texto ISO con zona — en la hoja quedaba como texto, sin poder ordenarse. Ahora guarda `new Date()`. El reparador aprendió a convertir ese formato exigiendo ida y vuelta exacta.
+  - ⚠️ **Los reportes van solo a 3 destinatarios** (`DESTINATARIOS` en apps-script.gs): nathan@ylevigroup.com, joseph@ylevigroup.com, contabilidad@energy-millennium.com. Quien no esté en esa lista no los recibe — y desde afuera no se distingue de "no se envían".
+  - 🧭 **Una ejecución "Completed" prueba que el correo se envió, no que haya llegado.** Para eso hay que mirar la bandeja (o el spam) de alguno de los tres.
 - **2026-09-27**: 🚨 **"Error desconocido" al subir un pago desde el celular: el error estaba TAPADO, no era desconocido.**
   - Pasaba cada tanto y **nunca llegaba al servidor** (`/salud` no registraba ningún fallo de `registrar_pago`), así que el corte era en el teléfono.
   - ⚠️ **La causa:** `reader.onerror = reject`. Parece correcto y no lo es — **`onerror` entrega un `ProgressEvent`, no un `Error`**. Un evento no tiene `.message`, así que `mensajeDeError` caía en su texto de último recurso y el motivo real se perdía para siempre.

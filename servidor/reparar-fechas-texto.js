@@ -39,6 +39,19 @@ const esFecha = h => COLUMNAS_FECHA.indexOf(String(h || '').trim().toUpperCase()
 
 const p2 = n => String(n).padStart(2, '0');
 
+// ISO 8601 con zona ("2026-09-22T16:38:43.802Z"). Lo escribía `crearSolicitud_`
+// al usar el id de la solicitud como fecha. Se acepta solo si al rearmarlo da
+// EXACTAMENTE el mismo texto: así no hay forma de perder milisegundos ni de
+// correr la hora al cambiar de zona.
+function interpretarIso(texto) {
+  const s = String(texto).trim();
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(s)) return null;
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return null;
+  if (d.toISOString() !== s) return null;
+  return { fecha: d, iso: true };
+}
+
 // dd/MM/yyyy con hora opcional — el formato que escribía el servidor.
 function interpretar(texto) {
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(String(texto).trim());
@@ -76,12 +89,12 @@ function comoEstaba(f, forma) {
         const v = (f[i] || [])[c];
         if (v === '' || v == null || typeof v === 'number') continue;
 
-        const leido = interpretar(v);
+        const leido = interpretar(v) || interpretarIso(v);
         if (!leido) { dudosas.push([n, h, i + 1, v + '  (no se reconoce el formato)']); continue; }
 
         const d = leido.fecha;
         // La prueba que lo hace seguro: rearmar el texto original.
-        const vuelta = comoEstaba(d, leido);
+        const vuelta = leido.iso ? d.toISOString() : comoEstaba(d, leido);
         if (vuelta !== String(v).trim()) {
           dudosas.push([n, h, i + 1, JSON.stringify(v) + ' -> vuelve como ' + JSON.stringify(vuelta)]);
           continue;
