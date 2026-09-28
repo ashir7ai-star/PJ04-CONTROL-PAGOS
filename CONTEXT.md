@@ -52,7 +52,7 @@ Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **se
 
 ⚠️ **Las hojas son TABLAS de Sheets, y eso cambia dónde caen los datos nuevos.** `appendRow()` agrega tras la última fila con datos; `values.append` agrega tras la **Tabla**. Si una Tabla abarca más filas que sus datos, un pago nuevo cae al fondo y **desaparece de la vista sin dar ningún error**. Vigilarlo en `GET /salud` → `filasFueraDeLugar` (tiene que estar siempre vacío) y, si aparece algo, correr `node servidor/limpiar-filas-vacias.js` (simula; `--aplicar` para borrar).
 
-`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-22-a` · `sw.js` → `control-pagos-v85` · `MODO_LOGIN` = `'estricto'`.
+`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-22-a` · `sw.js` → `control-pagos-v86` · `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -481,6 +481,12 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-28**: 🚨 **La causa real de que nadie pudiera registrar pagos: `svgImage is not defined`.** Lo dijo el mensaje del teléfono, no mi diagnóstico.
+  - Al reescribir el componente de subida el 27/09 reemplacé el bloque entero **desde su comentario de cabecera**, y ahí adentro vivían `svgFile`, `svgImage` y `svgTrash`. Quedaron **cuatro usos y ninguna declaración**. `const` no se eleva: `render()` moría con `ReferenceError`, el archivo elegido no aparecía en la lista y el envío fallaba.
+  - ⚠️ **Mi diagnóstico anterior era plausible y equivocado.** El `fileInput.value = ''` que se ejecutaba antes de terminar de leer era un riesgo real y quedó corregido, pero **no era esto**. Perdí un ciclo entero arreglando lo que no era, mirando el servidor cuando el síntoma era del navegador.
+  - 🧭 **Por qué la suite no lo vio, y esto es lo que importa:** el único control sobre `index.html` era `new Function(codigo)`, que valida **SINTAXIS**. Un identificador inexistente es sintaxis válida — el `ReferenceError` aparece solo al **ejecutar esa línea**, y esa línea corre únicamente cuando alguien adjunta un archivo. **295 comprobaciones en verde con la app inutilizable.**
+  - **Suite nueva `servidor/prueba-referencias.js`** (9.ª): busca identificadores usados dentro de `${...}` en plantillas que no estén declarados en ninguna parte. Se limita a las plantillas a propósito — es donde se arma el HTML, donde vivía el error, y donde el ruido es mínimo (0 falsos positivos sobre 50 expresiones). **Verificada borrando las tres constantes otra vez: las detecta.**
+  - 🧭 **Regla que queda: reemplazar un bloque "desde su comentario" se lleva lo que haya adentro.** Y una prueba que solo valida sintaxis no prueba que el código funcione.
 - **2026-09-28**: 🚨 **NADIE podía registrar pagos: lo rompió el arreglo del 27/09.** El último pago quedó el **27/09 a las 16:46**, justo cuando llegó a los usuarios el código nuevo de subida. Síntoma: *"selecciona el archivo y no se ve que cargue"*.
   - ⚠️ **La causa, y es mía:** `fileInput.files` es una lista **VIVA**, y `fileInput.value = ''` la vacía. El renglón era `addFiles(fileInput.files); fileInput.value = '';` — correcto mientras `addFiles` fue **síncrono**, pero al volverlo `async` para leer los archivos, **el input se limpiaba antes de terminar de leerlos** y los archivos quedaban inservibles.
   - ⚠️ **Y lo que lo volvió total:** al mover la lectura al momento de elegir, quité sin darme cuenta la **red de seguridad**. Antes, si algo fallaba, todavía quedaba la lectura al enviar. Después del cambio, un fallo al elegir dejaba el archivo muerto y el pago imposible.
