@@ -205,6 +205,42 @@ const SECCIONES = {
   nomina:           { hoja: 'Pago Nomina',      carpeta: 'PJ04 NOMINA',           tipos: ['nomina'] }
 };
 
+// ─── Rubros de viáticos ───────────────────────────────────────────────────
+//
+// Qué clase de gasto es, dentro de Viáticos. Sirve para ver en qué se va la
+// plata del día y para poner un presupuesto sugerido a cada cosa.
+//
+// ⚠️ Es una lista CERRADA a propósito. Hoy, con el nombre escrito a mano,
+// "HIDRATACION" y "HIDRATACIÓN" son dos cosas distintas para el sistema: 24 y
+// 10 pagos que deberían ser 34. Con texto libre, cualquier agrupación miente.
+//
+// 'otro' existe para que nadie tenga que forzar un gasto dentro de un rubro
+// que no le corresponde: un dato mal clasificado es peor que uno sin clasificar.
+const RUBROS_VIATICOS = [
+  { clave: 'desayuno',    etiqueta: 'Desayuno' },
+  { clave: 'almuerzo',    etiqueta: 'Almuerzo' },
+  { clave: 'cena',        etiqueta: 'Cena' },
+  { clave: 'hidratacion', etiqueta: 'Hidratación' },
+  { clave: 'alojamiento', etiqueta: 'Alojamiento' },
+  { clave: 'combustible', etiqueta: 'Combustible' },
+  { clave: 'peajes',      etiqueta: 'Peajes' },
+  { clave: 'parqueadero', etiqueta: 'Parqueadero' },
+  { clave: 'transporte',  etiqueta: 'Transporte' },
+  { clave: 'otro',        etiqueta: 'Otro' }
+];
+
+function etiquetaDeRubro_(clave) {
+  const c = String(clave || '').trim().toLowerCase();
+  for (let i = 0; i < RUBROS_VIATICOS.length; i++) {
+    if (RUBROS_VIATICOS[i].clave === c) return RUBROS_VIATICOS[i].etiqueta;
+  }
+  return '';
+}
+
+function rubroValido_(clave) {
+  return !!etiquetaDeRubro_(clave);
+}
+
 // Hojas que NO son de pagos (no entran en consultas ni reportes).
 // Es función y no constante a propósito: NOMBRE_HOJA_SOLICITUDES se declara más
 // abajo (bloque B), y un `const` aquí arriba lo leería antes de inicializarse
@@ -362,7 +398,12 @@ function registrarPago_(body) {
     'VALOR FACTURA':  body.monto || '',
     'NOTAS':          body.notas || '',
     'URL ARCHIVO':    subirArchivosASeccion_(body.archivos, seccion),
-    'ID REGISTRO':    idRegistro
+    'ID REGISTRO':    idRegistro,
+    // Solo Viáticos lo usa. Si llegara un rubro que no está en la lista se
+    // guarda vacío en vez de inventarlo: un dato mal clasificado es peor que
+    // uno sin clasificar.
+    'RUBRO':          seccion === 'viaticos' && rubroValido_(body.rubro)
+                        ? String(body.rubro).trim().toLowerCase() : ''
   });
 
   // Un pago cambia el saldo: lo calculado que hubiera guardado ya no vale.
@@ -372,7 +413,7 @@ function registrarPago_(body) {
   // de escribir la fila y dentro de su propio try: un aviso que falle no puede
   // voltear un pago que ya quedó registrado.
   if (seccion === 'viaticos') {
-    avisarSiCruzaPresupuesto_(fechaDeTextoISO_(body.fecha_pago), body.monto);
+    avisarSiCruzaPresupuesto_(fechaDeTextoISO_(body.fecha_pago), body.monto, body.rubro);
   }
 
   // Los saldos nuevos viajan con la confirmación del pago: el navegador los
@@ -397,7 +438,12 @@ function registrarPago_(body) {
 // antes de escribir: una hoja sin 'ID REGISTRO' no puede detectar reintentos.
 const ENCABEZADOS_PAGOS = [
   'FECHA REGISTRO', 'EMPRESA', 'TIPO FACTURA', 'REGISTRADO POR', 'NOMBRE DE PAGO',
-  'PROVEEDOR', 'FECHA DE PAGO', 'VALOR FACTURA', 'NOTAS', 'URL ARCHIVO', 'ID REGISTRO'
+  'PROVEEDOR', 'FECHA DE PAGO', 'VALOR FACTURA', 'NOTAS', 'URL ARCHIVO', 'ID REGISTRO',
+  // Solo lo usa Viáticos, pero la columna existe en TODAS las hojas de pago a
+  // propósito: los reportes mapean cada hoja con los encabezados de la
+  // principal, y una hoja con una columna que otra no tiene produce celdas
+  // `undefined` que hacen fallar el PDF sin avisar. Ya pasó con ID REGISTRO.
+  'RUBRO'
 ];
 
 const COLUMNAS_CON_HORA = ['FECHA REGISTRO', 'FECHA SOLICITUD', 'FECHA DECISION', 'ULTIMO ACCESO'];
@@ -1740,7 +1786,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-28-a · presupuesto diario de viaticos';
+const REVISION_BACKEND = '2026-09-28-b · rubros de viaticos y presupuesto sugerido';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -2896,18 +2942,17 @@ function consultarMovimientos_(body) {
   };
 }
 
-// ─── Presupuesto diario de viáticos ───────────────────────────────────────
+// ─── Presupuesto sugerido por rubro ───────────────────────────────────────
 //
-// Un solo presupuesto para todo el equipo, por día, SOLO de Viáticos. Compra
-// de Materiales queda afuera a propósito (decisión del usuario): es un gasto
-// de otra naturaleza y mezclarlo haría que el medidor no signifique nada.
+// Un monto sugerido por día para cada rubro de viáticos: desayuno, almuerzo,
+// cena, alojamiento, combustible, peajes...
 //
-// ⚠️ El medidor NO bloquea nada. Si alguien se pasa, el pago se registra igual
-// y se avisa por correo. Bloquear no evita el gasto —ya ocurrió— solo evita
-// enterarse: el dinero sale igual y el sistema deja de reflejar la realidad,
-// que es lo único que no se puede negociar acá.
+// ⚠️ Es una REFERENCIA, no un límite. No descuenta de ningún saldo ni bloquea
+// nada: sirve para ver en qué se va la plata del día y si algún rubro se está
+// yendo de lo previsto. Pedido explícito del usuario: "no quiero que haga
+// matemáticas con lo que registran, únicamente que se pueda visualizar".
 const NOMBRE_HOJA_PRESUPUESTO = 'PRESUPUESTO';
-const ENCABEZADOS_PRESUPUESTO = ['FECHA', 'MONTO DIARIO', 'REGISTRADO POR', 'NOTA'];
+const ENCABEZADOS_PRESUPUESTO = ['FECHA', 'RUBRO', 'MONTO DIARIO', 'REGISTRADO POR', 'NOTA'];
 
 function hojaPresupuesto_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -2922,89 +2967,117 @@ function hojaPresupuesto_() {
   return hoja;
 }
 
-// El monto vigente: la última fila cargada. Igual que los saldos base, cada
-// cambio se agrega como fila nueva y queda el historial de quién puso qué.
-function presupuestoVigente_() {
+// El monto sugerido vigente de cada rubro: la última fila cargada para ese
+// rubro. Igual que los saldos base, cada cambio se agrega como fila nueva y
+// queda el historial de quién puso qué.
+function presupuestosPorRubro_() {
   const valores = valoresDeHoja_(hojaPresupuesto_());
-  if (valores.length < 2) return null;
+  const salida = {};
+  if (valores.length < 2) return salida;
 
   const enc    = valores[0];
   const cFecha = enc.indexOf('FECHA');
+  const cRubro = enc.indexOf('RUBRO');
   const cMonto = enc.indexOf('MONTO DIARIO');
   const cQuien = enc.indexOf('REGISTRADO POR');
-  const cNota  = enc.indexOf('NOTA');
-  if (cMonto === -1) return null;
+  if (cMonto === -1 || cRubro === -1) return salida;
 
-  let mejor = null;
   for (let i = 1; i < valores.length; i++) {
     const fila = valores[i];
     if (!fila.some(function (v) { return v !== ''; })) continue;
+
+    const rubro = String(fila[cRubro] || '').trim().toLowerCase();
+    if (!rubroValido_(rubro)) continue;
+
     const monto = montoANumero_(fila[cMonto]);
     if (!isFinite(monto)) continue;
+
     const fecha = cFecha === -1 ? null : fechaHoraDeRegistro_(fila[cFecha]);
-    if (mejor && mejor.fecha && fecha && fecha.getTime() < mejor.fecha.getTime()) continue;
-    mejor = {
+    const previo = salida[rubro];
+    if (previo && previo.fecha && fecha && fecha.getTime() < previo.fecha.getTime()) continue;
+
+    salida[rubro] = {
       fecha: fecha,
       monto: monto,
-      quien: cQuien === -1 ? '' : String(fila[cQuien] || ''),
-      nota:  cNota  === -1 ? '' : String(fila[cNota]  || '')
+      quien: cQuien === -1 ? '' : String(fila[cQuien] || '')
     };
   }
-  return mejor;
+  return salida;
 }
 
-// Cuánto se gastó de viáticos en un día.
+// Lo gastado en viáticos en un día, abierto por rubro.
 //
 // Se suma por FECHA DE PAGO, no por fecha de registro: el presupuesto es de un
-// DÍA de gasto. Quien carga el lunes los recibos del domingo no tiene por qué
-// reventar el presupuesto del lunes.
-function gastoViaticosDelDia_(dia) {
+// DÍA de gasto. Quien carga el lunes los recibos del domingo no ensucia el
+// lunes.
+function gastoViaticosPorRubro_(dia) {
   const valores = valoresDeHoja_(hojaDeSeccion_('viaticos'));
-  if (valores.length < 2) return { total: 0, pagos: 0 };
+  const salida = { porRubro: {}, total: 0, pagos: 0, sinRubro: 0 };
+  if (valores.length < 2) return salida;
 
   const enc    = valores[0];
   const cFecha = enc.indexOf('FECHA DE PAGO');
   const cValor = enc.indexOf('VALOR FACTURA');
-  if (cFecha === -1 || cValor === -1) return { total: 0, pagos: 0 };
+  const cRubro = enc.indexOf('RUBRO');
+  if (cFecha === -1 || cValor === -1) return salida;
 
-  let total = 0, pagos = 0;
   for (let i = 1; i < valores.length; i++) {
     const fila = valores[i];
     if (!fila.some(function (v) { return v !== ''; })) continue;
     if (!mismoDia_(fechaHoraDeRegistro_(fila[cFecha]), dia)) continue;
-    total += montoANumero_(fila[cValor]);
-    pagos += 1;
+
+    const valor = montoANumero_(fila[cValor]);
+    const rubro = cRubro === -1 ? '' : String(fila[cRubro] || '').trim().toLowerCase();
+
+    salida.total += valor;
+    salida.pagos += 1;
+
+    if (!rubroValido_(rubro)) { salida.sinRubro += valor; continue; }
+    const r = salida.porRubro[rubro] || (salida.porRubro[rubro] = { gastado: 0, pagos: 0 });
+    r.gastado += valor;
+    r.pagos   += 1;
   }
-  return { total: total, pagos: pagos };
+  return salida;
 }
 
-// Lo que ve la pantalla. Viaja dentro de la respuesta de arranque y de
-// consultar_saldos, así no cuesta un viaje aparte.
+// Lo que ve la pantalla: un renglón por rubro, con lo gastado hoy y lo
+// sugerido. Viaja dentro de la respuesta de saldos, así no cuesta un viaje
+// aparte.
 function estadoPresupuesto_(dia) {
-  const cuando  = dia || new Date();
-  const vigente = presupuestoVigente_();
-  const gasto   = gastoViaticosDelDia_(cuando);
-  const fechaTxt = Utilities.formatDate(cuando, ZONA_HORARIA, 'dd/MM/yyyy');
+  const cuando   = dia || new Date();
+  const sugerido = presupuestosPorRubro_();
+  const gasto    = gastoViaticosPorRubro_(cuando);
 
-  if (!vigente || !(vigente.monto > 0)) {
-    return { configurado: false, gastado: gasto.total, pagos: gasto.pagos, fecha: fechaTxt };
-  }
+  let totalSugerido = 0;
+  const rubros = RUBROS_VIATICOS.map(function (r) {
+    const s = sugerido[r.clave];
+    const g = gasto.porRubro[r.clave] || { gastado: 0, pagos: 0 };
+    const monto = s ? s.monto : 0;
+    totalSugerido += monto;
+    return {
+      clave:    r.clave,
+      etiqueta: r.etiqueta,
+      sugerido: monto,
+      tiene:    !!s,
+      gastado:  g.gastado,
+      pagos:    g.pagos,
+      // Solo tiene sentido comparar si hay un sugerido cargado.
+      porcentaje: monto > 0 ? Math.min(100, Math.round((g.gastado / monto) * 100)) : 0,
+      excedido:   monto > 0 && g.gastado > monto,
+      exceso:     monto > 0 && g.gastado > monto ? g.gastado - monto : 0
+    };
+  });
 
-  const queda = vigente.monto - gasto.total;
   return {
-    configurado: true,
-    monto:   vigente.monto,
-    gastado: gasto.total,
-    pagos:   gasto.pagos,
-    queda:   queda,
-    // Se acota a 100 para la barra; `excedido` dice la verdad.
-    porcentaje: Math.min(100, Math.round((gasto.total / vigente.monto) * 100)),
-    excedido: queda < 0,
-    exceso:   queda < 0 ? -queda : 0,
-    desde:    vigente.fecha ? Utilities.formatDate(vigente.fecha, ZONA_HORARIA, 'dd/MM/yyyy HH:mm') : '',
-    quien:    vigente.quien,
-    nota:     vigente.nota,
-    fecha:    fechaTxt
+    fecha:         Utilities.formatDate(cuando, ZONA_HORARIA, 'dd/MM/yyyy'),
+    rubros:        rubros,
+    totalGastado:  gasto.total,
+    totalSugerido: totalSugerido,
+    pagos:         gasto.pagos,
+    // Lo que se registró sin elegir rubro: los pagos viejos, y cualquiera que
+    // entre por fuera. Se muestra para que no parezca que falta plata.
+    sinRubro:      gasto.sinRubro,
+    configurado:   totalSugerido > 0
   };
 }
 
@@ -3013,66 +3086,84 @@ function consultarPresupuesto_(body) {
   return { status: 'success', presupuesto: estadoPresupuesto_(new Date()) };
 }
 
-// Solo un administrador define el presupuesto.
+// Solo un administrador define los montos sugeridos. Acepta uno o varios
+// rubros de una sola vez, así la pantalla guarda todo con un botón.
 function ajustarPresupuesto_(body) {
   const ctx = contextoDe_(body);
   if (MODO_LOGIN !== 'off' && !esAdmin_(ctx)) throw new Error('SOLO_ADMIN');
 
-  // ⚠️ `montoANumero_` devuelve 0 ante cualquier cosa que no sea un número, así
-  // que "abc" pasaría como presupuesto de $0 sin que nadie se entere. Se exige
-  // que haya al menos un dígito, y que el monto sea mayor que cero: un
-  // presupuesto de 0 no significa "sin límite", significa nada.
-  if (!/\d/.test(String(body.monto || ''))) {
-    return { status: 'error', message: 'El monto no es un número válido.' };
-  }
-  const monto = montoANumero_(body.monto);
-  if (!isFinite(monto) || monto <= 0) {
-    return { status: 'error', message: 'El presupuesto tiene que ser mayor que cero.' };
+  const pedidos = body.rubros && body.rubros.length
+    ? body.rubros
+    : [{ rubro: body.rubro, monto: body.monto }];
+
+  const validos = [];
+  for (let i = 0; i < pedidos.length; i++) {
+    const p = pedidos[i] || {};
+    if (!rubroValido_(p.rubro)) {
+      return { status: 'error', message: 'Rubro desconocido: ' + p.rubro };
+    }
+    // ⚠️ `montoANumero_` devuelve 0 ante cualquier texto, así que "abc" pasaría
+    // como $0 sin que nadie se entere. Se exige al menos un dígito.
+    if (!/\d/.test(String(p.monto || ''))) {
+      return { status: 'error', message: 'El monto de ' + etiquetaDeRubro_(p.rubro) + ' no es un número válido.' };
+    }
+    const monto = montoANumero_(p.monto);
+    if (!isFinite(monto) || monto < 0) {
+      return { status: 'error', message: 'El monto de ' + etiquetaDeRubro_(p.rubro) + ' no puede ser negativo.' };
+    }
+    validos.push({ rubro: String(p.rubro).trim().toLowerCase(), monto: monto });
   }
 
-  agregarFilaPorEncabezados_(hojaPresupuesto_(), {
-    'FECHA':          new Date(),
-    'MONTO DIARIO':   monto,
-    'REGISTRADO POR': ctx.nombre || ctx.correo || '',
-    'NOTA':           String(body.nota || '')
-  });
+  const hoja = hojaPresupuesto_();
+  const ahora = new Date();
+  for (let i = 0; i < validos.length; i++) {
+    agregarFilaPorEncabezados_(hoja, {
+      'FECHA':          ahora,
+      'RUBRO':          validos[i].rubro,
+      'MONTO DIARIO':   validos[i].monto,
+      'REGISTRADO POR': ctx.nombre || ctx.correo || '',
+      'NOTA':           String(body.nota || '')
+    });
+  }
 
   return { status: 'success', presupuesto: estadoPresupuesto_(new Date()) };
 }
 
-// ─── Aviso cuando un pago cruza el presupuesto ────────────────────────────
+// ─── Aviso cuando un rubro pasa su presupuesto sugerido ───────────────────
 //
-// Se avisa UNA sola vez por día, y sin guardar ningún marcador: el correo sale
-// en el pago que CRUZA la línea (antes estaba dentro, después quedó afuera).
-// Los pagos siguientes de ese día ya no la cruzan, así que no vuelven a avisar.
+// Se avisa UNA sola vez por rubro y por día, sin guardar ningún marcador: el
+// correo sale en el pago que CRUZA la línea (antes dentro, después afuera).
+// Los pagos siguientes de ese rubro ese día ya no la cruzan.
 //
 // Un correo por cada pago posterior sería ruido, y el ruido se deja de leer:
-// ya pasó con los errores de /salud, que estuvieron dos días sin que nadie los
-// mirara.
-function avisarSiCruzaPresupuesto_(fechaPago, montoDelPago) {
+// ya pasó con los errores de /salud, dos días sin que nadie los mirara.
+function avisarSiCruzaPresupuesto_(fechaPago, montoDelPago, rubro) {
   try {
-    const vigente = presupuestoVigente_();
-    if (!vigente || !(vigente.monto > 0)) return;
+    if (!rubroValido_(rubro)) return;
 
-    const dia     = fechaHoraDeRegistro_(fechaPago) || new Date();
-    const despues = gastoViaticosDelDia_(dia).total;   // ya incluye el pago recién escrito
+    const sugerido = presupuestosPorRubro_()[String(rubro).trim().toLowerCase()];
+    if (!sugerido || !(sugerido.monto > 0)) return;
+
+    const dia = fechaHoraDeRegistro_(fechaPago) || new Date();
+    const g   = gastoViaticosPorRubro_(dia).porRubro[String(rubro).trim().toLowerCase()];
+    const despues = g ? g.gastado : 0;             // ya incluye el pago recién escrito
     const antes   = despues - montoANumero_(montoDelPago);
 
-    if (!(antes <= vigente.monto && despues > vigente.monto)) return;
+    if (!(antes <= sugerido.monto && despues > sugerido.monto)) return;
 
     const dTxt   = Utilities.formatDate(dia, ZONA_HORARIA, 'dd/MM/yyyy');
-    const exceso = despues - vigente.monto;
+    const eti    = etiquetaDeRubro_(rubro);
     const pesos  = function (n) { return '$' + Math.round(n).toLocaleString('es-CO'); };
 
     MailApp.sendEmail({
       to: DESTINATARIOS.join(','),
-      subject: 'Viáticos del ' + dTxt + ': se pasó el presupuesto diario',
+      subject: 'Viáticos ' + dTxt + ': ' + eti + ' pasó el presupuesto sugerido',
       body:
-        'El gasto de viáticos del ' + dTxt + ' superó el presupuesto diario.\n\n' +
-        'Presupuesto: ' + pesos(vigente.monto) + '\n' +
+        'El gasto de ' + eti + ' del ' + dTxt + ' superó el presupuesto sugerido.\n\n' +
+        'Sugerido:    ' + pesos(sugerido.monto) + '\n' +
         'Gastado:     ' + pesos(despues) + '\n' +
-        'Excedido en: ' + pesos(exceso) + '\n\n' +
-        'El pago se registró igual: el sistema no bloquea un gasto que ya ocurrió.\n\n' +
+        'Excedido en: ' + pesos(despues - sugerido.monto) + '\n\n' +
+        'Es una referencia, no un límite: el pago se registró con normalidad.\n\n' +
         'Correo generado automáticamente.'
     });
   } catch (err) {

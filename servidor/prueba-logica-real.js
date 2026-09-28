@@ -457,26 +457,35 @@ console.log('\n=== Historial de movimientos: tiene que CUADRAR con el saldo ==='
 }
 
 
-console.log('\n=== Presupuesto diario de viaticos ===');
+console.log('\n=== Rubros de viaticos y presupuesto sugerido ===');
 {
-  // Un solo presupuesto para todo el equipo, por dia, SOLO de Viaticos.
-  // Compra de Materiales queda afuera a proposito.
+  // Lista CERRADA a proposito: con el nombre a mano, "HIDRATACION" y
+  // "HIDRATACIÓN" ya eran dos cosas distintas (24 y 10 pagos que deberian
+  // ser 34). Con texto libre cualquier agrupacion miente.
   const HOY = new Date(2026, 8, 28, 10, 0, 0);
   const dia = (d, h) => new Date(2026, 8, d, h || 9, 0, 0);
-  const pago = (d, valor, tipo) =>
-    [dia(d, 12), 'AMPAC SAS', tipo || 'viaticos', 'Laura', 'ALMUERZO', 'Prov', dia(d), valor, '', '', '', ''];
+  // ENC_PAGOS + RUBRO al final
+  const ENC = ENC_PAGOS.concat(['RUBRO']);
+  const pago = (d, valor, rubro, tipo) =>
+    [dia(d, 12), 'AMPAC SAS', tipo || 'viaticos', 'Laura', 'X', 'Prov', dia(d), valor, '', '', '', rubro || ''];
 
   const foto = {
-    'PAGOS REGISTRADOS': [ENC_PAGOS],
-    'Viaticos': [ENC_PAGOS, pago(28, 200000), pago(28, 150000), pago(27, 900000)],
-    // Materiales NO cuenta: si se sumara, el medidor de hoy daria 1.350.000.
-    'Compra Materiales': [ENC_PAGOS, pago(28, 1000000, 'compra_materiales')],
-    'Caja Menor': [ENC_PAGOS],
+    'PAGOS REGISTRADOS': [ENC],
+    'Viaticos': [ENC,
+      pago(28,  40000, 'desayuno'),
+      pago(28,  55000, 'almuerzo'),
+      pago(28, 120000, 'cena'),        // se pasa del sugerido de 90.000
+      pago(28,  30000, ''),            // sin rubro: un pago viejo
+      pago(27, 200000, 'cena')],
+    'Compra Materiales': [ENC, pago(28, 999999, '', 'compra_materiales')],
+    'Caja Menor': [ENC],
     'SALDOS':   [['FECHA','CUENTA','SALDO BASE','CONCEPTO','REGISTRADO POR']],
     'TRASLADOS':[['FECHA','ORIGEN','DESTINO','MONTO','REGISTRADO POR','NOTA','URL COMPROBANTE','FECHA REGISTRO','REALIZADO POR']],
-    'PRESUPUESTO': [['FECHA','MONTO DIARIO','REGISTRADO POR','NOTA'],
-                    [new Date(2026, 8, 1, 8, 0, 0), 500000, 'Nathan', 'inicial'],
-                    [new Date(2026, 8, 20, 8, 0, 0), 700000, 'Nathan', 'ajuste']],
+    'PRESUPUESTO': [['FECHA','RUBRO','MONTO DIARIO','REGISTRADO POR','NOTA'],
+                    [new Date(2026, 8, 1, 8, 0, 0), 'cena',     70000, 'Nathan', 'inicial'],
+                    [new Date(2026, 8, 20, 8, 0, 0), 'cena',    90000, 'Nathan', 'ajuste'],
+                    [new Date(2026, 8, 20, 8, 0, 0), 'desayuno', 60000, 'Nathan', ''],
+                    [new Date(2026, 8, 20, 8, 0, 0), 'almuerzo', 90000, 'Nathan', '']],
     'USUARIOS': [['CORREO','NOMBRE','TELEFONO','ROL','SECCIONES','ESTADO','FECHA REGISTRO','ULTIMO ACCESO'],
                  ['nathan@ylevigroup.com','Nathan','300','admin','todas','activo','',''],
                  ['laura@energy-millennium.com','Laura','300','usuario','viaticos','activo','','']],
@@ -487,103 +496,78 @@ console.log('\n=== Presupuesto diario de viaticos ===');
   };
 
   const e = montar(foto, 'off');
+  const est = e.globales.estadoPresupuesto_(HOY);
+  const de = c => est.rubros.filter(r => r.clave === c)[0];
 
-  // Vale la ULTIMA fila cargada, como los saldos base.
-  const vig = e.globales.presupuestoVigente_();
-  chk('vale el presupuesto mas reciente', vig.monto === 700000, vig && vig.monto);
+  chk('hay 10 rubros', est.rubros.length === 10, est.rubros.length);
+  chk('vale el sugerido mas reciente de cada rubro', de('cena').sugerido === 90000, de('cena').sugerido);
 
-  const hoy = e.globales.estadoPresupuesto_(HOY);
-  chk('esta configurado', hoy.configurado === true, hoy);
-  chk('solo cuenta Viaticos, NO Compra Materiales', hoy.gastado === 350000, hoy.gastado);
-  chk('cuenta los pagos del dia', hoy.pagos === 2, hoy.pagos);
-  chk('calcula lo que queda', hoy.queda === 350000, hoy.queda);
-  chk('y el porcentaje', hoy.porcentaje === 50, hoy.porcentaje);
-  chk('hoy no esta excedido', hoy.excedido === false, hoy);
+  chk('cada rubro suma lo suyo',
+      de('desayuno').gastado === 40000 && de('almuerzo').gastado === 55000 && de('cena').gastado === 120000,
+      est.rubros.map(r => r.clave + ':' + r.gastado));
+  chk('un rubro que se paso se marca', de('cena').excedido === true, de('cena'));
+  chk('y dice por cuanto', de('cena').exceso === 30000, de('cena').exceso);
+  chk('uno que no se paso, no', de('desayuno').excedido === false, de('desayuno'));
+  chk('sin sugerido no se compara',
+      de('peajes').sugerido === 0 && de('peajes').excedido === false, de('peajes'));
 
-  // El dia anterior SI se paso: 900.000 contra 700.000.
+  // Lo que no tiene rubro no desaparece: se muestra aparte.
+  chk('el total incluye TODO lo de viaticos', est.totalGastado === 245000, est.totalGastado);
+  chk('lo que no tiene rubro se informa aparte', est.sinRubro === 30000, est.sinRubro);
+  chk('Compra Materiales NO entra', est.totalGastado === 245000, est.totalGastado);
+  chk('suma el total sugerido', est.totalSugerido === 240000, est.totalSugerido);
+
+  // Solo el dia pedido.
   const ayer = e.globales.estadoPresupuesto_(dia(27));
-  chk('un dia excedido se marca', ayer.excedido === true, ayer);
-  chk('y dice por cuanto', ayer.exceso === 200000, ayer.exceso);
-  chk('la barra no pasa de 100', ayer.porcentaje === 100, ayer.porcentaje);
+  chk('otro dia cuenta lo de ese dia',
+      ayer.rubros.filter(r => r.clave === 'cena')[0].gastado === 200000,
+      ayer.totalGastado);
 
-  // Se cuenta por FECHA DE PAGO, no por fecha de registro: quien carga el
-  // lunes los recibos del domingo no revienta el presupuesto del lunes.
-  const f2 = JSON.parse(JSON.stringify(foto));
-  const tarde = pago(28, 100000); tarde[0] = dia(29, 8);   // registrado al dia siguiente
-  const e2 = montar(Object.assign({}, foto, {
-    'Viaticos': [ENC_PAGOS, [dia(29, 8), 'AMPAC SAS', 'viaticos', 'Laura', 'CENA', 'Prov', dia(28), 100000, '', '', '', '']]
-  }), 'off');
-  chk('se cuenta por fecha de PAGO, no de registro',
-      e2.globales.estadoPresupuesto_(HOY).gastado === 100000,
-      e2.globales.estadoPresupuesto_(HOY).gastado);
+  // Un rubro inventado no entra.
+  chk('un rubro desconocido se rechaza',
+      e.globales.ajustarPresupuesto_({ rubro: 'pizza', monto: '100' }).status === 'error');
+  chk('un monto que no es numero se rechaza',
+      e.globales.ajustarPresupuesto_({ rubro: 'cena', monto: 'abc' }).status === 'error');
+  chk('se pueden guardar varios de una vez',
+      e.globales.ajustarPresupuesto_({ rubros: [
+        { rubro: 'peajes', monto: '30000' }, { rubro: 'parqueadero', monto: '20000' }
+      ]}).status === 'success');
 
-  // Sin presupuesto cargado no se inventa ninguno.
-  const e3 = montar(Object.assign({}, foto, { 'PRESUPUESTO': [['FECHA','MONTO DIARIO','REGISTRADO POR','NOTA']] }), 'off');
-  const sin = e3.globales.estadoPresupuesto_(HOY);
-  chk('sin presupuesto cargado lo dice', sin.configurado === false, sin);
-  chk('pero igual muestra lo gastado', sin.gastado === 350000, sin.gastado);
-
-  // La hoja PRESUPUESTO no es una hoja de pagos: si se contara, su monto
-  // entraria en los reportes y en los saldos como si fuera un gasto.
-  chk('PRESUPUESTO no se cuenta como hoja de pagos',
-      e.globales.hojasNoPagos_().indexOf('PRESUPUESTO') !== -1,
-      e.globales.hojasNoPagos_());
-
-  // Y viaja con los saldos, sin costar un viaje aparte.
-  const saldos = JSON.parse(e.globales.doPost({ postData: { contents:
-    JSON.stringify({ action: 'consultar_saldos', forzar: true }) } })._json);
-  chk('el medidor viaja dentro de consultar_saldos', !!saldos.presupuesto, Object.keys(saldos));
-
-  // Solo un administrador puede definirlo.
+  // Permisos.
   const g = montar(foto, 'estricto');
   require('vm').runInContext(
     'verificarIdToken_ = function (t) { return t ? { correo: String(t), nombre: String(t) } : null; };',
     g.globales);
   let malo = null;
-  try { g.globales.ajustarPresupuesto_({ idToken: 'laura@energy-millennium.com', monto: '999' }); }
+  try { g.globales.ajustarPresupuesto_({ idToken: 'laura@energy-millennium.com', rubro: 'cena', monto: '1' }); }
   catch (err) { malo = err.message; }
-  chk('un usuario comun NO puede definir el presupuesto', /SOLO_ADMIN/.test(String(malo)), malo);
+  chk('un usuario comun NO puede definir presupuestos', /SOLO_ADMIN/.test(String(malo)), malo);
 
-  const ok = g.globales.ajustarPresupuesto_({ idToken: 'nathan@ylevigroup.com', monto: '800000' });
-  chk('un admin si', ok.status === 'success', ok);
-  chk('y queda vigente el nuevo monto', ok.presupuesto.monto === 800000, ok.presupuesto);
-
-  // Montos imposibles.
-  chk('un monto negativo se rechaza',
-      e.globales.ajustarPresupuesto_({ monto: '-5' }).status === 'error');
-  // montoANumero_ devuelve 0 ante cualquier texto: sin esta comprobacion,
-  // escribir "abc" dejaba el presupuesto en $0 sin avisar.
-  chk('un monto que no es numero se rechaza',
-      e.globales.ajustarPresupuesto_({ monto: 'abc' }).status === 'error',
-      e.globales.ajustarPresupuesto_({ monto: 'abc' }));
-  chk('y cero tampoco vale: no significa "sin limite"',
-      e.globales.ajustarPresupuesto_({ monto: '0' }).status === 'error');
-  chk('un monto vacio se rechaza',
-      e.globales.ajustarPresupuesto_({ monto: '' }).status === 'error');
+  // Y el medidor viaja con los saldos, sin costar un viaje aparte.
+  const saldos = JSON.parse(e.globales.doPost({ postData: { contents:
+    JSON.stringify({ action: 'consultar_saldos', forzar: true }) } })._json);
+  chk('el medidor viaja dentro de consultar_saldos',
+      !!(saldos.presupuesto && saldos.presupuesto.rubros), Object.keys(saldos));
 }
 
-console.log('\n=== El aviso sale UNA vez: en el pago que cruza la linea ===');
+console.log('\n=== El rubro se guarda solo si es de la lista ===');
 {
-  // Un correo por cada pago posterior seria ruido, y el ruido se deja de leer:
-  // ya paso con los errores de /salud, dos dias sin que nadie los mirara.
   const fuente = require('fs').readFileSync(RUTA, 'utf8');
-  const cuerpo = fuente.split('function avisarSiCruzaPresupuesto_')[1].split('\n}')[0];
 
-  chk('se compara ANTES contra DESPUES', /antes <= vigente\.monto && despues > vigente\.monto/.test(cuerpo), cuerpo.slice(0, 80));
-  chk('no guarda ningun marcador de "ya avise"', !/CacheService|marcador/.test(cuerpo));
-  chk('va envuelto en try: un aviso que falla no voltea el pago',
-      /try \{/.test(cuerpo) && /catch/.test(cuerpo));
-  chk('y el correo dice que el pago SI se registro',
-      /se registró igual/.test(cuerpo), 'falta aclararlo');
+  chk('RUBRO es columna de TODAS las hojas de pago',
+      /'ID REGISTRO',\s*\n[\s\S]{0,400}?'RUBRO'/.test(fuente),
+      'si solo la tuviera Viaticos, los reportes darian celdas undefined');
 
-  // Solo para viaticos.
   const reg = fuente.split('function registrarPago_')[1].split('\n}\n')[0];
-  chk('solo se evalua en viaticos',
-      /seccion === 'viaticos'[\s\S]{0,120}avisarSiCruzaPresupuesto_/.test(reg),
-      'se estaria avisando para cualquier seccion');
-  chk('y DESPUES de escribir la fila',
-      reg.indexOf('agregarFilaPorEncabezados_') < reg.indexOf('avisarSiCruzaPresupuesto_'),
-      'se avisa antes de escribir');
+  chk('solo se guarda en viaticos', /seccion === 'viaticos' && rubroValido_/.test(reg), 'se guardaria en cualquier seccion');
+  chk('un rubro invalido se guarda VACIO, no se inventa', /: ''/.test(reg.split("'RUBRO'")[1].slice(0, 160)), 'se estaria inventando');
+
+  const av = fuente.split('function avisarSiCruzaPresupuesto_')[1].split('\n}\n')[0];
+  chk('el aviso es por rubro', /rubroValido_\(rubro\)/.test(av), av.slice(0, 80));
+  chk('y solo al CRUZAR la linea', /antes <= sugerido\.monto && despues > sugerido\.monto/.test(av));
+  chk('el correo aclara que no es un limite',
+      /no un límite|no es un límite/.test(av), 'falta aclararlo');
+  chk('y que el pago se registro igual', /se registró con normalidad/.test(av), 'falta aclararlo');
 }
 
 
