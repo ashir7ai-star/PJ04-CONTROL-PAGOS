@@ -1562,6 +1562,38 @@
       border-top: 1px solid var(--border);
     }
 
+    /* ─── Medidor de presupuesto diario de viáticos ──────────────────────
+       Un solo presupuesto para todo el equipo, por día. Lo que cambia la
+       conducta es verlo ANTES de gastar, no el correo de después. */
+    .presu {
+      position: relative;
+      background: var(--surface-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 15px 16px 14px;
+      margin: 0 0 14px;
+    }
+    .presu-fila { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .presu-titulo { font-size: .78rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
+    .presu-queda { font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+    .presu-queda .presu-eti { font-size: .78rem; font-weight: 600; color: var(--text-muted); margin-left: 6px; letter-spacing: 0; }
+    .presu-barra { height: 8px; border-radius: 99px; background: var(--surface-3); overflow: hidden; margin: 11px 0 9px; }
+    .presu-barra span { display: block; height: 100%; border-radius: 99px; background: #2563eb; transition: width .4s ease; }
+    .presu-pie { font-size: .76rem; color: var(--text-muted); }
+    .presu.cerca .presu-barra span { background: #d97706; }
+    .presu.cerca .presu-queda     { color: #d97706; }
+    .presu.excedido .presu-barra span { background: var(--error); }
+    .presu.excedido .presu-queda      { color: var(--error); }
+    .presu.sin-config .presu-queda    { font-size: 1.05rem; font-weight: 600; color: var(--text-muted); }
+    .presu-editar {
+      position: absolute; top: 12px; right: 12px;
+      width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+      background: var(--surface-2); border: 1px solid var(--border-subtle); border-radius: 8px;
+      color: var(--text-muted); cursor: pointer;
+    }
+    .presu-editar:hover { background: var(--surface-3); border-color: var(--border); color: var(--text-2); }
+    .presu-editar svg { width: 14px; height: 14px; }
+
     /* ─── Historial de movimientos de una cuenta ─────────────────────────
        Nace de "apareció en rojo Viáticos y no sé por qué": el número solo no
        alcanza, hay que poder ver de dónde sale. */
@@ -2286,6 +2318,9 @@
       <p class="page-title" id="formTitle">Nuevo Pago</p>
       <p class="page-subtitle" id="formSubtitle">Completa los datos y envía el pago al sistema.</p>
     </div>
+
+    <!-- Presupuesto diario de viáticos -->
+    <div class="presu" id="presupuesto" style="display:none;"></div>
 
     <!-- Saldos disponibles -->
     <section class="saldos" id="seccionSaldos">
@@ -3063,6 +3098,36 @@
   <!-- Cargar / corregir el saldo de una cuenta (solo administradores) -->
   <!-- Historial de movimientos de una cuenta. Responde "¿por qué quedó en este
        número?", que es distinto de "¿cuánto hay?". -->
+  <!-- Definir el presupuesto diario (solo administradores) -->
+  <div class="modal-fondo" id="modalPresupuesto" style="display:none;">
+    <div class="modal-caja">
+      <h3>Presupuesto diario de viáticos</h3>
+      <p class="modal-sub" id="mPresuSub"></p>
+
+      <div class="field-group">
+        <div class="field">
+          <label for="mPresuMonto">Monto por día <span class="req">*</span></label>
+          <input type="text" id="mPresuMonto" placeholder="$ 0" autocomplete="off" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="mPresuNota">Nota (opcional)</label>
+          <input type="text" id="mPresuNota" placeholder="Ej: ajustado por temporada alta" />
+        </div>
+      </div>
+
+      <div class="login-aviso info" style="margin:18px 0 0;">
+        Aplica solo a <strong>Viáticos</strong>, y se cuenta por <strong>fecha de pago</strong>.
+        Si el gasto del día lo supera, el pago <strong>se registra igual</strong> y les llega un
+        correo a los administradores: el sistema avisa, no bloquea.
+      </div>
+
+      <div class="modal-acciones">
+        <button type="button" class="btn-sec" id="mPresuCancelar">Cancelar</button>
+        <button type="button" class="btn-pri" id="mPresuGuardar">Guardar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-fondo" id="modalMovimientos" style="display:none;">
     <div class="modal-caja mov-caja">
       <h3 id="movTitulo">Movimientos</h3>
@@ -5719,6 +5784,8 @@
       if (!r || r.status !== 'success') return;
       saldosPuedeEditar = !!r.puedeEditar;
       pintarSaldos(r);
+      // El medidor viene en la misma respuesta que los saldos.
+      pintarPresupuesto(r.presupuesto);
       // Cualquier camino que pinte saldos cuenta como refresco: los que vienen
       // dentro de la respuesta de un pago o un traslado también son datos
       // frescos. Si no se marcara acá, el contador mentiría.
@@ -5908,6 +5975,111 @@
       if (Date.now() - ultimoRefresco >= 15000) refrescarSaldosSolo();
     });
     window.addEventListener('online', () => refrescarSaldosSolo());
+
+    // ─── Medidor de presupuesto diario de viáticos ───────────────────────
+    //
+    // Un solo presupuesto para todo el equipo, por día, solo de Viáticos.
+    //
+    // Llega dentro de la respuesta de saldos, así que no cuesta un viaje
+    // aparte y se refresca solo con el mismo temporizador de los saldos.
+    //
+    // ⚠️ No bloquea nada. Si alguien se pasa, el pago se registra igual y el
+    // correo avisa a los administradores. Bloquear no evitaría el gasto —ya
+    // ocurrió— solo evitaría enterarse, y dejaría los saldos mintiendo.
+    const presuCaja = document.getElementById('presupuesto');
+
+    function pintarPresupuesto(p) {
+      if (!presuCaja) return;
+
+      // Sin viáticos asignados no tiene sentido mostrarlo.
+      if (!p || (!saldosPuedeEditar && sesion.secciones.indexOf('viaticos') === -1)) {
+        presuCaja.style.display = 'none';
+        return;
+      }
+      presuCaja.style.display = '';
+
+      const lapizP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+      const boton = saldosPuedeEditar
+        ? '<button type="button" class="presu-editar" id="btnEditarPresupuesto" title="Definir presupuesto diario">' + lapizP + '</button>'
+        : '';
+
+      if (!p.configurado) {
+        presuCaja.className = 'presu sin-config';
+        presuCaja.innerHTML = boton +
+          '<div class="presu-titulo">Presupuesto diario de viáticos</div>' +
+          '<div class="presu-queda">Sin definir</div>' +
+          '<div class="presu-pie">Hoy se lleva ' + formatoPesos(p.gastado) + ' en ' + p.pagos + ' pago(s). ' +
+            (saldosPuedeEditar ? 'Tocá el lápiz para definir el presupuesto.' : 'Un administrador tiene que definirlo.') +
+          '</div>';
+      } else {
+        // El ámbar antes del rojo: avisar cuando queda poco sirve; avisar
+        // cuando ya se pasó, solo informa.
+        const cerca = !p.excedido && p.porcentaje >= 80;
+        presuCaja.className = 'presu' + (p.excedido ? ' excedido' : cerca ? ' cerca' : '');
+        presuCaja.innerHTML = boton +
+          '<div class="presu-fila">' +
+            '<div class="presu-titulo">Presupuesto de viáticos · ' + escapeHtml(p.fecha) + '</div>' +
+          '</div>' +
+          '<div class="presu-queda">' +
+            (p.excedido ? formatoPesos(p.exceso) : formatoPesos(p.queda)) +
+            '<span class="presu-eti">' + (p.excedido ? 'por encima del presupuesto' : 'disponible hoy') + '</span>' +
+          '</div>' +
+          '<div class="presu-barra"><span style="width:' + p.porcentaje + '%"></span></div>' +
+          '<div class="presu-pie">' +
+            formatoPesos(p.gastado) + ' de ' + formatoPesos(p.monto) + ' · ' + p.pagos + ' pago(s)' +
+            (p.excedido ? ' · se avisó a los administradores' : '') +
+          '</div>';
+      }
+
+      const btn = document.getElementById('btnEditarPresupuesto');
+      if (btn) btn.addEventListener('click', () => abrirModalPresupuesto(p));
+    }
+
+    // ─── Definir el presupuesto (solo administradores) ───────────────────
+    const modalPresu = document.getElementById('modalPresupuesto');
+
+    function abrirModalPresupuesto(p) {
+      document.getElementById('mPresuMonto').value = p && p.configurado ? Number(p.monto).toLocaleString('es-CO') : '';
+      document.getElementById('mPresuNota').value  = '';
+      document.getElementById('mPresuSub').textContent = p && p.configurado
+        ? 'Vigente: ' + formatoPesos(p.monto) + ' · lo puso ' + (p.quien || '—') + (p.desde ? ' el ' + p.desde : '')
+        : 'Todavía no hay un presupuesto definido.';
+      modalPresu.style.display = 'flex';
+      setTimeout(() => document.getElementById('mPresuMonto').focus(), 60);
+    }
+    function cerrarModalPresupuesto() { modalPresu.style.display = 'none'; }
+
+    document.getElementById('mPresuCancelar').addEventListener('click', cerrarModalPresupuesto);
+    modalPresu.addEventListener('click', e => { if (e.target === modalPresu) cerrarModalPresupuesto(); });
+
+    document.getElementById('mPresuGuardar').addEventListener('click', async () => {
+      const crudo = document.getElementById('mPresuMonto').value.replace(/\./g, '').trim();
+      if (!crudo || isNaN(Number(crudo)) || Number(crudo) < 0) {
+        showToast('error', 'Monto inválido', 'Escribí el presupuesto diario en pesos.');
+        return;
+      }
+      const btn = document.getElementById('mPresuGuardar');
+      btn.disabled = true;
+      try {
+        const r = await postAppsScript({
+          action: 'ajustar_presupuesto',
+          monto:  crudo,
+          nota:   document.getElementById('mPresuNota').value.trim()
+        }, 60000);
+        if (r.status !== 'success') {
+          showToast('error', 'No se pudo guardar', r.message || 'Intentá de nuevo.');
+          return;
+        }
+        cerrarModalPresupuesto();
+        showToast('success', 'Presupuesto actualizado', 'Desde ahora el medidor usa este monto.');
+        pintarPresupuesto(r.presupuesto);
+      } catch (err) {
+        showToast('error', 'No se pudo guardar', mensajeDeError(err));
+      } finally {
+        btn.disabled = false;
+      }
+    });
 
     // ─── Historial de movimientos de una cuenta ──────────────────────────
     //
@@ -6130,6 +6302,7 @@
     // ═══════════════════════════════════════════════════════════════
 
     const uploadTraslado = initUploadZone('tZona', 'tArchivo', 'tPreview');
+    initFormateadorValor('mPresuMonto');
     initFormateadorValor('tMonto');
 
     // Abre con la fecha de hoy, que es el caso normal, y deja elegir una

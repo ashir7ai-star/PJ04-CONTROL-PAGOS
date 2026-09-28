@@ -215,7 +215,7 @@ function hojasNoPagos_() {
   // gasto. Si se contara como pago, el reporte sumaría dos veces el mismo
   // dinero — una al enviarlo a viáticos y otra cuando la persona en campo lo
   // gaste y cargue su recibo.
-  return [NOMBRE_HOJA_SOLICITUDES, 'USUARIOS', 'SALDOS', 'TRASLADOS', 'SESIONES'];
+  return [NOMBRE_HOJA_SOLICITUDES, 'USUARIOS', 'SALDOS', 'TRASLADOS', 'SESIONES', NOMBRE_HOJA_PRESUPUESTO];
 }
 
 function hojaPrincipal_() {
@@ -367,6 +367,13 @@ function registrarPago_(body) {
 
   // Un pago cambia el saldo: lo calculado que hubiera guardado ya no vale.
   olvidarSaldosCalculados_();
+
+  // Si este pago cruzó el presupuesto diario de viáticos, se avisa. Va DESPUÉS
+  // de escribir la fila y dentro de su propio try: un aviso que falle no puede
+  // voltear un pago que ya quedó registrado.
+  if (seccion === 'viaticos') {
+    avisarSiCruzaPresupuesto_(fechaDeTextoISO_(body.fecha_pago), body.monto);
+  }
 
   // Los saldos nuevos viajan con la confirmación del pago: el navegador los
   // muestra sin pedir nada más. Todas las hojas ya se leyeron en esta petición.
@@ -1350,6 +1357,8 @@ function doPost(e) {
     if (body.action === 'registrar_traslado')   return respuestaJson_(registrarTraslado_(body));
     if (body.action === 'consultar_traslados')  return respuestaJson_(consultarTraslados_(body));
     if (body.action === 'consultar_movimientos') return respuestaJson_(consultarMovimientos_(body));
+    if (body.action === 'consultar_presupuesto') return respuestaJson_(consultarPresupuesto_(body));
+    if (body.action === 'ajustar_presupuesto')   return respuestaJson_(ajustarPresupuesto_(body));
     return respuestaJson_({ status: 'error', message: 'Acción no reconocida: ' + body.action });
   } catch (err) {
     return errorJson_(err);
@@ -1731,7 +1740,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-22-a · historial de movimientos por cuenta';
+const REVISION_BACKEND = '2026-09-28-a · presupuesto diario de viaticos';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -2811,6 +2820,9 @@ function consultarSaldos_(ctx, forzar) {
   return {
     status:      'success',
     puedeEditar: esAdministrador,
+    // El medidor viaja acá para no costar un viaje aparte: las hojas que
+    // necesita ya se leyeron en esta misma petición.
+    presupuesto: estadoPresupuesto_(new Date()),
     // Los registros sin cuenta asignada son información de cuadre global:
     // solo le sirve (y solo le corresponde) a un administrador.
     sinCuenta:   esAdministrador ? crudos.sinCuenta : 0,
@@ -2882,6 +2894,191 @@ function consultarMovimientos_(body) {
     cuadra:      cuadra,
     descuadre:   cuadra ? 0 : c.saldo - (c.base + suma)
   };
+}
+
+// ─── Presupuesto diario de viáticos ───────────────────────────────────────
+//
+// Un solo presupuesto para todo el equipo, por día, SOLO de Viáticos. Compra
+// de Materiales queda afuera a propósito (decisión del usuario): es un gasto
+// de otra naturaleza y mezclarlo haría que el medidor no signifique nada.
+//
+// ⚠️ El medidor NO bloquea nada. Si alguien se pasa, el pago se registra igual
+// y se avisa por correo. Bloquear no evita el gasto —ya ocurrió— solo evita
+// enterarse: el dinero sale igual y el sistema deja de reflejar la realidad,
+// que es lo único que no se puede negociar acá.
+const NOMBRE_HOJA_PRESUPUESTO = 'PRESUPUESTO';
+const ENCABEZADOS_PRESUPUESTO = ['FECHA', 'MONTO DIARIO', 'REGISTRADO POR', 'NOTA'];
+
+function hojaPresupuesto_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let hoja = ss.getSheetByName(NOMBRE_HOJA_PRESUPUESTO);
+  if (!hoja) {
+    hoja = ss.insertSheet(NOMBRE_HOJA_PRESUPUESTO, ss.getNumSheets());
+    hoja.getRange(1, 1, 1, ENCABEZADOS_PRESUPUESTO.length)
+        .setValues([ENCABEZADOS_PRESUPUESTO]).setFontWeight('bold');
+    hoja.setFrozenRows(1);
+  }
+  asegurarColumnas_(hoja, ENCABEZADOS_PRESUPUESTO);
+  return hoja;
+}
+
+// El monto vigente: la última fila cargada. Igual que los saldos base, cada
+// cambio se agrega como fila nueva y queda el historial de quién puso qué.
+function presupuestoVigente_() {
+  const valores = valoresDeHoja_(hojaPresupuesto_());
+  if (valores.length < 2) return null;
+
+  const enc    = valores[0];
+  const cFecha = enc.indexOf('FECHA');
+  const cMonto = enc.indexOf('MONTO DIARIO');
+  const cQuien = enc.indexOf('REGISTRADO POR');
+  const cNota  = enc.indexOf('NOTA');
+  if (cMonto === -1) return null;
+
+  let mejor = null;
+  for (let i = 1; i < valores.length; i++) {
+    const fila = valores[i];
+    if (!fila.some(function (v) { return v !== ''; })) continue;
+    const monto = montoANumero_(fila[cMonto]);
+    if (!isFinite(monto)) continue;
+    const fecha = cFecha === -1 ? null : fechaHoraDeRegistro_(fila[cFecha]);
+    if (mejor && mejor.fecha && fecha && fecha.getTime() < mejor.fecha.getTime()) continue;
+    mejor = {
+      fecha: fecha,
+      monto: monto,
+      quien: cQuien === -1 ? '' : String(fila[cQuien] || ''),
+      nota:  cNota  === -1 ? '' : String(fila[cNota]  || '')
+    };
+  }
+  return mejor;
+}
+
+// Cuánto se gastó de viáticos en un día.
+//
+// Se suma por FECHA DE PAGO, no por fecha de registro: el presupuesto es de un
+// DÍA de gasto. Quien carga el lunes los recibos del domingo no tiene por qué
+// reventar el presupuesto del lunes.
+function gastoViaticosDelDia_(dia) {
+  const valores = valoresDeHoja_(hojaDeSeccion_('viaticos'));
+  if (valores.length < 2) return { total: 0, pagos: 0 };
+
+  const enc    = valores[0];
+  const cFecha = enc.indexOf('FECHA DE PAGO');
+  const cValor = enc.indexOf('VALOR FACTURA');
+  if (cFecha === -1 || cValor === -1) return { total: 0, pagos: 0 };
+
+  let total = 0, pagos = 0;
+  for (let i = 1; i < valores.length; i++) {
+    const fila = valores[i];
+    if (!fila.some(function (v) { return v !== ''; })) continue;
+    if (!mismoDia_(fechaHoraDeRegistro_(fila[cFecha]), dia)) continue;
+    total += montoANumero_(fila[cValor]);
+    pagos += 1;
+  }
+  return { total: total, pagos: pagos };
+}
+
+// Lo que ve la pantalla. Viaja dentro de la respuesta de arranque y de
+// consultar_saldos, así no cuesta un viaje aparte.
+function estadoPresupuesto_(dia) {
+  const cuando  = dia || new Date();
+  const vigente = presupuestoVigente_();
+  const gasto   = gastoViaticosDelDia_(cuando);
+  const fechaTxt = Utilities.formatDate(cuando, ZONA_HORARIA, 'dd/MM/yyyy');
+
+  if (!vigente || !(vigente.monto > 0)) {
+    return { configurado: false, gastado: gasto.total, pagos: gasto.pagos, fecha: fechaTxt };
+  }
+
+  const queda = vigente.monto - gasto.total;
+  return {
+    configurado: true,
+    monto:   vigente.monto,
+    gastado: gasto.total,
+    pagos:   gasto.pagos,
+    queda:   queda,
+    // Se acota a 100 para la barra; `excedido` dice la verdad.
+    porcentaje: Math.min(100, Math.round((gasto.total / vigente.monto) * 100)),
+    excedido: queda < 0,
+    exceso:   queda < 0 ? -queda : 0,
+    desde:    vigente.fecha ? Utilities.formatDate(vigente.fecha, ZONA_HORARIA, 'dd/MM/yyyy HH:mm') : '',
+    quien:    vigente.quien,
+    nota:     vigente.nota,
+    fecha:    fechaTxt
+  };
+}
+
+function consultarPresupuesto_(body) {
+  contextoDe_(body);   // exige sesión válida
+  return { status: 'success', presupuesto: estadoPresupuesto_(new Date()) };
+}
+
+// Solo un administrador define el presupuesto.
+function ajustarPresupuesto_(body) {
+  const ctx = contextoDe_(body);
+  if (MODO_LOGIN !== 'off' && !esAdmin_(ctx)) throw new Error('SOLO_ADMIN');
+
+  // ⚠️ `montoANumero_` devuelve 0 ante cualquier cosa que no sea un número, así
+  // que "abc" pasaría como presupuesto de $0 sin que nadie se entere. Se exige
+  // que haya al menos un dígito, y que el monto sea mayor que cero: un
+  // presupuesto de 0 no significa "sin límite", significa nada.
+  if (!/\d/.test(String(body.monto || ''))) {
+    return { status: 'error', message: 'El monto no es un número válido.' };
+  }
+  const monto = montoANumero_(body.monto);
+  if (!isFinite(monto) || monto <= 0) {
+    return { status: 'error', message: 'El presupuesto tiene que ser mayor que cero.' };
+  }
+
+  agregarFilaPorEncabezados_(hojaPresupuesto_(), {
+    'FECHA':          new Date(),
+    'MONTO DIARIO':   monto,
+    'REGISTRADO POR': ctx.nombre || ctx.correo || '',
+    'NOTA':           String(body.nota || '')
+  });
+
+  return { status: 'success', presupuesto: estadoPresupuesto_(new Date()) };
+}
+
+// ─── Aviso cuando un pago cruza el presupuesto ────────────────────────────
+//
+// Se avisa UNA sola vez por día, y sin guardar ningún marcador: el correo sale
+// en el pago que CRUZA la línea (antes estaba dentro, después quedó afuera).
+// Los pagos siguientes de ese día ya no la cruzan, así que no vuelven a avisar.
+//
+// Un correo por cada pago posterior sería ruido, y el ruido se deja de leer:
+// ya pasó con los errores de /salud, que estuvieron dos días sin que nadie los
+// mirara.
+function avisarSiCruzaPresupuesto_(fechaPago, montoDelPago) {
+  try {
+    const vigente = presupuestoVigente_();
+    if (!vigente || !(vigente.monto > 0)) return;
+
+    const dia     = fechaHoraDeRegistro_(fechaPago) || new Date();
+    const despues = gastoViaticosDelDia_(dia).total;   // ya incluye el pago recién escrito
+    const antes   = despues - montoANumero_(montoDelPago);
+
+    if (!(antes <= vigente.monto && despues > vigente.monto)) return;
+
+    const dTxt   = Utilities.formatDate(dia, ZONA_HORARIA, 'dd/MM/yyyy');
+    const exceso = despues - vigente.monto;
+    const pesos  = function (n) { return '$' + Math.round(n).toLocaleString('es-CO'); };
+
+    MailApp.sendEmail({
+      to: DESTINATARIOS.join(','),
+      subject: 'Viáticos del ' + dTxt + ': se pasó el presupuesto diario',
+      body:
+        'El gasto de viáticos del ' + dTxt + ' superó el presupuesto diario.\n\n' +
+        'Presupuesto: ' + pesos(vigente.monto) + '\n' +
+        'Gastado:     ' + pesos(despues) + '\n' +
+        'Excedido en: ' + pesos(exceso) + '\n\n' +
+        'El pago se registró igual: el sistema no bloquea un gasto que ya ocurrió.\n\n' +
+        'Correo generado automáticamente.'
+    });
+  } catch (err) {
+    // Un aviso que falla NUNCA puede voltear un pago ya registrado.
+    Logger.log('aviso de presupuesto: ' + err);
+  }
 }
 
 // ─── Traslados entre cuentas propias ──────────────────────────────────────

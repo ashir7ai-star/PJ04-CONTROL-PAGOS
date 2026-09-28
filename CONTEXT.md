@@ -54,7 +54,7 @@ Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **se
 
 ⚠️ **Las hojas son TABLAS de Sheets, y eso cambia dónde caen los datos nuevos.** `appendRow()` agrega tras la última fila con datos; `values.append` agrega tras la **Tabla**. Si una Tabla abarca más filas que sus datos, un pago nuevo cae al fondo y **desaparece de la vista sin dar ningún error**. Vigilarlo en `GET /salud` → `filasFueraDeLugar` (tiene que estar siempre vacío) y, si aparece algo, correr `node servidor/limpiar-filas-vacias.js` (simula; `--aplicar` para borrar).
 
-`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-22-a` · `sw.js` → `control-pagos-v86` · `MODO_LOGIN` = `'estricto'`.
+`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-28-a` · `sw.js` → `control-pagos-v87` · `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -483,6 +483,15 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-28**: 🆕 **Medidor de presupuesto diario de viáticos.** Un solo monto para todo el equipo, por día, que se descuenta a medida que se registran los pagos. **Solo Viáticos** — Compra de Materiales queda afuera por decisión del usuario.
+  - **Hoja `PRESUPUESTO`** (`FECHA · MONTO DIARIO · REGISTRADO POR · NOTA`), mismo patrón que los saldos base: **vale la última fila** y queda el historial de quién puso qué. Solo un administrador puede definirlo.
+  - **Se cuenta por `FECHA DE PAGO`, no por fecha de registro.** Quien carga el lunes los recibos del domingo no revienta el presupuesto del lunes.
+  - **El medidor viaja dentro de la respuesta de saldos**, así que no cuesta una petición extra y se refresca solo con el temporizador que ya existe.
+  - ⚠️ **NO bloquea el pago.** Si alguien se pasa, el pago se registra igual y sale un correo a los administradores. Bloquear no evitaría el gasto —ya ocurrió— solo evitaría enterarse, y dejaría los saldos mintiendo. **La veracidad del dato está por encima del control.**
+  - **El aviso sale UNA vez por día, sin guardar ningún marcador:** se manda en el pago que **cruza** la línea (antes dentro, después afuera). Los siguientes de ese día ya no la cruzan. Un correo por cada pago sería ruido, y el ruido se deja de leer — ya pasó con los errores de `/salud`.
+  - En pantalla: barra que pasa de azul a **ámbar al 80%** y a rojo al excederse. Avisar cuando queda poco sirve; avisar cuando ya se pasó, solo informa.
+  - 🐛 Encontrado al probar: `montoANumero_` devuelve **0 ante cualquier texto**, así que escribir "abc" dejaba el presupuesto en $0 sin avisar. Ahora se exige al menos un dígito y un monto mayor que cero.
+  - 📊 **Para elegir el número:** con $700.000 se habrían excedido **3 de los últimos 4 días** (27/09: $713.500 · 26/09: $764.150 · 25/09: $1.033.050). Si el presupuesto queda muy ajustado, el correo se vuelve rutina y deja de leerse.
 - **2026-09-28**: 🚨 **La causa real de que nadie pudiera registrar pagos: `svgImage is not defined`.** Lo dijo el mensaje del teléfono, no mi diagnóstico.
   - Al reescribir el componente de subida el 27/09 reemplacé el bloque entero **desde su comentario de cabecera**, y ahí adentro vivían `svgFile`, `svgImage` y `svgTrash`. Quedaron **cuatro usos y ninguna declaración**. `const` no se eleva: `render()` moría con `ReferenceError`, el archivo elegido no aparecía en la lista y el envío fallaba.
   - ⚠️ **Mi diagnóstico anterior era plausible y equivocado.** El `fileInput.value = ''` que se ejecutaba antes de terminar de leer era un riesgo real y quedó corregido, pero **no era esto**. Perdí un ciclo entero arreglando lo que no era, mirando el servidor cuando el síntoma era del navegador.
@@ -548,7 +557,7 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 - **2026-09-21**: 🚨 **Registrar un pago en Viáticos fallaba: `Range (Viaticos!AA1) exceeds grid limits`.** Una usuaria lo reportó; el servidor tenía **4 intentos fallidos desde el sábado 19 a la mañana** — todo pago fuera de PAGOS REGISTRADOS fallaba (Viáticos, Caja Menor, Nómina, Impuestos, Seguridad Social). **Ninguno quedó a medias**: el encabezado se escribe antes que la fila, y al fallar no se llegó a la fila. Hay que volver a registrarlos.
   - **La causa, otra diferencia Apps Script ↔ API:** `getRange(1, 27).setValue()` en Apps Script **agranda la hoja sola**; la API responde `exceeds grid limits` y no escribe nada. `asegurarColumnas_` quiso crear `ID REGISTRO` (el guardia contra duplicados) en la **columna 27** de una hoja de 26.
   - **Por qué la 27 y no la 12:** la conversión a Tabla dejó **15 encabezados basura `Column 1`…`Column 15`** después de los 11 reales, y la lógica los contaba como ocupados.
-  - **Arreglo en `apps-script.gs`** (`asegurarColumnas_`): los `Column N` y los vacíos son **lugares libres** y se reusan antes de agrandar. `ID REGISTRO` cae en la columna 12. `REVISION_BACKEND` = `2026-09-22-a`. ⚠️ **Falta pegarlo en el editor de Google** (solo importa para la vuelta atrás y los reportes).
+  - **Arreglo en `apps-script.gs`** (`asegurarColumnas_`): los `Column N` y los vacíos son **lugares libres** y se reusan antes de agrandar. `ID REGISTRO` cae en la columna 12. `REVISION_BACKEND` = `2026-09-28-a`. ⚠️ **Falta pegarlo en el editor de Google** (solo importa para la vuelta atrás y los reportes).
   - **Red de seguridad en `escribir.js`:** si Sheets rechaza una escritura por tamaño, **se agranda lo justo (filas y/o columnas) y se reintenta una vez**. No se comprueba antes —costaría una lectura por petición— porque el rechazo es de validación y ocurre antes de escribir nada. Un error que no es de tamaño se deja pasar tal cual.
   - **Verificado contra la hoja real, en los dos niveles:** (1) `asegurarColumnas_` con la lógica real sobre las 5 hojas sin `ID REGISTRO` → las 5 lo tienen ahora en la **columna 12**, con una sola escritura; (2) escritura en la columna 27 de una hoja de 26 → rechazo, +1 columna, reintento OK, y se limpió después.
   - 🧭 **`/salud` ya tenía los 4 errores registrados desde el sábado y nadie lo miró.** El monitoreo existe; falta que avise solo. Anotado como pendiente.

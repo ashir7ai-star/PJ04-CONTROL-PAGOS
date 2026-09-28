@@ -457,6 +457,136 @@ console.log('\n=== Historial de movimientos: tiene que CUADRAR con el saldo ==='
 }
 
 
+console.log('\n=== Presupuesto diario de viaticos ===');
+{
+  // Un solo presupuesto para todo el equipo, por dia, SOLO de Viaticos.
+  // Compra de Materiales queda afuera a proposito.
+  const HOY = new Date(2026, 8, 28, 10, 0, 0);
+  const dia = (d, h) => new Date(2026, 8, d, h || 9, 0, 0);
+  const pago = (d, valor, tipo) =>
+    [dia(d, 12), 'AMPAC SAS', tipo || 'viaticos', 'Laura', 'ALMUERZO', 'Prov', dia(d), valor, '', '', '', ''];
+
+  const foto = {
+    'PAGOS REGISTRADOS': [ENC_PAGOS],
+    'Viaticos': [ENC_PAGOS, pago(28, 200000), pago(28, 150000), pago(27, 900000)],
+    // Materiales NO cuenta: si se sumara, el medidor de hoy daria 1.350.000.
+    'Compra Materiales': [ENC_PAGOS, pago(28, 1000000, 'compra_materiales')],
+    'Caja Menor': [ENC_PAGOS],
+    'SALDOS':   [['FECHA','CUENTA','SALDO BASE','CONCEPTO','REGISTRADO POR']],
+    'TRASLADOS':[['FECHA','ORIGEN','DESTINO','MONTO','REGISTRADO POR','NOTA','URL COMPROBANTE','FECHA REGISTRO','REALIZADO POR']],
+    'PRESUPUESTO': [['FECHA','MONTO DIARIO','REGISTRADO POR','NOTA'],
+                    [new Date(2026, 8, 1, 8, 0, 0), 500000, 'Nathan', 'inicial'],
+                    [new Date(2026, 8, 20, 8, 0, 0), 700000, 'Nathan', 'ajuste']],
+    'USUARIOS': [['CORREO','NOMBRE','TELEFONO','ROL','SECCIONES','ESTADO','FECHA REGISTRO','ULTIMO ACCESO'],
+                 ['nathan@ylevigroup.com','Nathan','300','admin','todas','activo','',''],
+                 ['laura@energy-millennium.com','Laura','300','usuario','viaticos','activo','','']],
+    'SESIONES': [['HASH','CORREO','CREADA','ULTIMO USO','VENCE']],
+    'SOLICITUDES DE APROBACION': [['ID SOLICITUD','FECHA SOLICITUD','EMPRESA','TIPO DE PAGO','NOMBRE DEL PAGO',
+      'PROVEEDOR','FECHA DE PAGO','VALOR','SOLICITADO POR','CORREO','NOTAS','URL ARCHIVO','ESTADO',
+      'REVISADO POR','FECHA DECISION','COMENTARIO']]
+  };
+
+  const e = montar(foto, 'off');
+
+  // Vale la ULTIMA fila cargada, como los saldos base.
+  const vig = e.globales.presupuestoVigente_();
+  chk('vale el presupuesto mas reciente', vig.monto === 700000, vig && vig.monto);
+
+  const hoy = e.globales.estadoPresupuesto_(HOY);
+  chk('esta configurado', hoy.configurado === true, hoy);
+  chk('solo cuenta Viaticos, NO Compra Materiales', hoy.gastado === 350000, hoy.gastado);
+  chk('cuenta los pagos del dia', hoy.pagos === 2, hoy.pagos);
+  chk('calcula lo que queda', hoy.queda === 350000, hoy.queda);
+  chk('y el porcentaje', hoy.porcentaje === 50, hoy.porcentaje);
+  chk('hoy no esta excedido', hoy.excedido === false, hoy);
+
+  // El dia anterior SI se paso: 900.000 contra 700.000.
+  const ayer = e.globales.estadoPresupuesto_(dia(27));
+  chk('un dia excedido se marca', ayer.excedido === true, ayer);
+  chk('y dice por cuanto', ayer.exceso === 200000, ayer.exceso);
+  chk('la barra no pasa de 100', ayer.porcentaje === 100, ayer.porcentaje);
+
+  // Se cuenta por FECHA DE PAGO, no por fecha de registro: quien carga el
+  // lunes los recibos del domingo no revienta el presupuesto del lunes.
+  const f2 = JSON.parse(JSON.stringify(foto));
+  const tarde = pago(28, 100000); tarde[0] = dia(29, 8);   // registrado al dia siguiente
+  const e2 = montar(Object.assign({}, foto, {
+    'Viaticos': [ENC_PAGOS, [dia(29, 8), 'AMPAC SAS', 'viaticos', 'Laura', 'CENA', 'Prov', dia(28), 100000, '', '', '', '']]
+  }), 'off');
+  chk('se cuenta por fecha de PAGO, no de registro',
+      e2.globales.estadoPresupuesto_(HOY).gastado === 100000,
+      e2.globales.estadoPresupuesto_(HOY).gastado);
+
+  // Sin presupuesto cargado no se inventa ninguno.
+  const e3 = montar(Object.assign({}, foto, { 'PRESUPUESTO': [['FECHA','MONTO DIARIO','REGISTRADO POR','NOTA']] }), 'off');
+  const sin = e3.globales.estadoPresupuesto_(HOY);
+  chk('sin presupuesto cargado lo dice', sin.configurado === false, sin);
+  chk('pero igual muestra lo gastado', sin.gastado === 350000, sin.gastado);
+
+  // La hoja PRESUPUESTO no es una hoja de pagos: si se contara, su monto
+  // entraria en los reportes y en los saldos como si fuera un gasto.
+  chk('PRESUPUESTO no se cuenta como hoja de pagos',
+      e.globales.hojasNoPagos_().indexOf('PRESUPUESTO') !== -1,
+      e.globales.hojasNoPagos_());
+
+  // Y viaja con los saldos, sin costar un viaje aparte.
+  const saldos = JSON.parse(e.globales.doPost({ postData: { contents:
+    JSON.stringify({ action: 'consultar_saldos', forzar: true }) } })._json);
+  chk('el medidor viaja dentro de consultar_saldos', !!saldos.presupuesto, Object.keys(saldos));
+
+  // Solo un administrador puede definirlo.
+  const g = montar(foto, 'estricto');
+  require('vm').runInContext(
+    'verificarIdToken_ = function (t) { return t ? { correo: String(t), nombre: String(t) } : null; };',
+    g.globales);
+  let malo = null;
+  try { g.globales.ajustarPresupuesto_({ idToken: 'laura@energy-millennium.com', monto: '999' }); }
+  catch (err) { malo = err.message; }
+  chk('un usuario comun NO puede definir el presupuesto', /SOLO_ADMIN/.test(String(malo)), malo);
+
+  const ok = g.globales.ajustarPresupuesto_({ idToken: 'nathan@ylevigroup.com', monto: '800000' });
+  chk('un admin si', ok.status === 'success', ok);
+  chk('y queda vigente el nuevo monto', ok.presupuesto.monto === 800000, ok.presupuesto);
+
+  // Montos imposibles.
+  chk('un monto negativo se rechaza',
+      e.globales.ajustarPresupuesto_({ monto: '-5' }).status === 'error');
+  // montoANumero_ devuelve 0 ante cualquier texto: sin esta comprobacion,
+  // escribir "abc" dejaba el presupuesto en $0 sin avisar.
+  chk('un monto que no es numero se rechaza',
+      e.globales.ajustarPresupuesto_({ monto: 'abc' }).status === 'error',
+      e.globales.ajustarPresupuesto_({ monto: 'abc' }));
+  chk('y cero tampoco vale: no significa "sin limite"',
+      e.globales.ajustarPresupuesto_({ monto: '0' }).status === 'error');
+  chk('un monto vacio se rechaza',
+      e.globales.ajustarPresupuesto_({ monto: '' }).status === 'error');
+}
+
+console.log('\n=== El aviso sale UNA vez: en el pago que cruza la linea ===');
+{
+  // Un correo por cada pago posterior seria ruido, y el ruido se deja de leer:
+  // ya paso con los errores de /salud, dos dias sin que nadie los mirara.
+  const fuente = require('fs').readFileSync(RUTA, 'utf8');
+  const cuerpo = fuente.split('function avisarSiCruzaPresupuesto_')[1].split('\n}')[0];
+
+  chk('se compara ANTES contra DESPUES', /antes <= vigente\.monto && despues > vigente\.monto/.test(cuerpo), cuerpo.slice(0, 80));
+  chk('no guarda ningun marcador de "ya avise"', !/CacheService|marcador/.test(cuerpo));
+  chk('va envuelto en try: un aviso que falla no voltea el pago',
+      /try \{/.test(cuerpo) && /catch/.test(cuerpo));
+  chk('y el correo dice que el pago SI se registro',
+      /se registró igual/.test(cuerpo), 'falta aclararlo');
+
+  // Solo para viaticos.
+  const reg = fuente.split('function registrarPago_')[1].split('\n}\n')[0];
+  chk('solo se evalua en viaticos',
+      /seccion === 'viaticos'[\s\S]{0,120}avisarSiCruzaPresupuesto_/.test(reg),
+      'se estaria avisando para cualquier seccion');
+  chk('y DESPUES de escribir la fila',
+      reg.indexOf('agregarFilaPorEncabezados_') < reg.indexOf('avisarSiCruzaPresupuesto_'),
+      'se avisa antes de escribir');
+}
+
+
 console.log('\n=== Lo que todavia NO esta, falla en voz alta ===');
 {
   const e = montar({ 'PAGOS REGISTRADOS': [ENC_PAGOS] }, 'off');
