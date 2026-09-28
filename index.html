@@ -4289,6 +4289,12 @@
             nombre: file.name,
             tamano: file.size,
             tipo:   file.type || 'application/octet-stream',
+            // ⚠️ Se CONSERVA la referencia al archivo. Leerlo al elegirlo es
+            // mejor, pero si esa lectura falla no puede quedar inservible: se
+            // vuelve a intentar al enviar. Sin esto, un fallo al elegir dejaba
+            // el archivo muerto y el pago no se podía registrar — fue lo que
+            // pasó el 27/09.
+            file:   file,
             datos:  null,     // base64, cuando termine de leerse
             error:  null,
             leyendo: true
@@ -4304,8 +4310,9 @@
           try {
             n.entrada.datos = await leerArchivo(n.file);
           } catch (err) {
+            // No se avisa todavía: queda el reintento al enviar. Avisar acá de
+            // algo que probablemente ande solo es ruido.
             n.entrada.error = (err && err.message) || 'No se pudo leer el archivo.';
-            showToast('error', 'No se pudo leer el archivo', n.entrada.error);
           } finally {
             n.entrada.leyendo = false;
             render();
@@ -4317,10 +4324,10 @@
         filePreviewList.innerHTML = selectedFiles.map((f, i) => {
           const ext  = String(f.nombre).split('.').pop().toLowerCase();
           const icon = ['jpg','jpeg','png','webp'].includes(ext) ? svgImage : svgFile;
-          const estado = f.error   ? `<div class="file-size file-error">${escapeHtml(f.error)}</div>`
-                       : f.leyendo ? '<div class="file-size">Leyendo…</div>'
-                       : `<div class="file-size">${formatBytes(f.tamano)} · listo</div>`;
-          return `<div class="file-preview${f.error ? ' con-error' : ''}">
+          const estado = f.leyendo ? '<div class="file-size">Leyendo…</div>'
+                       : f.datos   ? `<div class="file-size">${formatBytes(f.tamano)} · listo</div>`
+                       : `<div class="file-size">${formatBytes(f.tamano)} · se leerá al enviar</div>`;
+          return `<div class="file-preview">
             <div class="file-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${icon}</svg></div>
             <div class="file-info">
               <div class="file-name">${escapeHtml(f.nombre)}</div>
@@ -4333,7 +4340,14 @@
         }).join('');
       }
 
-      fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
+      // ⚠️ `fileInput.files` es una lista VIVA y `fileInput.value = ''` la vacía.
+      // Como `addFiles` es asíncrono, limpiarlo enseguida podía dejar los
+      // archivos inservibles antes de leerlos. Se copia la lista primero y se
+      // limpia el input recién cuando terminó de leer.
+      fileInput.addEventListener('change', async () => {
+        const lista = Array.from(fileInput.files);
+        try { await addFiles(lista); } finally { fileInput.value = ''; }
+      });
       uploadZone.addEventListener('click', () => fileInput.click());
       uploadZone.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); uploadZone.classList.add('dragover'); });
       uploadZone.addEventListener('dragleave', e => { e.preventDefault(); e.stopPropagation(); uploadZone.classList.remove('dragover'); });
@@ -4353,16 +4367,25 @@
         getFiles: () => selectedFiles,
         // Lo que se manda al servidor. Falla en voz alta si algo no está listo:
         // mandar un pago con un comprobante a medias es peor que no mandarlo.
-        archivos: () => {
-          const sinLeer = selectedFiles.filter(f => f.leyendo);
-          if (sinLeer.length) {
-            throw new Error('Esperá a que termine de leerse "' + sinLeer[0].nombre + '".');
+        // Lo que se manda al servidor. Si algo no alcanzó a leerse al
+        // elegirlo, se lee ACÁ: la lectura temprana es una mejora, no un
+        // requisito. Solo si también falla acá se rechaza el envío — mandar un
+        // pago con un comprobante a medias es peor que no mandarlo.
+        archivos: async () => {
+          const salida = [];
+          for (const f of selectedFiles) {
+            if (!f.datos) {
+              f.leyendo = true; render();
+              try {
+                f.datos = await leerArchivo(f.file);
+                f.error = null;
+              } finally {
+                f.leyendo = false; render();
+              }
+            }
+            salida.push({ nombre: f.nombre, tipo: f.tipo, datos: f.datos });
           }
-          const malos = selectedFiles.filter(f => f.error || !f.datos);
-          if (malos.length) {
-            throw new Error(malos[0].error || 'No se pudo leer "' + malos[0].nombre + '". Quitalo y volvé a adjuntarlo.');
-          }
-          return selectedFiles.map(f => ({ nombre: f.nombre, tipo: f.tipo, datos: f.datos }));
+          return salida;
         },
         reset: () => { selectedFiles = []; render(); }
       };
@@ -4434,7 +4457,7 @@
       try {
         // Ya están leídos desde que se eligieron: acá no se toca el sistema
         // de archivos, que es donde fallaba en el celular.
-        const archivos = uploadNuevoPago.archivos();
+        const archivos = await uploadNuevoPago.archivos();
 
         const result = await postAppsScript({
           action:         'registrar_pago',
@@ -4534,7 +4557,7 @@
       const idEnvio = new Date().toISOString();
 
       try {
-        const archivos = uploadSolicitud.archivos();
+        const archivos = await uploadSolicitud.archivos();
 
         setLoadingSolicitud(true, 'Enviando, puede tardar...');
 
@@ -6148,7 +6171,7 @@
       btn.disabled = true; spinner.style.display = 'block'; texto.textContent = 'Registrando…';
 
       try {
-        const archivos = uploadTraslado.archivos();
+        const archivos = await uploadTraslado.archivos();
 
         const r = await postAppsScript({
           action: 'registrar_traslado',

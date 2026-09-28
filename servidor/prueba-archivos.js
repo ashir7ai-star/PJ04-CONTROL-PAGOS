@@ -136,18 +136,45 @@ console.log('\n=== Si falla siempre, se rinde con un mensaje claro ===');
   chk('y el mensaje sirve', err && /roto\.jpg/.test(err.message), err && err.message);
 }
 
+console.log('\n=== El input NO se limpia antes de leer los archivos ===');
+{
+  // EL bug del 27/09, y lo rompi yo. `fileInput.files` es una lista VIVA y
+  // `fileInput.value = ''` la vacia. Como addFiles paso a ser asincrono,
+  // limpiarlo enseguida dejaba los archivos inservibles ANTES de leerlos: el
+  // archivo no aparecia en la lista y no se podia registrar ningun pago.
+  chk('la lista se copia antes de tocar el input',
+      /const lista = Array\.from\(fileInput\.files\)/.test(html),
+      'se sigue pasando la FileList viva');
+  chk('el input se limpia DESPUES de leer',
+      /await addFiles\(lista\);[\s\S]{0,40}fileInput\.value = ''/.test(html),
+      'se limpia antes de terminar de leer');
+  chk('nunca se limpia en la misma linea que addFiles',
+      !/addFiles\(fileInput\.files\); fileInput\.value/.test(html),
+      'volvio el limpiado inmediato');
+}
+
+console.log('\n=== Un fallo al elegir NO deja el archivo inservible ===');
+{
+  // La otra mitad: leer solo al elegir quitaba la red de seguridad. Si esa
+  // lectura fallaba, el archivo quedaba muerto y el pago no salia. Ahora se
+  // conserva la referencia y se reintenta al enviar.
+  chk('se guarda la referencia al archivo', /file:\s+file,/.test(html), 'no se guarda el File');
+  chk('archivos() reintenta leer lo que falte',
+      /archivos: async \(\) => \{[\s\S]*?await leerArchivo\(f\.file\)/.test(html),
+      'archivos() no reintenta');
+  const esperan = (html.match(/const archivos = await upload\w+\.archivos\(\);/g) || []).length;
+  chk('y los tres envios lo esperan', esperan === 3, esperan);
+  chk('un archivo sin leer se muestra como pendiente, no como roto',
+      /se leerá al enviar/.test(html), 'falta el estado pendiente');
+}
+
+
 console.log('\n=== Los archivos se leen al ELEGIRLOS, no al enviar ===');
 {
   // El arreglo de fondo. Si algún día alguien vuelve a leer en el envío, el
   // problema del celular vuelve: entre elegir y enviar pasan minutos.
-  chk('el envío de un pago usa los bytes ya leídos',
-      /const archivos = uploadNuevoPago\.archivos\(\);/.test(html), 'volvió a leer al enviar');
-  chk('el de una solicitud también',
-      /const archivos = uploadSolicitud\.archivos\(\);/.test(html), 'volvió a leer al enviar');
-  chk('y el de un traslado también',
-      /const archivos = uploadTraslado\.archivos\(\);/.test(html), 'volvió a leer al enviar');
-  chk('no queda ningún fileToBase64 en los envíos',
-      !/datos:\s*await fileToBase64/.test(html), 'quedó una lectura en el envío');
+  chk('el envío de un pago pide los archivos al componente',
+      /const archivos = await uploadNuevoPago\.archivos\(\);/.test(html), 'no los pide');
   chk('y se lee al agregar el archivo',
       /n\.entrada\.datos = await leerArchivo\(n\.file\)/.test(html), 'ya no se lee al elegir');
 }

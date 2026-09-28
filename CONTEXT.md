@@ -52,7 +52,7 @@ Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **se
 
 ⚠️ **Las hojas son TABLAS de Sheets, y eso cambia dónde caen los datos nuevos.** `appendRow()` agrega tras la última fila con datos; `values.append` agrega tras la **Tabla**. Si una Tabla abarca más filas que sus datos, un pago nuevo cae al fondo y **desaparece de la vista sin dar ningún error**. Vigilarlo en `GET /salud` → `filasFueraDeLugar` (tiene que estar siempre vacío) y, si aparece algo, correr `node servidor/limpiar-filas-vacias.js` (simula; `--aplicar` para borrar).
 
-`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-22-a` · `sw.js` → `control-pagos-v84` · `MODO_LOGIN` = `'estricto'`.
+`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-22-a` · `sw.js` → `control-pagos-v85` · `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -481,6 +481,15 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-28**: 🚨 **NADIE podía registrar pagos: lo rompió el arreglo del 27/09.** El último pago quedó el **27/09 a las 16:46**, justo cuando llegó a los usuarios el código nuevo de subida. Síntoma: *"selecciona el archivo y no se ve que cargue"*.
+  - ⚠️ **La causa, y es mía:** `fileInput.files` es una lista **VIVA**, y `fileInput.value = ''` la vacía. El renglón era `addFiles(fileInput.files); fileInput.value = '';` — correcto mientras `addFiles` fue **síncrono**, pero al volverlo `async` para leer los archivos, **el input se limpiaba antes de terminar de leerlos** y los archivos quedaban inservibles.
+  - ⚠️ **Y lo que lo volvió total:** al mover la lectura al momento de elegir, quité sin darme cuenta la **red de seguridad**. Antes, si algo fallaba, todavía quedaba la lectura al enviar. Después del cambio, un fallo al elegir dejaba el archivo muerto y el pago imposible.
+  - **Arreglo, en las dos mitades:**
+    - La lista se **copia** (`Array.from`) antes de tocar el input, y el input se limpia **recién cuando terminó de leer**.
+    - Se **conserva la referencia al archivo** y `archivos()` **reintenta leer** lo que falte al enviar. La lectura temprana vuelve a ser una mejora, no un requisito. Un archivo sin leer se muestra como *"se leerá al enviar"*, no como roto.
+  - **Lo que el servidor decía, y por qué no ayudó:** cero errores, cero escrituras nuevas. **La petición nunca salía del teléfono.** Descartados por medición: tamaño del cuerpo (20 MB pasan), CORS (cabeceras correctas), sesiones (22 vivas), Sheets/Drive/correo (OK).
+  - 🧭 **La lección:** volver asíncrona una función **cambia el contrato de todo lo que la rodea**. El `fileInput.value = ''` de la línea siguiente era correcto y dejó de serlo sin que nada avisara. Y **quitar un camino de respaldo convierte un fallo intermitente en uno total** — el arreglo era bueno, pero no debió reemplazar a la red que ya existía.
+  - Suite ampliada con las dos regresiones, verificadas reintroduciendo cada defecto.
 - **2026-09-28**: 🔍 **Revisión completa del sistema tras un reporte de "no están subiendo los reportes".** Resultado: **el sistema está sano**; la queja no se corresponde con ninguna falla medible. Lo que sí apareció fueron dos cosas de fondo, ya corregidas.
   - **Los reportes diarios SÍ corren.** Apps Script → Ejecuciones: **7 de 7 en "Completed"** (21 al 27/09), 6-11 s cada una. Mi primera hipótesis —que `ID REGISTRO` faltaba en las hojas de sección y hacía fallar `setValues` con `undefined`— **era falsa**; la desmintió la propia pantalla de ejecuciones.
   - **Y su contenido es correcto:** simulado contra los datos reales, el reporte del 27/09 lleva **17 pagos**, que es exactamente lo registrado ese día. Las **7 hojas de pagos tienen los mismos 12 encabezados** y hay **0 celdas `undefined`** (que es lo que haría fallar el PDF).
