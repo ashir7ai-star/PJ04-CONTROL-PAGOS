@@ -54,7 +54,7 @@ Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **se
 
 ⚠️ **Las hojas son TABLAS de Sheets, y eso cambia dónde caen los datos nuevos.** `appendRow()` agrega tras la última fila con datos; `values.append` agrega tras la **Tabla**. Si una Tabla abarca más filas que sus datos, un pago nuevo cae al fondo y **desaparece de la vista sin dar ningún error**. Vigilarlo en `GET /salud` → `filasFueraDeLugar` (tiene que estar siempre vacío) y, si aparece algo, correr `node servidor/limpiar-filas-vacias.js` (simula; `--aplicar` para borrar).
 
-`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-28-d` · `sw.js` → `control-pagos-v91` · `MODO_LOGIN` = `'estricto'`.
+`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-28-d` · `sw.js` → `control-pagos-v92` · `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -483,6 +483,14 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-28**: 🎨 **Control de Viáticos rediseñado, con filtros de verdad.** La primera versión no gustó, y con razón.
+  - 🐛 **El campo de fecha de arriba a la derecha era un `<input>` que nunca inicialicé**: una caja de texto que no hacía nada y que nadie podía adivinar para qué estaba. Ahora son **dos calendarios** (Desde / Hasta) con su etiqueta.
+  - **Filtros completos:** atajos **Hoy · Ayer · Últimos 7 días · Este mes**, rango de fechas libre, **búsqueda por texto** (concepto, proveedor o persona) y **filtro por rubro**. La búsqueda y el filtro se aplican en el navegador sobre lo ya traído: escribir no cuesta una petición por tecla.
+  - **Todo en tablas, no en tarjetas sueltas:** *Gasto por rubro* (rubro · pagos · gastado · presupuesto · uso, ordenado de mayor a menor y con fila de total) y *Detalle de pagos* (fecha · rubro · concepto · proveedor · quién · valor · comprobante). Números a la derecha y de ancho fijo, para poder compararlos de un vistazo.
+  - **El backend pasó de un día a un RANGO.** El presupuesto es **diario**, así que para varios días se multiplica: comparar el gasto de una semana contra el tope de un día sería un rojo garantizado que no significa nada.
+  - **Cuando hay filtro, los totales son los de lo filtrado** y se avisa. Mostrar el total del período junto a una lista recortada sería engañoso.
+  - **Verificado contra datos reales, los tres rangos cuadran exacto:** hoy $642.600 / 7 pagos · últimos 7 días $7.460.150 / 91 pagos · este mes $13.775.554 / 158 pagos, con el detalle sumando el total en los tres.
+  - 🧭 **Lo que queda de esto:** un control sin etiqueta no existe para quien lo mira. Si hace falta explicar para qué sirve un campo, el campo está mal.
 - **2026-09-28**: 🆕 **Pestaña propia "Control de Viáticos"**, entre *Consultar Pagos* y *Aprobaciones*. **Configuración pasó al final** del menú.
   - El panel salió de Nuevo Pago y ahora tiene su vista, con **tres capas de lo general a lo particular**: resumen del día, una tarjeta por rubro contra su sugerido, y el **detalle pago por pago** (hora, nombre, proveedor, quién lo registró, valor y enlace al comprobante), agrupado por rubro.
   - **Selector de fecha:** se puede mirar cualquier día. Un control que solo mira hoy no sirve para revisar la semana.

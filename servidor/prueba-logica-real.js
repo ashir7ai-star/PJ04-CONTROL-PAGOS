@@ -581,8 +581,29 @@ console.log('\n=== Rubros de viaticos y presupuesto sugerido ===');
       }), conDetalle.detalle[0]);
   chk('y se puede pedir OTRO dia',
       JSON.parse(e.globales.doPost({ postData: { contents:
-        JSON.stringify({ action: 'consultar_presupuesto', fecha: '2026-09-27' }) } })._json)
-        .presupuesto.fecha === '27/09/2026');
+        JSON.stringify({ action: 'consultar_presupuesto', desde: '2026-09-27', hasta: '2026-09-27' }) } })._json)
+        .presupuesto.desdeTexto === '27/09/2026');
+
+  // Un RANGO, no solo un dia: "revisar la semana" es una pregunta tan normal
+  // como "que paso hoy".
+  const rango = JSON.parse(e.globales.doPost({ postData: { contents:
+    JSON.stringify({ action: 'consultar_presupuesto', desde: '2026-09-27', hasta: '2026-09-28' }) } })._json).presupuesto;
+  chk('un rango abarca los dos extremos', rango.dias === 2, rango.dias);
+  chk('y suma lo de todos los dias',
+      rango.totalGastado === est.totalGastado + ayer.totalGastado,
+      [rango.totalGastado, est.totalGastado, ayer.totalGastado]);
+  // El presupuesto es DIARIO: comparar una semana contra el tope de un dia
+  // seria un rojo garantizado y no significaria nada.
+  // Se recalcula el dia AHORA: unas lineas mas arriba se cargaron mas rubros,
+  // asi que el total de `est` ya quedo viejo.
+  const hoyAhora = e.globales.estadoPresupuesto_(HOY, HOY);
+  chk('el presupuesto del rango es el diario x los dias',
+      rango.totalSugerido === hoyAhora.totalSugerido * 2,
+      [rango.totalSugerido, hoyAhora.totalSugerido]);
+  chk('el detalle del rango suma su total',
+      rango.detalle.reduce(function (a, d) { return a + d.valor; }, 0) === rango.totalGastado,
+      rango.detalle.length);
+  chk('y cada fila dice de que dia es', rango.detalle.every(function (d) { return !!d.dia; }), rango.detalle[0]);
 
   let vedado = null;
   try { g.globales.consultarPresupuesto_({ idToken: 'laura@energy-millennium.com' }); }

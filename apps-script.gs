@@ -3018,7 +3018,12 @@ function presupuestosPorRubro_() {
 //
 // Y es lo que se pidió: "que se pueda visualizar qué es lo que están
 // registrando". Esto mide el registro, no la contabilidad del gasto.
-function gastoViaticosPorRubro_(dia) {
+// Un rango de días, no uno solo: "revisar la semana" es una pregunta tan
+// normal como "qué pasó hoy". Con desde === hasta funciona igual que antes.
+function gastoViaticosPorRubro_(desde, hasta) {
+  const d0 = inicioDelDia_(desde || new Date());
+  const d1 = finDelDia_(hasta || desde || new Date());
+
   const valores = valoresDeHoja_(hojaDeSeccion_('viaticos'));
   const salida = { porRubro: {}, total: 0, pagos: 0, sinRubro: 0, detalle: [] };
   if (valores.length < 2) return salida;
@@ -3040,7 +3045,7 @@ function gastoViaticosPorRubro_(dia) {
     const fila = valores[i];
     if (!fila.some(function (v) { return v !== ''; })) continue;
     const cuando = fechaHoraDeRegistro_(fila[cFecha]);
-    if (!mismoDia_(cuando, dia)) continue;
+    if (!cuando || cuando.getTime() < d0.getTime() || cuando.getTime() > d1.getTime()) continue;
 
     const valor = montoANumero_(fila[cValor]);
     const rubro = cRubro === -1 ? '' : String(fila[cRubro] || '').trim().toLowerCase();
@@ -3052,7 +3057,9 @@ function gastoViaticosPorRubro_(dia) {
     const fechaPago = cPago === -1 ? null : fechaHoraDeRegistro_(fila[cPago]);
     salida.detalle.push({
       rubro:     rubroValido_(rubro) ? rubro : '',
-      hora:      cuando ? Utilities.formatDate(cuando, ZONA_HORARIA, 'HH:mm') : '',
+      // Con un rango de varios días, la hora sola no ubica nada.
+      dia:       Utilities.formatDate(cuando, ZONA_HORARIA, 'dd/MM/yyyy'),
+      hora:      Utilities.formatDate(cuando, ZONA_HORARIA, 'HH:mm'),
       nombre:    cNombre === -1 ? '' : String(fila[cNombre] || ''),
       proveedor: cProv   === -1 ? '' : String(fila[cProv]   || ''),
       quien:     cQuien  === -1 ? '' : String(fila[cQuien]  || ''),
@@ -3073,16 +3080,34 @@ function gastoViaticosPorRubro_(dia) {
 // Lo que ve la pantalla: un renglón por rubro, con lo gastado hoy y lo
 // sugerido. Viaja dentro de la respuesta de saldos, así no cuesta un viaje
 // aparte.
-function estadoPresupuesto_(dia) {
-  const cuando   = dia || new Date();
+function inicioDelDia_(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
+}
+function finDelDia_(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+}
+// Cuántos días abarca el rango, contando los dos extremos.
+function diasDelRango_(desde, hasta) {
+  const ms = finDelDia_(hasta).getTime() - inicioDelDia_(desde).getTime();
+  return Math.max(1, Math.round(ms / 86400000));
+}
+
+function estadoPresupuesto_(desde, hasta) {
+  const d0 = inicioDelDia_(desde || new Date());
+  const d1 = finDelDia_(hasta || desde || new Date());
+  const dias = diasDelRango_(d0, d1);
+
   const sugerido = presupuestosPorRubro_();
-  const gasto    = gastoViaticosPorRubro_(cuando);
+  const gasto    = gastoViaticosPorRubro_(d0, d1);
 
   let totalSugerido = 0;
   const rubros = RUBROS_VIATICOS.map(function (r) {
     const s = sugerido[r.clave];
     const g = gasto.porRubro[r.clave] || { gastado: 0, pagos: 0 };
-    const monto = s ? s.monto : 0;
+    // El presupuesto es DIARIO. Para un rango de varios días se multiplica:
+    // comparar el gasto de una semana contra el tope de un día no significaría
+    // nada, y sería un rojo garantizado.
+    const monto = (s ? s.monto : 0) * dias;
     totalSugerido += monto;
     return {
       clave:    r.clave,
@@ -3098,11 +3123,22 @@ function estadoPresupuesto_(dia) {
     };
   });
 
+  const iso = function (d) { return Utilities.formatDate(d, ZONA_HORARIA, 'yyyy-MM-dd'); };
+  const ddmm = function (d) { return Utilities.formatDate(d, ZONA_HORARIA, 'dd/MM/yyyy'); };
+
   return {
-    fecha:         Utilities.formatDate(cuando, ZONA_HORARIA, 'dd/MM/yyyy'),
-    // Para el selector de fecha del panel, que necesita el formato ISO.
-    fechaIso:      Utilities.formatDate(cuando, ZONA_HORARIA, 'yyyy-MM-dd'),
-    esHoy:         mismoDia_(cuando, new Date()),
+    desde:         iso(d0),
+    hasta:         iso(d1),
+    desdeTexto:    ddmm(d0),
+    hastaTexto:    ddmm(d1),
+    dias:          dias,
+    // Cómo nombrar el período en pantalla, sin que el navegador tenga que
+    // adivinarlo: "Hoy", "Ayer", una fecha, o un rango.
+    titulo:        mismoDia_(d0, d1)
+                     ? (mismoDia_(d0, new Date()) ? 'Hoy · ' + ddmm(d0) : ddmm(d0))
+                     : ddmm(d0) + ' — ' + ddmm(d1) + '  (' + dias + ' días)',
+    esHoy:         mismoDia_(d0, d1) && mismoDia_(d0, new Date()),
+    unSoloDia:     mismoDia_(d0, d1),
     rubros:        rubros,
     // Del más nuevo al más viejo: es el orden en que uno mira "qué pasó hoy".
     detalle:       gasto.detalle.slice().reverse(),
@@ -3119,10 +3155,14 @@ function estadoPresupuesto_(dia) {
 function consultarPresupuesto_(body) {
   const ctx = contextoDe_(body);
   if (MODO_LOGIN !== 'off' && !esAdmin_(ctx)) throw new Error('SOLO_ADMIN');
-  // Se puede pedir otro día: un control que solo mira hoy no sirve para
-  // revisar la semana.
-  const pedida = body && body.fecha ? fechaDeTextoISO_(body.fecha) : null;
-  return { status: 'success', presupuesto: estadoPresupuesto_(pedida || new Date()) };
+  // Un rango, no un día suelto: "revisar la semana" es una pregunta tan normal
+  // como "qué pasó hoy". Si no viene nada, es hoy.
+  const desde = body && body.desde ? fechaDeTextoISO_(body.desde) : null;
+  const hasta = body && body.hasta ? fechaDeTextoISO_(body.hasta) : null;
+  return {
+    status: 'success',
+    presupuesto: estadoPresupuesto_(desde || hasta || new Date(), hasta || desde || new Date())
+  };
 }
 
 // Solo un administrador define los montos sugeridos. Acepta uno o varios

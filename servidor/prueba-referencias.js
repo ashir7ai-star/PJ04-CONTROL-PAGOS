@@ -118,8 +118,24 @@ console.log('\n=== Control de Viáticos: su propia pestaña, solo para administr
   chk('existe la vista', /id="viewViaticos"/.test(html), 'falta la vista');
   chk('está registrada en el navegador de pestañas',
       /viaticos: viewViaticos/.test(codigo), 'la pestaña no mostraría nada');
-  chk('y se carga al entrar',
-      /tab\.dataset\.view === 'viaticos'\)\s*cargarControlViaticos\(\)/.test(codigo), 'no se cargaría');
+  chk('y se carga al entrar, arrancando en Hoy',
+      /tab\.dataset\.view === 'viaticos'\)\s*aplicarRango\('hoy'\)/.test(codigo), 'no se cargaría');
+
+  // El campo de fecha TIENE que ser un calendario de verdad. La primera
+  // versión dejó un <input> suelto sin inicializar: una caja de texto que no
+  // hacía nada y que nadie entendía para qué estaba.
+  chk('los campos de fecha son calendarios, no cajas de texto',
+      /flatpickr\(vtDesdeInput/.test(codigo) && /flatpickr\(vtHastaInput/.test(codigo),
+      'quedaría un input muerto');
+  chk('hay atajos de rango (hoy, ayer, 7 días, mes)',
+      /data-rango="hoy"/.test(html) && /data-rango="ayer"/.test(html) &&
+      /data-rango="7"/.test(html) && /data-rango="mes"/.test(html), 'faltan atajos');
+  chk('se puede buscar por texto', /vtDetalleFiltrado/.test(codigo), 'no hay búsqueda');
+  chk('y filtrar por rubro', /rubro === '__sin'/.test(codigo), 'no hay filtro de rubro');
+  chk('cada control lleva su etiqueta',
+      /<label for="vtDesde">/.test(html) && /<label for="vtHasta">/.test(html) &&
+      /<label for="vtBuscar">/.test(html) && /<label for="vtRubro">/.test(html),
+      'un campo sin nombre no se entiende');
 
   // La pestaña es de administradores. El servidor tampoco manda los datos a
   // nadie más, así que esto es la segunda barrera, no la única.

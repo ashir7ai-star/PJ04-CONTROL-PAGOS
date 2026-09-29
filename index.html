@@ -1563,87 +1563,95 @@
     }
 
     /* ─── Control de Viáticos ────────────────────────────────────────────
-       Panel propio. Tres capas, de lo general a lo particular: resumen del
-       día, tarjetas por rubro, y el detalle pago por pago. */
-    .vt-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-    .vt-acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .vt-fecha {
-      width: 130px; padding: 8px 11px; font-size: .85rem; font-weight: 600;
+       Filtros arriba, resumen, y dos tablas. Todo lo numérico alineado a la
+       derecha y con cifras de ancho fijo: así las columnas se comparan de un
+       vistazo, que es para lo que existe una tabla. */
+    .vt-filtros {
       background: var(--surface-1); border: 1px solid var(--border-subtle);
-      border-radius: 9px; color: var(--text-1); cursor: pointer;
+      border-radius: 14px; padding: 14px 15px; margin: 0 0 14px;
     }
-    .vt-fecha:focus { outline: none; border-color: #2563eb; }
-    .vt-btn-presu { padding: 8px 14px; font-size: .85rem; display: inline-flex; align-items: center; gap: 7px; }
-    .vt-btn-presu svg { width: 14px; height: 14px; }
+    .vt-rangos { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; }
+    .vt-chip {
+      padding: 6px 13px; font-size: .8rem; font-weight: 600; cursor: pointer;
+      background: var(--surface-2); border: 1px solid var(--border-subtle);
+      border-radius: 99px; color: var(--text-2);
+    }
+    .vt-chip:hover  { border-color: var(--border-strong); color: var(--text-1); }
+    .vt-chip.activo { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .vt-campos { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+    .vt-campo { display: flex; flex-direction: column; gap: 4px; min-width: 130px; }
+    .vt-campo.crece { flex: 1 1 200px; }
+    .vt-campo label {
+      font-size: .72rem; font-weight: 700; letter-spacing: .04em;
+      text-transform: uppercase; color: var(--text-muted);
+    }
+    .vt-campo input, .vt-campo select {
+      width: 100%; padding: 8px 11px; font-size: .88rem;
+      background: var(--surface-2); border: 1px solid var(--border-subtle);
+      border-radius: 9px; color: var(--text-1);
+    }
+    .vt-campo input:focus, .vt-campo select:focus { outline: none; border-color: #2563eb; }
+    .vt-campo input[readonly] { cursor: pointer; }
+    .vt-campo-btns { display: flex; gap: 8px; }
+    .vt-btn { padding: 8px 15px; font-size: .85rem; white-space: nowrap; }
+    .vt-periodo { font-size: .82rem; color: var(--text-2); font-weight: 600; margin: 0 0 12px 2px; }
 
     /* Resumen */
     .vt-resumen {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px;
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 1px;
       background: var(--border-subtle); border: 1px solid var(--border-subtle);
-      border-radius: 14px; overflow: hidden; margin: 0 0 16px;
+      border-radius: 14px; overflow: hidden; margin: 0 0 22px;
     }
-    .vt-kpi { background: var(--surface-1); padding: 15px 16px; }
-    .vt-kpi-eti { font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); }
-    .vt-kpi-val { font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin-top: 4px; }
-    .vt-kpi-pie { font-size: .74rem; color: var(--text-muted); margin-top: 2px; }
-    .vt-kpi.bien .vt-kpi-val  { color: var(--success, #16a34a); }
-    .vt-kpi.mal  .vt-kpi-val  { color: var(--error); }
+    .vt-kpi { background: var(--surface-1); padding: 14px 16px; }
+    .vt-kpi-eti { font-size: .71rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); }
+    .vt-kpi-val { font-size: 1.3rem; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin-top: 4px; }
+    .vt-kpi-pie { font-size: .73rem; color: var(--text-muted); margin-top: 2px; }
+    .vt-kpi.bien .vt-kpi-val { color: var(--success, #16a34a); }
+    .vt-kpi.mal  .vt-kpi-val { color: var(--error); }
+    .vt-kpi.apagado .vt-kpi-val { font-size: 1.02rem; font-weight: 600; color: var(--text-muted); }
 
-    /* Tarjetas por rubro */
-    .vt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 12px; margin: 0 0 22px; }
-    .vt-card {
-      position: relative; background: var(--surface-1); border: 1px solid var(--border-subtle);
-      border-radius: 13px; padding: 14px 15px 13px; overflow: hidden;
+    /* Bloques y tablas */
+    .vt-bloque { margin: 0 0 24px; }
+    .vt-bloque-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 9px; flex-wrap: wrap; }
+    .vt-h3 { font-size: .8rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); margin: 0; }
+    .vt-nota { font-size: .76rem; color: var(--text-muted); }
+    .vt-tabla-wrap { overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: 12px; }
+    .vt-tabla { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .vt-tabla th {
+      text-align: left; padding: 10px 13px; font-size: .71rem; font-weight: 700;
+      letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted);
+      background: var(--surface-2); border-bottom: 1px solid var(--border-subtle); white-space: nowrap;
     }
-    .vt-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: #2563eb; }
-    .vt-card.cerca::before    { background: #d97706; }
-    .vt-card.excedido::before { background: var(--error); }
-    .vt-card.vacio::before    { background: var(--border-strong); }
-    .vt-card-eti { font-size: .82rem; font-weight: 700; color: var(--text-1); }
-    .vt-card-val { font-size: 1.15rem; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.01em; margin-top: 3px; }
-    .vt-card.excedido .vt-card-val { color: var(--error); }
-    .vt-card.cerca    .vt-card-val { color: #d97706; }
-    .vt-card-sub { font-size: .73rem; color: var(--text-muted); margin-top: 1px; }
-    .vt-card .presu-barra { margin: 10px 0 0; height: 6px; }
-    .vt-card.cerca    .presu-barra span { background: #d97706; }
-    .vt-card.excedido .presu-barra span { background: var(--error); }
+    .vt-tabla td { padding: 10px 13px; border-bottom: 1px solid var(--border-subtle); vertical-align: middle; }
+    .vt-tabla tr:last-child td { border-bottom: 0; }
+    .vt-tabla tbody tr:hover td { background: var(--surface-2); }
+    .vt-tabla .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .vt-tabla .fuerte { font-weight: 700; }
+    .vt-tabla .tenue  { color: var(--text-muted); font-size: .78rem; }
+    .vt-tabla tr.total td { background: var(--surface-2); font-weight: 800; border-top: 2px solid var(--border-strong); }
+    .vt-vacio { padding: 26px 16px; text-align: center; color: var(--text-muted); font-size: .86rem; }
 
-    /* Detalle */
-    .vt-detalle { margin-bottom: 30px; }
-    .vt-detalle-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 10px; flex-wrap: wrap; }
-    .vt-seccion { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); margin: 0; }
-    .vt-seccion-nota { font-size: .76rem; color: var(--text-muted); margin: 0; }
-    .vt-grupo { margin-bottom: 14px; }
-    .vt-grupo-cab {
-      display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
-      padding: 7px 12px; background: var(--surface-2);
-      border: 1px solid var(--border-subtle); border-radius: 9px 9px 0 0;
-      font-size: .78rem; font-weight: 700; color: var(--text-1);
-    }
-    .vt-grupo-total { font-variant-numeric: tabular-nums; color: var(--text-2); }
-    .vt-pago {
-      display: grid; grid-template-columns: 62px 1fr auto auto; gap: 4px 12px; align-items: baseline;
-      padding: 9px 12px; border: 1px solid var(--border-subtle); border-top: 0;
-      font-size: .84rem;
-    }
-    .vt-grupo .vt-pago:last-child { border-radius: 0 0 9px 9px; }
-    .vt-hora  { font-size: .74rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-    .vt-nom   { font-weight: 600; color: var(--text-1); }
-    .vt-val   { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
-    .vt-link  { font-size: .74rem; color: #3b82f6; text-decoration: none; white-space: nowrap; }
-    .vt-link:hover { text-decoration: underline; }
-    .vt-meta  { grid-column: 2 / -1; font-size: .74rem; color: var(--text-muted); }
-    .vt-vacio { padding: 26px 16px; text-align: center; color: var(--text-muted); font-size: .86rem;
-                border: 1px dashed var(--border-subtle); border-radius: 12px; }
-    @media (max-width: 560px) {
-      .vt-header { flex-direction: column; }
-      .vt-acciones { width: 100%; }
-      .vt-fecha { flex: 1; }
-      .vt-pago { grid-template-columns: 1fr auto; }
-      .vt-hora { grid-column: 1; }
-      .vt-nom  { grid-column: 1; }
-      .vt-val  { grid-column: 2; grid-row: 2; }
-      .vt-link { grid-column: 2; grid-row: 1; }
+    /* Barra de uso dentro de la tabla */
+    .vt-uso { display: flex; align-items: center; gap: 9px; min-width: 130px; }
+    .vt-uso-barra { flex: 1; height: 6px; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
+    .vt-uso-barra span { display: block; height: 100%; border-radius: 99px; background: #2563eb; }
+    .vt-uso-pct { font-size: .76rem; font-variant-numeric: tabular-nums; color: var(--text-muted); min-width: 34px; text-align: right; }
+    tr.cerca    .vt-uso-barra span { background: #d97706; }
+    tr.cerca    .vt-uso-pct        { color: #d97706; font-weight: 700; }
+    tr.excedido .vt-uso-barra span { background: var(--error); }
+    tr.excedido .vt-uso-pct        { color: var(--error); font-weight: 700; }
+    tr.excedido .num.gastado       { color: var(--error); }
+
+    .vt-rubro-eti { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
+    .vt-punto { width: 8px; height: 8px; border-radius: 3px; background: #2563eb; flex: none; }
+    tr.cerca    .vt-punto { background: #d97706; }
+    tr.excedido .vt-punto { background: var(--error); }
+    tr.sin-presu .vt-punto { background: var(--border-strong); }
+
+    @media (max-width: 620px) {
+      .vt-campo { min-width: 120px; }
+      .vt-campo-btns { width: 100%; }
+      .vt-btn { flex: 1; }
     }
 
     /* ─── Medidor de presupuesto diario de viáticos ──────────────────────
@@ -3112,45 +3120,68 @@
 
   <!-- Traslados entre cuentas propias (solo administradores) -->
   <!-- ─── Control de Viáticos ───────────────────────────────────────────
-       Panel propio: en qué se fue la plata del día, rubro por rubro, contra
-       el presupuesto sugerido. Solo administradores. -->
+       Tres bloques, en orden de lectura: filtros, resumen, y el desglose.
+       Solo administradores. -->
   <main id="viewViaticos" style="display:none;">
-    <div class="page-header vt-header">
-      <div>
-        <p class="page-title">Control de Viáticos</p>
-        <p class="page-subtitle">En qué se fue la plata del día, rubro por rubro.</p>
-      </div>
-      <div class="vt-acciones">
-        <input type="text" id="vtFecha" class="vt-fecha" placeholder="Hoy" autocomplete="off" />
-        <button type="button" class="btn-refrescar" id="vtRefrescar" title="Actualizar">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-          </svg>
-          Actualizar
-        </button>
-        <button type="button" class="btn-pri vt-btn-presu" id="vtEditarPresupuesto">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
-          </svg>
-          Presupuestos
-        </button>
-      </div>
+    <div class="page-header">
+      <p class="page-title">Control de Viáticos</p>
+      <p class="page-subtitle">Seguimiento del gasto por rubro.</p>
     </div>
 
-    <!-- Resumen del día -->
+    <!-- Filtros. Cada control con su etiqueta: un campo sin nombre no se sabe
+         para qué sirve. -->
+    <section class="vt-filtros">
+      <div class="vt-rangos" id="vtRangos">
+        <button type="button" class="vt-chip activo" data-rango="hoy">Hoy</button>
+        <button type="button" class="vt-chip" data-rango="ayer">Ayer</button>
+        <button type="button" class="vt-chip" data-rango="7">Últimos 7 días</button>
+        <button type="button" class="vt-chip" data-rango="mes">Este mes</button>
+      </div>
+      <div class="vt-campos">
+        <div class="vt-campo">
+          <label for="vtDesde">Desde</label>
+          <input type="text" id="vtDesde" autocomplete="off" readonly />
+        </div>
+        <div class="vt-campo">
+          <label for="vtHasta">Hasta</label>
+          <input type="text" id="vtHasta" autocomplete="off" readonly />
+        </div>
+        <div class="vt-campo crece">
+          <label for="vtBuscar">Buscar</label>
+          <input type="text" id="vtBuscar" placeholder="Concepto, proveedor o persona…" autocomplete="off" />
+        </div>
+        <div class="vt-campo">
+          <label for="vtRubro">Rubro</label>
+          <select id="vtRubro"><option value="">Todos</option></select>
+        </div>
+        <div class="vt-campo-btns">
+          <button type="button" class="btn-sec vt-btn" id="vtRefrescar">Actualizar</button>
+          <button type="button" class="btn-pri vt-btn" id="vtEditarPresupuesto">Presupuestos</button>
+        </div>
+      </div>
+    </section>
+
+    <p class="vt-periodo" id="vtPeriodo"></p>
+
+    <!-- Resumen -->
     <div class="vt-resumen" id="vtResumen"></div>
 
-    <!-- Una tarjeta por rubro -->
-    <div class="vt-grid" id="vtGrid"></div>
-
-    <!-- El detalle: cada pago del día -->
-    <section class="vt-detalle">
-      <div class="vt-detalle-cab">
-        <p class="vt-seccion">Detalle del día</p>
-        <p class="vt-seccion-nota" id="vtDetalleNota"></p>
+    <!-- Desglose por rubro -->
+    <section class="vt-bloque">
+      <div class="vt-bloque-cab">
+        <h3 class="vt-h3">Gasto por rubro</h3>
+        <span class="vt-nota" id="vtRubrosNota"></span>
       </div>
-      <div id="vtDetalle"></div>
+      <div class="vt-tabla-wrap"><table class="vt-tabla" id="vtRubros"></table></div>
+    </section>
+
+    <!-- Detalle -->
+    <section class="vt-bloque">
+      <div class="vt-bloque-cab">
+        <h3 class="vt-h3">Detalle de pagos</h3>
+        <span class="vt-nota" id="vtDetalleNota"></span>
+      </div>
+      <div class="vt-tabla-wrap"><table class="vt-tabla" id="vtDetalle"></table></div>
     </section>
   </main>
 
@@ -3798,7 +3829,7 @@
         }
         if (tab.dataset.view === 'config')    cargarUsuarios();
         if (tab.dataset.view === 'traslados') cargarTraslados();
-        if (tab.dataset.view === 'viaticos')  cargarControlViaticos();
+        if (tab.dataset.view === 'viaticos')  aplicarRango('hoy');
       });
     });
 
@@ -6179,152 +6210,212 @@
 
     // ─── Control de Viáticos ─────────────────────────────────────────────
     //
-    // Tres capas, de lo general a lo particular: el resumen del día, una
-    // tarjeta por rubro contra su presupuesto sugerido, y el detalle pago por
-    // pago. Solo administradores — el servidor tampoco se lo manda a nadie más.
+    // Filtros arriba, resumen, y dos tablas: gasto por rubro y detalle de
+    // pagos. Solo administradores — el servidor tampoco manda los datos a
+    // nadie más.
     //
     // ⚠️ Los presupuestos son una REFERENCIA, no un límite: no descuentan de
     // ningún saldo ni bloquean nada.
     let vtDatos = null;
-    let vtPickerFecha = null;
 
-    function vtDia() {
-      const v = document.getElementById('vtFecha').value;
-      return v || '';   // vacío = hoy, lo resuelve el servidor
+    const vtDesdeInput = document.getElementById('vtDesde');
+    const vtHastaInput = document.getElementById('vtHasta');
+
+    // El selector de calendario. Sin esto el campo es una caja de texto que no
+    // hace nada — que fue justo lo que pasó en la primera versión.
+    const vtOpcionesFecha = {
+      locale: 'es', dateFormat: 'Y-m-d', altInput: true, altFormat: 'd/m/Y',
+      disableMobile: true, allowInput: false,
+      onChange: () => { marcarChip(null); cargarControlViaticos(); }
+    };
+    const vtPickerDesde = flatpickr(vtDesdeInput, vtOpcionesFecha);
+    const vtPickerHasta = flatpickr(vtHastaInput, vtOpcionesFecha);
+
+    // El filtro de rubro se llena de la misma lista que el formulario: una sola
+    // fuente, para que no puedan quedar desalineados.
+    document.getElementById('vtRubro').innerHTML = '<option value="">Todos</option>' +
+      RUBROS_VIATICOS.map(r => '<option value="' + r[0] + '">' + escapeHtml(r[1]) + '</option>').join('') +
+      '<option value="__sin">Sin rubro</option>';
+
+    function vtISO(d) {
+      const p = n => String(n).padStart(2, '0');
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
     }
 
+    function marcarChip(cual) {
+      document.querySelectorAll('#vtRangos .vt-chip').forEach(c =>
+        c.classList.toggle('activo', c.dataset.rango === cual));
+    }
+
+    function aplicarRango(cual) {
+      const hoy = new Date();
+      let desde = new Date(hoy), hasta = new Date(hoy);
+      if (cual === 'ayer')      { desde.setDate(hoy.getDate() - 1); hasta = new Date(desde); }
+      else if (cual === '7')    { desde.setDate(hoy.getDate() - 6); }
+      else if (cual === 'mes')  { desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1); }
+      vtPickerDesde.setDate(desde, false);
+      vtPickerHasta.setDate(hasta, false);
+      marcarChip(cual);
+      cargarControlViaticos();
+    }
+
+    document.querySelectorAll('#vtRangos .vt-chip').forEach(chip =>
+      chip.addEventListener('click', () => aplicarRango(chip.dataset.rango)));
+
     async function cargarControlViaticos() {
-      const grid = document.getElementById('vtGrid');
-      const res  = document.getElementById('vtResumen');
-      res.innerHTML = '';
-      grid.innerHTML = '<div class="vt-vacio">Cargando…</div>';
+      const rub = document.getElementById('vtRubros');
+      rub.innerHTML = '<tbody><tr><td class="vt-vacio">Cargando…</td></tr></tbody>';
       document.getElementById('vtDetalle').innerHTML = '';
-      document.getElementById('vtDetalleNota').textContent = '';
+      document.getElementById('vtResumen').innerHTML = '';
 
       let r;
       try {
-        r = await postAppsScript({ action: 'consultar_presupuesto', fecha: vtDia() }, 60000);
+        r = await postAppsScript({
+          action: 'consultar_presupuesto',
+          desde:  vtDesdeInput.value || vtISO(new Date()),
+          hasta:  vtHastaInput.value || vtISO(new Date())
+        }, 60000);
       } catch (err) {
-        grid.innerHTML = '<div class="vt-vacio">' + escapeHtml(mensajeDeError(err)) + '</div>';
+        rub.innerHTML = '<tbody><tr><td class="vt-vacio">' + escapeHtml(mensajeDeError(err)) + '</td></tr></tbody>';
         return;
       }
       if (!r || r.status !== 'success') {
-        grid.innerHTML = '<div class="vt-vacio">' + escapeHtml((r && r.message) || 'No se pudo cargar.') + '</div>';
+        rub.innerHTML = '<tbody><tr><td class="vt-vacio">' + escapeHtml((r && r.message) || 'No se pudo cargar.') + '</td></tr></tbody>';
         return;
       }
-
       vtDatos = r.presupuesto;
-      pintarControlViaticos(vtDatos);
+      // El servidor manda el rango que realmente usó: los campos lo reflejan.
+      vtPickerDesde.setDate(vtDatos.desde, false);
+      vtPickerHasta.setDate(vtDatos.hasta, false);
+      pintarControlViaticos();
     }
 
-    function pintarControlViaticos(p) {
+    // Filtro de texto y de rubro: se aplican en el navegador sobre lo ya
+    // traído, así escribir no cuesta una petición por tecla.
+    function vtDetalleFiltrado() {
+      const txt   = document.getElementById('vtBuscar').value.trim().toLowerCase();
+      const rubro = document.getElementById('vtRubro').value;
+      return (vtDatos.detalle || []).filter(d => {
+        if (rubro === '__sin' && d.rubro) return false;
+        if (rubro && rubro !== '__sin' && d.rubro !== rubro) return false;
+        if (!txt) return true;
+        return [d.nombre, d.proveedor, d.quien].join(' ').toLowerCase().indexOf(txt) !== -1;
+      });
+    }
+
+    function pintarControlViaticos() {
+      const p = vtDatos;
+      if (!p) return;
+      document.getElementById('vtPeriodo').textContent = p.titulo;
+
+      const det = vtDetalleFiltrado();
+      const filtrando = det.length !== (p.detalle || []).length;
+      // Cuando hay filtro, los totales son los de lo filtrado: mostrar el total
+      // del período junto a una lista recortada sería engañoso.
+      const total = filtrando ? det.reduce((a, d) => a + d.valor, 0) : p.totalGastado;
+      const pagos = det.length;
+
       // ─── Resumen ───
-      const dif = p.totalSugerido - p.totalGastado;
-      const hayPresupuesto = p.totalSugerido > 0;
+      const dif = p.totalSugerido - total;
+      const hayPresu = p.totalSugerido > 0;
       document.getElementById('vtResumen').innerHTML =
         '<div class="vt-kpi">' +
           '<div class="vt-kpi-eti">Registrado</div>' +
-          '<div class="vt-kpi-val">' + formatoPesos(p.totalGastado) + '</div>' +
-          '<div class="vt-kpi-pie">' + p.pagos + ' pago(s) · ' + escapeHtml(p.fecha) +
-            (p.esHoy ? ' (hoy)' : '') + '</div>' +
+          '<div class="vt-kpi-val">' + formatoPesos(total) + '</div>' +
+          '<div class="vt-kpi-pie">' + pagos + ' pago(s)' + (filtrando ? ' · filtrado' : '') + '</div>' +
         '</div>' +
-        (hayPresupuesto
+        (hayPresu
           ? '<div class="vt-kpi">' +
-              '<div class="vt-kpi-eti">Presupuesto del día</div>' +
+              '<div class="vt-kpi-eti">Presupuesto</div>' +
               '<div class="vt-kpi-val">' + formatoPesos(p.totalSugerido) + '</div>' +
-              '<div class="vt-kpi-pie">suma de los rubros con monto cargado</div>' +
+              '<div class="vt-kpi-pie">' + (p.dias > 1 ? p.dias + ' días × el diario' : 'del día') + '</div>' +
             '</div>' +
             '<div class="vt-kpi ' + (dif < 0 ? 'mal' : 'bien') + '">' +
               '<div class="vt-kpi-eti">' + (dif < 0 ? 'Por encima' : 'Disponible') + '</div>' +
               '<div class="vt-kpi-val">' + formatoPesos(Math.abs(dif)) + '</div>' +
-              '<div class="vt-kpi-pie">' + (dif < 0 ? 'se pasó del sugerido' : 'queda del sugerido') + '</div>' +
+              '<div class="vt-kpi-pie">' + (dif < 0 ? 'del presupuesto' : 'sin usar') + '</div>' +
             '</div>'
-          : '<div class="vt-kpi">' +
-              '<div class="vt-kpi-eti">Presupuesto del día</div>' +
-              '<div class="vt-kpi-val" style="font-size:1.05rem;color:var(--text-muted)">Sin definir</div>' +
-              '<div class="vt-kpi-pie">tocá “Presupuestos” para cargarlos</div>' +
+          : '<div class="vt-kpi apagado">' +
+              '<div class="vt-kpi-eti">Presupuesto</div>' +
+              '<div class="vt-kpi-val">Sin definir</div>' +
+              '<div class="vt-kpi-pie">tocá “Presupuestos”</div>' +
             '</div>') +
         (p.sinRubro > 0
-          ? '<div class="vt-kpi">' +
+          ? '<div class="vt-kpi apagado">' +
               '<div class="vt-kpi-eti">Sin rubro</div>' +
-              '<div class="vt-kpi-val" style="font-size:1.05rem">' + formatoPesos(p.sinRubro) + '</div>' +
+              '<div class="vt-kpi-val">' + formatoPesos(p.sinRubro) + '</div>' +
               '<div class="vt-kpi-pie">pagos sin clasificar</div>' +
             '</div>'
           : '');
 
-      // ─── Una tarjeta por rubro ───
-      // Solo los que tienen gasto o sugerido: diez tarjetas en cero no informan.
-      const visibles = (p.rubros || []).filter(r => r.gastado > 0 || r.sugerido > 0);
-      document.getElementById('vtGrid').innerHTML = visibles.length
-        ? visibles.map(r => {
+      // ─── Tabla por rubro ───
+      // De mayor a menor gasto: lo que más pesa, primero.
+      const rubros = (p.rubros || []).filter(r => r.gastado > 0 || r.sugerido > 0)
+                                     .sort((a, b) => b.gastado - a.gastado);
+      document.getElementById('vtRubrosNota').textContent =
+        p.dias > 1 ? 'Presupuesto = el diario × ' + p.dias + ' días' : '';
+
+      document.getElementById('vtRubros').innerHTML = rubros.length
+        ? '<thead><tr><th>Rubro</th><th class="num">Pagos</th><th class="num">Gastado</th>' +
+          '<th class="num">Presupuesto</th><th>Uso</th></tr></thead><tbody>' +
+          rubros.map(r => {
             const cerca = !r.excedido && r.sugerido > 0 && r.porcentaje >= 80;
-            const clase = r.excedido ? 'excedido' : cerca ? 'cerca' : (r.sugerido > 0 ? '' : 'vacio');
-            return '<div class="vt-card ' + clase + '">' +
-              '<div class="vt-card-eti">' + escapeHtml(r.etiqueta) + '</div>' +
-              '<div class="vt-card-val">' + formatoPesos(r.gastado) + '</div>' +
-              '<div class="vt-card-sub">' +
-                (r.sugerido > 0
-                  ? 'de ' + formatoPesos(r.sugerido) +
-                    (r.excedido ? ' · +' + formatoPesos(r.exceso) : '')
-                  : 'sin presupuesto') +
-                ' · ' + r.pagos + ' pago(s)' +
-              '</div>' +
-              (r.sugerido > 0
-                ? '<div class="presu-barra"><span style="width:' + r.porcentaje + '%"></span></div>'
-                : '') +
-            '</div>';
-          }).join('')
-        : '<div class="vt-vacio">No se registraron viáticos este día.</div>';
+            const clase = r.excedido ? 'excedido' : cerca ? 'cerca' : (r.sugerido > 0 ? '' : 'sin-presu');
+            return '<tr class="' + clase + '">' +
+              '<td><span class="vt-rubro-eti"><span class="vt-punto"></span>' + escapeHtml(r.etiqueta) + '</span></td>' +
+              '<td class="num tenue">' + r.pagos + '</td>' +
+              '<td class="num fuerte gastado">' + formatoPesos(r.gastado) + '</td>' +
+              '<td class="num tenue">' + (r.sugerido > 0 ? formatoPesos(r.sugerido) : '—') + '</td>' +
+              '<td>' + (r.sugerido > 0
+                ? '<div class="vt-uso"><div class="vt-uso-barra"><span style="width:' + r.porcentaje + '%"></span></div>' +
+                  '<span class="vt-uso-pct">' + (r.excedido ? '+' + formatoPesos(r.exceso) : r.porcentaje + '%') + '</span></div>'
+                : '<span class="tenue">sin presupuesto</span>') + '</td>' +
+            '</tr>';
+          }).join('') +
+          '<tr class="total"><td>Total</td>' +
+            '<td class="num">' + p.pagos + '</td>' +
+            '<td class="num">' + formatoPesos(p.totalGastado) + '</td>' +
+            '<td class="num">' + (p.totalSugerido > 0 ? formatoPesos(p.totalSugerido) : '—') + '</td>' +
+            '<td></td></tr></tbody>'
+        : '<tbody><tr><td class="vt-vacio">No se registraron viáticos en este período.</td></tr></tbody>';
 
-      // ─── Detalle, agrupado por rubro ───
-      const det = p.detalle || [];
+      // ─── Tabla de detalle ───
       document.getElementById('vtDetalleNota').textContent =
-        det.length ? det.length + ' pago(s), del más reciente al más antiguo' : '';
-
-      if (!det.length) {
-        document.getElementById('vtDetalle').innerHTML = '';
-        return;
-      }
+        det.length ? det.length + ' pago(s)' + (filtrando ? ' de ' + p.detalle.length : '') : '';
 
       const etiquetaDe = {};
       (p.rubros || []).forEach(r => { etiquetaDe[r.clave] = r.etiqueta; });
 
-      // Se agrupa respetando el orden de los rubros, y lo sin clasificar al final.
-      const orden = (p.rubros || []).map(r => r.clave).concat(['']);
-      const porRubro = {};
-      det.forEach(d => { (porRubro[d.rubro] = porRubro[d.rubro] || []).push(d); });
-
-      document.getElementById('vtDetalle').innerHTML = orden.filter(c => porRubro[c]).map(clave => {
-        const pagos = porRubro[clave];
-        const total = pagos.reduce((a, x) => a + x.valor, 0);
-        return '<div class="vt-grupo">' +
-          '<div class="vt-grupo-cab">' +
-            '<span>' + escapeHtml(etiquetaDe[clave] || 'Sin rubro') + '</span>' +
-            '<span class="vt-grupo-total">' + formatoPesos(total) + ' · ' + pagos.length + '</span>' +
-          '</div>' +
-          pagos.map(d =>
-            '<div class="vt-pago">' +
-              '<span class="vt-hora">' + escapeHtml(d.hora) + '</span>' +
-              '<span class="vt-nom">' + escapeHtml(d.nombre || '—') + '</span>' +
-              '<span class="vt-val">' + formatoPesos(d.valor) + '</span>' +
-              (d.url
-                ? '<a class="vt-link" href="' + escapeHtml(d.url) + '" target="_blank" rel="noopener">Comprobante</a>'
-                : '<span class="vt-link" style="color:var(--text-muted)">sin archivo</span>') +
-              '<span class="vt-meta">' +
-                escapeHtml(d.proveedor || '—') +
-                (d.quien ? ' · ' + escapeHtml(d.quien) : '') +
-                // Solo se aclara cuando el gasto NO es del día que se mira: es
-                // justo el caso que confunde.
-                (d.fechaPago && d.fechaPago !== p.fecha
-                  ? ' · gasto del ' + escapeHtml(d.fechaPago)
+      document.getElementById('vtDetalle').innerHTML = det.length
+        ? '<thead><tr><th>Fecha</th><th>Rubro</th><th>Concepto</th><th>Proveedor</th>' +
+          '<th>Registró</th><th class="num">Valor</th><th></th></tr></thead><tbody>' +
+          det.map(d =>
+            '<tr>' +
+              '<td class="tenue">' + escapeHtml(d.dia) + '<br>' + escapeHtml(d.hora) + '</td>' +
+              '<td>' + escapeHtml(etiquetaDe[d.rubro] || 'Sin rubro') + '</td>' +
+              '<td class="fuerte">' + escapeHtml(d.nombre || '—') +
+                // Solo cuando el gasto NO es del día en que se registró: es el
+                // caso que confunde, así que se dice en vez de esconderse.
+                (d.fechaPago && d.fechaPago !== d.dia
+                  ? '<br><span class="tenue">gasto del ' + escapeHtml(d.fechaPago) + '</span>'
                   : '') +
-              '</span>' +
-            '</div>').join('') +
-        '</div>';
-      }).join('');
+              '</td>' +
+              '<td>' + escapeHtml(d.proveedor || '—') + '</td>' +
+              '<td class="tenue">' + escapeHtml(d.quien || '—') + '</td>' +
+              '<td class="num fuerte">' + formatoPesos(d.valor) + '</td>' +
+              '<td>' + (d.url
+                ? '<a href="' + escapeHtml(d.url) + '" target="_blank" rel="noopener">Ver</a>'
+                : '<span class="tenue">—</span>') + '</td>' +
+            '</tr>').join('') +
+          '</tbody>'
+        : '<tbody><tr><td class="vt-vacio">' +
+          (filtrando ? 'Ningún pago coincide con el filtro.' : 'No se registraron viáticos en este período.') +
+          '</td></tr></tbody>';
     }
 
     document.getElementById('vtRefrescar').addEventListener('click', cargarControlViaticos);
+    document.getElementById('vtBuscar').addEventListener('input', () => { if (vtDatos) pintarControlViaticos(); });
+    document.getElementById('vtRubro').addEventListener('change', () => { if (vtDatos) pintarControlViaticos(); });
     document.getElementById('vtEditarPresupuesto').addEventListener('click', () => {
       if (vtDatos) abrirModalPresupuesto(vtDatos);
     });
