@@ -54,7 +54,7 @@ Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **se
 
 ⚠️ **Las hojas son TABLAS de Sheets, y eso cambia dónde caen los datos nuevos.** `appendRow()` agrega tras la última fila con datos; `values.append` agrega tras la **Tabla**. Si una Tabla abarca más filas que sus datos, un pago nuevo cae al fondo y **desaparece de la vista sin dar ningún error**. Vigilarlo en `GET /salud` → `filasFueraDeLugar` (tiene que estar siempre vacío) y, si aparece algo, correr `node servidor/limpiar-filas-vacias.js` (simula; `--aplicar` para borrar).
 
-`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-28-c` · `sw.js` → `control-pagos-v89` · `MODO_LOGIN` = `'estricto'`.
+`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-28-c` · `sw.js` → `control-pagos-v90` · `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -483,6 +483,11 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-28**: 👁️ **El panel de viáticos se ve solo al registrar un viático.** Aparecía en Nuevo Pago con cualquier tipo de pago seleccionado, y ahí no aporta: distrae.
+  - Ahora exige **las tres cosas a la vez**: ser administrador, tener datos, y que el tipo elegido sea **Viáticos**. Se reevalúa al cambiar de tipo y al limpiar el formulario.
+  - En otras pestañas ni hace falta ocultarlo: vive dentro de la vista de Nuevo Pago, que ya se oculta entera.
+  - La regla quedó fijada en `prueba-referencias.js`, verificada quitando la condición del tipo y quitando la reevaluación.
+
 - **2026-09-28**: 🔧 **El medidor no cuadraba con la lista, y el panel pasó a ser solo de administradores.**
   - **No cuadraba, y la causa era una decisión mía:** agrupaba por `FECHA DE PAGO`. El 28/09 se registraron **7 viáticos ($642.600)** y el medidor mostraba **5 ($161.600)**, porque dos tenían fecha de pago del día anterior (CENA $161.000 y HOSPEDAJE $320.000).
   - Agrupar por fecha de pago es defendible contablemente —el gasto ocurrió ese día— pero **un medidor que no coincide con la lista que está al lado no se entiende, se desconfía**. Y el pedido era *"que se pueda visualizar qué es lo que están registrando"*: eso es registro.

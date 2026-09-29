@@ -111,6 +111,32 @@ chk('ningún identificador de plantilla queda sin declarar',
     sueltos.length === 0, sueltos.map(s => s[0]));
 
 // El caso concreto que se escapó, por si alguien vuelve a mover el bloque.
+console.log('\n=== El panel de viáticos solo se ve donde corresponde ===');
+{
+  // Tres condiciones, y las tres tienen que estar: es de administradores, hay
+  // datos, y se está registrando un VIÁTICO. En cualquier otro tipo de pago el
+  // panel es ruido; en otra pestaña ni siquiera existe, porque vive dentro de
+  // la vista de Nuevo Pago.
+  const cond = (codigo.split('function actualizarVisibilidadPresupuesto')[1] || '').split('\n    }')[0];
+
+  chk('pide que sea un viático',    /esViatico/.test(cond), cond.slice(0, 140));
+  chk('pide que sea administrador', /saldosPuedeEditar/.test(cond), cond.slice(0, 140));
+  chk('y pide que haya datos',      /ultimoPresupuesto/.test(cond), cond.slice(0, 140));
+  chk('las tres juntas, no alguna',
+      /ultimoPresupuesto && saldosPuedeEditar && esViatico/.test(cond), cond.slice(0, 180));
+
+  // Y que se vuelva a evaluar cuando cambia el tipo y cuando se limpia el
+  // formulario: si no, el panel queda colgado del tipo anterior.
+  const cambioTipo = (codigo.split('function actualizarCampoRubro')[1] || '').split('\n    }')[0];
+  chk('se reevalúa al cambiar el tipo de pago',
+      /actualizarVisibilidadPresupuesto\(\)/.test(cambioTipo), cambioTipo.slice(0, 200));
+
+  const reset = (codigo.split("campoRubro.style.display = 'none';")[1] || '').slice(0, 220);
+  chk('y al limpiar el formulario',
+      /actualizarVisibilidadPresupuesto\(\)/.test(reset), reset.slice(0, 160));
+}
+
+
 console.log('\n=== Los iconos de la lista de archivos existen ===');
 ['svgFile', 'svgImage', 'svgTrash'].forEach(n => {
   const usos = (codigo.match(new RegExp('\\b' + n + '\\b', 'g')) || []).length;

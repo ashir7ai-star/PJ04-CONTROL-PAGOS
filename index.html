@@ -4353,6 +4353,9 @@
       const esViatico = String(tipoHidden.value || '').toLowerCase() === 'viaticos';
       campoRubro.style.display = esViatico ? '' : 'none';
       if (!esViatico) selectRubro.selectedIndex = 0;
+      // El panel de viáticos acompaña al campo: solo se ve cuando se está
+      // registrando un viático. En cualquier otro tipo de pago es ruido.
+      if (typeof actualizarVisibilidadPresupuesto === 'function') actualizarVisibilidadPresupuesto();
     }
 
     // ─── Formateador de valor ──────────────────────────────────────
@@ -4659,6 +4662,8 @@
       tipoHidden.value = '';
       selectRubro.selectedIndex = 0;
       campoRubro.style.display = 'none';
+      // Al limpiar el formulario ya no hay tipo elegido: el panel se va con él.
+      actualizarVisibilidadPresupuesto();
       tipoBtns.forEach(b => b.classList.remove('active'));
       uploadNuevoPago.reset();
       fechaPicker.setDate('today');
@@ -6051,16 +6056,30 @@
     // que registran, únicamente que se pueda visualizar".
     const presuCaja = document.getElementById('presupuesto');
 
+    // Lo último que mandó el servidor. Se guarda para poder mostrar y ocultar
+    // el panel al cambiar de tipo de pago sin volver a pedir nada.
+    let ultimoPresupuesto = null;
+
+    // Se ve SOLO si se cumplen las tres cosas:
+    //   · es administrador (el servidor tampoco se lo manda a nadie más),
+    //   · hay datos,
+    //   · y se está registrando un VIÁTICO.
+    // En cualquier otro tipo de pago el panel no aporta y distrae.
+    function actualizarVisibilidadPresupuesto() {
+      if (!presuCaja) return;
+      const esViatico = String(tipoHidden.value || '').toLowerCase() === 'viaticos';
+      presuCaja.style.display = (ultimoPresupuesto && saldosPuedeEditar && esViatico) ? '' : 'none';
+    }
+
     function pintarPresupuesto(p) {
       if (!presuCaja) return;
 
-      // Solo administradores. El servidor ya no se lo manda a nadie más
-      // —`p` llega nulo—, así que esto es la segunda barrera, no la única.
-      if (!p || !saldosPuedeEditar) {
+      ultimoPresupuesto = (p && saldosPuedeEditar) ? p : null;
+      if (!ultimoPresupuesto) {
         presuCaja.style.display = 'none';
         return;
       }
-      presuCaja.style.display = '';
+      actualizarVisibilidadPresupuesto();
 
       const lapizP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
