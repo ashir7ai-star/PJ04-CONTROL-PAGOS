@@ -6054,8 +6054,9 @@
     function pintarPresupuesto(p) {
       if (!presuCaja) return;
 
-      // Sin viáticos asignados no tiene sentido mostrarlo.
-      if (!p || (!saldosPuedeEditar && sesion.secciones.indexOf('viaticos') === -1)) {
+      // Solo administradores. El servidor ya no se lo manda a nadie más
+      // —`p` llega nulo—, así que esto es la segunda barrera, no la única.
+      if (!p || !saldosPuedeEditar) {
         presuCaja.style.display = 'none';
         return;
       }
@@ -6093,7 +6094,7 @@
         : '';
 
       presuCaja.innerHTML = boton +
-        '<div class="presu-titulo">Viáticos de hoy · ' + escapeHtml(p.fecha) + '</div>' +
+        '<div class="presu-titulo">Viáticos registrados hoy · ' + escapeHtml(p.fecha) + '</div>' +
         '<div class="presu-total">' + formatoPesos(p.totalGastado) +
           '<span class="presu-eti">en ' + p.pagos + ' pago(s)' +
           (p.totalSugerido > 0 ? ' · sugerido ' + formatoPesos(p.totalSugerido) : '') + '</span></div>' +

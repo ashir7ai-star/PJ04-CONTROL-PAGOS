@@ -413,7 +413,7 @@ function registrarPago_(body) {
   // de escribir la fila y dentro de su propio try: un aviso que falle no puede
   // voltear un pago que ya quedó registrado.
   if (seccion === 'viaticos') {
-    avisarSiCruzaPresupuesto_(fechaDeTextoISO_(body.fecha_pago), body.monto, body.rubro);
+    avisarSiCruzaPresupuesto_(body.monto, body.rubro);
   }
 
   // Los saldos nuevos viajan con la confirmación del pago: el navegador los
@@ -1786,7 +1786,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-28-b · rubros de viaticos y presupuesto sugerido';
+const REVISION_BACKEND = '2026-09-28-c · medidor por fecha de registro, solo admins';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -2868,7 +2868,11 @@ function consultarSaldos_(ctx, forzar) {
     puedeEditar: esAdministrador,
     // El medidor viaja acá para no costar un viaje aparte: las hojas que
     // necesita ya se leyeron en esta misma petición.
-    presupuesto: estadoPresupuesto_(new Date()),
+    //
+    // ⚠️ SOLO para administradores. Se filtra en el servidor y no en la
+    // pantalla: ocultar un panel con CSS no impide que el dato viaje al
+    // navegador de cualquier usuario, y ahí ya está expuesto.
+    presupuesto: esAdministrador ? estadoPresupuesto_(new Date()) : null,
     // Los registros sin cuenta asignada son información de cuadre global:
     // solo le sirve (y solo le corresponde) a un administrador.
     sinCuenta:   esAdministrador ? crudos.sinCuenta : 0,
@@ -3005,18 +3009,25 @@ function presupuestosPorRubro_() {
   return salida;
 }
 
-// Lo gastado en viáticos en un día, abierto por rubro.
+// Lo registrado en viáticos en un día, abierto por rubro.
 //
-// Se suma por FECHA DE PAGO, no por fecha de registro: el presupuesto es de un
-// DÍA de gasto. Quien carga el lunes los recibos del domingo no ensucia el
-// lunes.
+// ⚠️ Se agrupa por FECHA REGISTRO, no por fecha de pago.
+//
+// Al principio era al revés, y era defendible: el gasto ocurrió el día que
+// dice la factura. Pero en la práctica no cuadraba con lo que la persona ve:
+// el 28/09 se registraron 7 viáticos y el medidor mostraba 5, porque dos
+// tenían fecha de pago del día anterior. Un medidor que no coincide con la
+// lista que está al lado no se entiende, se desconfía.
+//
+// Y es lo que se pidió: "que se pueda visualizar qué es lo que están
+// registrando". Esto mide el registro, no la contabilidad del gasto.
 function gastoViaticosPorRubro_(dia) {
   const valores = valoresDeHoja_(hojaDeSeccion_('viaticos'));
   const salida = { porRubro: {}, total: 0, pagos: 0, sinRubro: 0 };
   if (valores.length < 2) return salida;
 
   const enc    = valores[0];
-  const cFecha = enc.indexOf('FECHA DE PAGO');
+  const cFecha = enc.indexOf('FECHA REGISTRO');
   const cValor = enc.indexOf('VALOR FACTURA');
   const cRubro = enc.indexOf('RUBRO');
   if (cFecha === -1 || cValor === -1) return salida;
@@ -3082,7 +3093,8 @@ function estadoPresupuesto_(dia) {
 }
 
 function consultarPresupuesto_(body) {
-  contextoDe_(body);   // exige sesión válida
+  const ctx = contextoDe_(body);
+  if (MODO_LOGIN !== 'off' && !esAdmin_(ctx)) throw new Error('SOLO_ADMIN');
   return { status: 'success', presupuesto: estadoPresupuesto_(new Date()) };
 }
 
@@ -3137,14 +3149,15 @@ function ajustarPresupuesto_(body) {
 //
 // Un correo por cada pago posterior sería ruido, y el ruido se deja de leer:
 // ya pasó con los errores de /salud, dos días sin que nadie los mirara.
-function avisarSiCruzaPresupuesto_(fechaPago, montoDelPago, rubro) {
+function avisarSiCruzaPresupuesto_(montoDelPago, rubro) {
   try {
     if (!rubroValido_(rubro)) return;
 
     const sugerido = presupuestosPorRubro_()[String(rubro).trim().toLowerCase()];
     if (!sugerido || !(sugerido.monto > 0)) return;
 
-    const dia = fechaHoraDeRegistro_(fechaPago) || new Date();
+    // El mismo criterio que el medidor: el día en que se REGISTRA.
+    const dia = new Date();
     const g   = gastoViaticosPorRubro_(dia).porRubro[String(rubro).trim().toLowerCase()];
     const despues = g ? g.gastado : 0;             // ya incluye el pago recién escrito
     const antes   = despues - montoANumero_(montoDelPago);

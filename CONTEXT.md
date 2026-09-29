@@ -54,7 +54,7 @@ Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **se
 
 ⚠️ **Las hojas son TABLAS de Sheets, y eso cambia dónde caen los datos nuevos.** `appendRow()` agrega tras la última fila con datos; `values.append` agrega tras la **Tabla**. Si una Tabla abarca más filas que sus datos, un pago nuevo cae al fondo y **desaparece de la vista sin dar ningún error**. Vigilarlo en `GET /salud` → `filasFueraDeLugar` (tiene que estar siempre vacío) y, si aparece algo, correr `node servidor/limpiar-filas-vacias.js` (simula; `--aplicar` para borrar).
 
-`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-28-b` · `sw.js` → `control-pagos-v88` · `MODO_LOGIN` = `'estricto'`.
+`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-28-c` · `sw.js` → `control-pagos-v89` · `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -483,6 +483,12 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-28**: 🔧 **El medidor no cuadraba con la lista, y el panel pasó a ser solo de administradores.**
+  - **No cuadraba, y la causa era una decisión mía:** agrupaba por `FECHA DE PAGO`. El 28/09 se registraron **7 viáticos ($642.600)** y el medidor mostraba **5 ($161.600)**, porque dos tenían fecha de pago del día anterior (CENA $161.000 y HOSPEDAJE $320.000).
+  - Agrupar por fecha de pago es defendible contablemente —el gasto ocurrió ese día— pero **un medidor que no coincide con la lista que está al lado no se entiende, se desconfía**. Y el pedido era *"que se pueda visualizar qué es lo que están registrando"*: eso es registro.
+  - **Ahora agrupa por `FECHA REGISTRO`.** Verificado contra los datos reales: **7 pagos, $642.600, CUADRA**.
+  - ⚠️ **El panel es solo para administradores, y se filtra en el SERVIDOR** (`presupuesto: esAdministrador ? … : null`), no ocultándolo con CSS: si solo se ocultara en pantalla, el dato igual viajaría al navegador de cualquier usuario y ahí ya está expuesto. `consultar_presupuesto` también exige admin.
+  - 🧭 **Lo que queda de esto:** cuando dos fechas compiten, gana la que el usuario tiene delante. Elegir la "correcta" contra lo que la pantalla muestra produce un número que nadie puede verificar de un vistazo — y un número que no se puede verificar no se usa.
 - **2026-09-28**: 🆕 **Rubros de viáticos y presupuesto sugerido por rubro.** Reemplaza al presupuesto global del mismo día: ahora cada clase de gasto tiene el suyo.
   - **Rubros** (lista CERRADA): Desayuno · Almuerzo · Cena · Hidratación · Alojamiento · Combustible · Peajes · Parqueadero · **Transporte** · Otro. Al registrar un viático hay que elegir uno; en el resto de secciones el campo ni aparece.
   - ⚠️ **Por qué lista cerrada y no texto libre:** hoy, con el nombre escrito a mano, `HIDRATACION` y `HIDRATACIÓN` son **dos cosas distintas** para el sistema — 24 y 10 pagos que deberían ser 34. Con texto libre cualquier agrupación miente.
@@ -566,7 +572,7 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 - **2026-09-21**: 🚨 **Registrar un pago en Viáticos fallaba: `Range (Viaticos!AA1) exceeds grid limits`.** Una usuaria lo reportó; el servidor tenía **4 intentos fallidos desde el sábado 19 a la mañana** — todo pago fuera de PAGOS REGISTRADOS fallaba (Viáticos, Caja Menor, Nómina, Impuestos, Seguridad Social). **Ninguno quedó a medias**: el encabezado se escribe antes que la fila, y al fallar no se llegó a la fila. Hay que volver a registrarlos.
   - **La causa, otra diferencia Apps Script ↔ API:** `getRange(1, 27).setValue()` en Apps Script **agranda la hoja sola**; la API responde `exceeds grid limits` y no escribe nada. `asegurarColumnas_` quiso crear `ID REGISTRO` (el guardia contra duplicados) en la **columna 27** de una hoja de 26.
   - **Por qué la 27 y no la 12:** la conversión a Tabla dejó **15 encabezados basura `Column 1`…`Column 15`** después de los 11 reales, y la lógica los contaba como ocupados.
-  - **Arreglo en `apps-script.gs`** (`asegurarColumnas_`): los `Column N` y los vacíos son **lugares libres** y se reusan antes de agrandar. `ID REGISTRO` cae en la columna 12. `REVISION_BACKEND` = `2026-09-28-b`. ⚠️ **Falta pegarlo en el editor de Google** (solo importa para la vuelta atrás y los reportes).
+  - **Arreglo en `apps-script.gs`** (`asegurarColumnas_`): los `Column N` y los vacíos son **lugares libres** y se reusan antes de agrandar. `ID REGISTRO` cae en la columna 12. `REVISION_BACKEND` = `2026-09-28-c`. ⚠️ **Falta pegarlo en el editor de Google** (solo importa para la vuelta atrás y los reportes).
   - **Red de seguridad en `escribir.js`:** si Sheets rechaza una escritura por tamaño, **se agranda lo justo (filas y/o columnas) y se reintenta una vez**. No se comprueba antes —costaría una lectura por petición— porque el rechazo es de validación y ocurre antes de escribir nada. Un error que no es de tamaño se deja pasar tal cual.
   - **Verificado contra la hoja real, en los dos niveles:** (1) `asegurarColumnas_` con la lógica real sobre las 5 hojas sin `ID REGISTRO` → las 5 lo tienen ahora en la **columna 12**, con una sola escritura; (2) escritura en la columna 27 de una hoja de 26 → rechazo, +1 columna, reintento OK, y se limpió después.
   - 🧭 **`/salud` ya tenía los 4 errores registrados desde el sábado y nadie lo miró.** El monitoreo existe; falta que avise solo. Anotado como pendiente.

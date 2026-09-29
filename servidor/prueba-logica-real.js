@@ -466,8 +466,11 @@ console.log('\n=== Rubros de viaticos y presupuesto sugerido ===');
   const dia = (d, h) => new Date(2026, 8, d, h || 9, 0, 0);
   // ENC_PAGOS + RUBRO al final
   const ENC = ENC_PAGOS.concat(['RUBRO']);
-  const pago = (d, valor, rubro, tipo) =>
-    [dia(d, 12), 'AMPAC SAS', tipo || 'viaticos', 'Laura', 'X', 'Prov', dia(d), valor, '', '', '', rubro || ''];
+  // (diaRegistro, valor, rubro, tipo, diaPago) — se separan a proposito: el
+  // medidor agrupa por FECHA REGISTRO, no por fecha de pago.
+  const pago = (d, valor, rubro, tipo, diaPago) =>
+    [dia(d, 12), 'AMPAC SAS', tipo || 'viaticos', 'Laura', 'X', 'Prov',
+     dia(diaPago === undefined ? d : diaPago), valor, '', '', '', rubro || ''];
 
   const foto = {
     'PAGOS REGISTRADOS': [ENC],
@@ -476,6 +479,10 @@ console.log('\n=== Rubros de viaticos y presupuesto sugerido ===');
       pago(28,  55000, 'almuerzo'),
       pago(28, 120000, 'cena'),        // se pasa del sugerido de 90.000
       pago(28,  30000, ''),            // sin rubro: un pago viejo
+      // EL caso que no cuadraba: registrado HOY con fecha de pago de AYER.
+      // Antes no aparecia en el medidor de hoy y el usuario veia 7 pagos en la
+      // lista y 5 en el medidor.
+      pago(28, 161000, 'cena', 'viaticos', 27),
       pago(27, 200000, 'cena')],
     'Compra Materiales': [ENC, pago(28, 999999, '', 'compra_materiales')],
     'Caja Menor': [ENC],
@@ -503,23 +510,29 @@ console.log('\n=== Rubros de viaticos y presupuesto sugerido ===');
   chk('vale el sugerido mas reciente de cada rubro', de('cena').sugerido === 90000, de('cena').sugerido);
 
   chk('cada rubro suma lo suyo',
-      de('desayuno').gastado === 40000 && de('almuerzo').gastado === 55000 && de('cena').gastado === 120000,
+      de('desayuno').gastado === 40000 && de('almuerzo').gastado === 55000,
       est.rubros.map(r => r.clave + ':' + r.gastado));
+  // Lo registrado hoy con fecha de pago de ayer SI cuenta hoy: es lo que la
+  // persona ve en la lista, y el medidor tiene que coincidir con eso.
+  chk('un pago registrado hoy con fecha de ayer cuenta HOY',
+      de('cena').gastado === 281000, de('cena').gastado);
+  chk('y el total coincide con lo registrado hoy',
+      est.totalGastado === 406000, est.totalGastado);
   chk('un rubro que se paso se marca', de('cena').excedido === true, de('cena'));
-  chk('y dice por cuanto', de('cena').exceso === 30000, de('cena').exceso);
+  chk('y dice por cuanto', de('cena').exceso === 191000, de('cena').exceso);
   chk('uno que no se paso, no', de('desayuno').excedido === false, de('desayuno'));
   chk('sin sugerido no se compara',
       de('peajes').sugerido === 0 && de('peajes').excedido === false, de('peajes'));
 
   // Lo que no tiene rubro no desaparece: se muestra aparte.
-  chk('el total incluye TODO lo de viaticos', est.totalGastado === 245000, est.totalGastado);
+  chk('el total incluye TODO lo de viaticos', est.totalGastado === 406000, est.totalGastado);
   chk('lo que no tiene rubro se informa aparte', est.sinRubro === 30000, est.sinRubro);
-  chk('Compra Materiales NO entra', est.totalGastado === 245000, est.totalGastado);
+  chk('Compra Materiales NO entra', est.totalGastado === 406000, est.totalGastado);
   chk('suma el total sugerido', est.totalSugerido === 240000, est.totalSugerido);
 
   // Solo el dia pedido.
   const ayer = e.globales.estadoPresupuesto_(dia(27));
-  chk('otro dia cuenta lo de ese dia',
+  chk('otro dia cuenta lo REGISTRADO ese dia',
       ayer.rubros.filter(r => r.clave === 'cena')[0].gastado === 200000,
       ayer.totalGastado);
 
@@ -548,6 +561,22 @@ console.log('\n=== Rubros de viaticos y presupuesto sugerido ===');
     JSON.stringify({ action: 'consultar_saldos', forzar: true }) } })._json);
   chk('el medidor viaja dentro de consultar_saldos',
       !!(saldos.presupuesto && saldos.presupuesto.rubros), Object.keys(saldos));
+
+  // ⚠️ El panel es SOLO de administradores, y se filtra en el SERVIDOR: si
+  // solo se ocultara en pantalla, el dato igual viajaria al navegador.
+  const sLaura = g.globales.consultarSaldos_(
+    g.globales.contextoDe_({ idToken: 'laura@energy-millennium.com' }), true);
+  chk('a un usuario comun el servidor NO le manda el medidor',
+      sLaura.presupuesto === null, sLaura.presupuesto);
+  const sNathan = g.globales.consultarSaldos_(
+    g.globales.contextoDe_({ idToken: 'nathan@ylevigroup.com' }), true);
+  chk('a un admin si', !!(sNathan.presupuesto && sNathan.presupuesto.rubros), sNathan.presupuesto);
+
+  let vedado = null;
+  try { g.globales.consultarPresupuesto_({ idToken: 'laura@energy-millennium.com' }); }
+  catch (err) { vedado = err.message; }
+  chk('y consultar_presupuesto tambien es solo de admins',
+      /SOLO_ADMIN/.test(String(vedado)), vedado);
 }
 
 console.log('\n=== El rubro se guarda solo si es de la lista ===');
@@ -564,6 +593,8 @@ console.log('\n=== El rubro se guarda solo si es de la lista ===');
 
   const av = fuente.split('function avisarSiCruzaPresupuesto_')[1].split('\n}\n')[0];
   chk('el aviso es por rubro', /rubroValido_\(rubro\)/.test(av), av.slice(0, 80));
+  chk('y mide el mismo dia que el medidor: el de registro',
+      /const dia = new Date\(\);/.test(av), 'sigue mirando la fecha de pago');
   chk('y solo al CRUZAR la linea', /antes <= sugerido\.monto && despues > sugerido\.monto/.test(av));
   chk('el correo aclara que no es un limite',
       /no un límite|no es un límite/.test(av), 'falta aclararlo');
