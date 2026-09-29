@@ -1786,7 +1786,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-28-c · medidor por fecha de registro, solo admins';
+const REVISION_BACKEND = '2026-09-28-d · panel Control de Viaticos con detalle';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -2866,13 +2866,10 @@ function consultarSaldos_(ctx, forzar) {
   return {
     status:      'success',
     puedeEditar: esAdministrador,
-    // El medidor viaja acá para no costar un viaje aparte: las hojas que
-    // necesita ya se leyeron en esta misma petición.
-    //
-    // ⚠️ SOLO para administradores. Se filtra en el servidor y no en la
-    // pantalla: ocultar un panel con CSS no impide que el dato viaje al
-    // navegador de cualquier usuario, y ahí ya está expuesto.
-    presupuesto: esAdministrador ? estadoPresupuesto_(new Date()) : null,
+    // El medidor de viáticos ya NO viaja acá: tiene su propia pestaña, que lo
+    // pide con `consultar_presupuesto`. Mandarlo dentro de cada consulta de
+    // saldos —que se refresca sola cada minuto— era pagar por algo que casi
+    // nadie estaba mirando.
     // Los registros sin cuenta asignada son información de cuadre global:
     // solo le sirve (y solo le corresponde) a un administrador.
     sinCuenta:   esAdministrador ? crudos.sinCuenta : 0,
@@ -3023,7 +3020,7 @@ function presupuestosPorRubro_() {
 // registrando". Esto mide el registro, no la contabilidad del gasto.
 function gastoViaticosPorRubro_(dia) {
   const valores = valoresDeHoja_(hojaDeSeccion_('viaticos'));
-  const salida = { porRubro: {}, total: 0, pagos: 0, sinRubro: 0 };
+  const salida = { porRubro: {}, total: 0, pagos: 0, sinRubro: 0, detalle: [] };
   if (valores.length < 2) return salida;
 
   const enc    = valores[0];
@@ -3032,16 +3029,38 @@ function gastoViaticosPorRubro_(dia) {
   const cRubro = enc.indexOf('RUBRO');
   if (cFecha === -1 || cValor === -1) return salida;
 
+  // Columnas del detalle. Se leen una vez, fuera del bucle.
+  const cNombre = enc.indexOf('NOMBRE DE PAGO');
+  const cProv   = enc.indexOf('PROVEEDOR');
+  const cQuien  = enc.indexOf('REGISTRADO POR');
+  const cUrl    = enc.indexOf('URL ARCHIVO');
+  const cPago   = enc.indexOf('FECHA DE PAGO');
+
   for (let i = 1; i < valores.length; i++) {
     const fila = valores[i];
     if (!fila.some(function (v) { return v !== ''; })) continue;
-    if (!mismoDia_(fechaHoraDeRegistro_(fila[cFecha]), dia)) continue;
+    const cuando = fechaHoraDeRegistro_(fila[cFecha]);
+    if (!mismoDia_(cuando, dia)) continue;
 
     const valor = montoANumero_(fila[cValor]);
     const rubro = cRubro === -1 ? '' : String(fila[cRubro] || '').trim().toLowerCase();
 
     salida.total += valor;
     salida.pagos += 1;
+
+    // El detalle: lo que hace falta para entender un gasto sin ir a la hoja.
+    const fechaPago = cPago === -1 ? null : fechaHoraDeRegistro_(fila[cPago]);
+    salida.detalle.push({
+      rubro:     rubroValido_(rubro) ? rubro : '',
+      hora:      cuando ? Utilities.formatDate(cuando, ZONA_HORARIA, 'HH:mm') : '',
+      nombre:    cNombre === -1 ? '' : String(fila[cNombre] || ''),
+      proveedor: cProv   === -1 ? '' : String(fila[cProv]   || ''),
+      quien:     cQuien  === -1 ? '' : String(fila[cQuien]  || ''),
+      url:       cUrl    === -1 ? '' : String(fila[cUrl]    || ''),
+      valor:     valor,
+      // Cuándo se gastó, que puede no ser el día en que se registró.
+      fechaPago: fechaPago ? Utilities.formatDate(fechaPago, ZONA_HORARIA, 'dd/MM/yyyy') : ''
+    });
 
     if (!rubroValido_(rubro)) { salida.sinRubro += valor; continue; }
     const r = salida.porRubro[rubro] || (salida.porRubro[rubro] = { gastado: 0, pagos: 0 });
@@ -3081,7 +3100,12 @@ function estadoPresupuesto_(dia) {
 
   return {
     fecha:         Utilities.formatDate(cuando, ZONA_HORARIA, 'dd/MM/yyyy'),
+    // Para el selector de fecha del panel, que necesita el formato ISO.
+    fechaIso:      Utilities.formatDate(cuando, ZONA_HORARIA, 'yyyy-MM-dd'),
+    esHoy:         mismoDia_(cuando, new Date()),
     rubros:        rubros,
+    // Del más nuevo al más viejo: es el orden en que uno mira "qué pasó hoy".
+    detalle:       gasto.detalle.slice().reverse(),
     totalGastado:  gasto.total,
     totalSugerido: totalSugerido,
     pagos:         gasto.pagos,
@@ -3095,7 +3119,10 @@ function estadoPresupuesto_(dia) {
 function consultarPresupuesto_(body) {
   const ctx = contextoDe_(body);
   if (MODO_LOGIN !== 'off' && !esAdmin_(ctx)) throw new Error('SOLO_ADMIN');
-  return { status: 'success', presupuesto: estadoPresupuesto_(new Date()) };
+  // Se puede pedir otro día: un control que solo mira hoy no sirve para
+  // revisar la semana.
+  const pedida = body && body.fecha ? fechaDeTextoISO_(body.fecha) : null;
+  return { status: 'success', presupuesto: estadoPresupuesto_(pedida || new Date()) };
 }
 
 // Solo un administrador define los montos sugeridos. Acepta uno o varios

@@ -55,6 +55,9 @@ function formatDate(fecha, zona, patron) {
     case 'dd/MM/yyyy HH:mm':  return p.day + '/' + p.month + '/' + p.year + ' ' + p.hour + ':' + p.minute;
     case 'dd/MM/yyyy':        return p.day + '/' + p.month + '/' + p.year;
     case 'MMMM yyyy':         return MESES_ES[Number(p.month) - 1] + ' ' + p.year;
+    // Solo la hora. Lo usa el detalle del Control de Viáticos, donde el día ya
+    // está en la cabecera y repetirlo en cada renglón sería ruido.
+    case 'HH:mm':             return p.hour + ':' + p.minute;
     default:
       // Inventar un formato parecido sería peor: una fecha mal formateada no
       // da error, da un dato equivocado en la contabilidad.

@@ -111,29 +111,34 @@ chk('ningún identificador de plantilla queda sin declarar',
     sueltos.length === 0, sueltos.map(s => s[0]));
 
 // El caso concreto que se escapó, por si alguien vuelve a mover el bloque.
-console.log('\n=== El panel de viáticos solo se ve donde corresponde ===');
+console.log('\n=== Control de Viáticos: su propia pestaña, solo para administradores ===');
 {
-  // Tres condiciones, y las tres tienen que estar: es de administradores, hay
-  // datos, y se está registrando un VIÁTICO. En cualquier otro tipo de pago el
-  // panel es ruido; en otra pestaña ni siquiera existe, porque vive dentro de
-  // la vista de Nuevo Pago.
-  const cond = (codigo.split('function actualizarVisibilidadPresupuesto')[1] || '').split('\n    }')[0];
+  // El panel dejó de vivir dentro de Nuevo Pago: tiene su vista, con el
+  // resumen del día, una tarjeta por rubro y el detalle pago por pago.
+  chk('existe la vista', /id="viewViaticos"/.test(html), 'falta la vista');
+  chk('está registrada en el navegador de pestañas',
+      /viaticos: viewViaticos/.test(codigo), 'la pestaña no mostraría nada');
+  chk('y se carga al entrar',
+      /tab\.dataset\.view === 'viaticos'\)\s*cargarControlViaticos\(\)/.test(codigo), 'no se cargaría');
 
-  chk('pide que sea un viático',    /esViatico/.test(cond), cond.slice(0, 140));
-  chk('pide que sea administrador', /saldosPuedeEditar/.test(cond), cond.slice(0, 140));
-  chk('y pide que haya datos',      /ultimoPresupuesto/.test(cond), cond.slice(0, 140));
-  chk('las tres juntas, no alguna',
-      /ultimoPresupuesto && saldosPuedeEditar && esViatico/.test(cond), cond.slice(0, 180));
+  // La pestaña es de administradores. El servidor tampoco manda los datos a
+  // nadie más, así que esto es la segunda barrera, no la única.
+  chk('la pestaña solo se muestra a administradores',
+      /navViaticos[\s\S]{0,180}?sesion\.rol === 'admin'/.test(codigo), 'la verían todos');
 
-  // Y que se vuelva a evaluar cuando cambia el tipo y cuando se limpia el
-  // formulario: si no, el panel queda colgado del tipo anterior.
-  const cambioTipo = (codigo.split('function actualizarCampoRubro')[1] || '').split('\n    }')[0];
-  chk('se reevalúa al cambiar el tipo de pago',
-      /actualizarVisibilidadPresupuesto\(\)/.test(cambioTipo), cambioTipo.slice(0, 200));
+  // Orden del menú, tal como se pidió.
+  const nav = html.split('<nav class="app-nav">')[1].split('</nav>')[0];
+  const orden = [...nav.matchAll(/data-view="(\w+)"/g)].map(m => m[1]);
+  chk('Control de Viáticos va después de Consultar Pagos',
+      orden.indexOf('viaticos') === orden.indexOf('search') + 1, orden);
+  chk('y Configuración queda al final',
+      orden[orden.length - 1] === 'config', orden);
 
-  const reset = (codigo.split("campoRubro.style.display = 'none';")[1] || '').slice(0, 220);
-  chk('y al limpiar el formulario',
-      /actualizarVisibilidadPresupuesto\(\)/.test(reset), reset.slice(0, 160));
+  // El panel ya no está en Nuevo Pago.
+  chk('el panel salió de Nuevo Pago',
+      !/<div class="presu" id="presupuesto"/.test(html), 'quedó duplicado');
+  chk('y los saldos ya no lo cargan',
+      !/pintarPresupuesto\(r\.presupuesto\)/.test(codigo), 'seguiría viajando con cada refresco');
 }
 
 

@@ -63,6 +63,9 @@ console.log('\n=== Utilities.formatDate: los siete patrones que usa el codigo ==
   chk("'yyyy-MM-dd HH:mm'", formatDate(d, z, 'yyyy-MM-dd HH:mm') === '2026-09-15 18:40', formatDate(d, z, 'yyyy-MM-dd HH:mm'));
   chk("'yyyy-MM-dd'",       formatDate(d, z, 'yyyy-MM-dd')       === '2026-09-15', formatDate(d, z, 'yyyy-MM-dd'));
   chk("'dd/MM/yyyy HH:mm'", formatDate(d, z, 'dd/MM/yyyy HH:mm') === '15/09/2026 18:40', formatDate(d, z, 'dd/MM/yyyy HH:mm'));
+  // Solo la hora: lo usa el detalle del Control de Viaticos, donde el dia ya
+  // esta en la cabecera.
+  chk("'HH:mm'", formatDate(d, z, 'HH:mm') === '18:40', formatDate(d, z, 'HH:mm'));
   chk("'dd/MM/yyyy'",       formatDate(d, z, 'dd/MM/yyyy')       === '15/09/2026', formatDate(d, z, 'dd/MM/yyyy'));
   chk("'yyyy-MM'",          formatDate(d, z, 'yyyy-MM')          === '2026-09', formatDate(d, z, 'yyyy-MM'));
   chk("'yyyy-MM-dd HH.mm'", formatDate(d, z, 'yyyy-MM-dd HH.mm') === '2026-09-15 18.40', formatDate(d, z, 'yyyy-MM-dd HH.mm'));
@@ -556,21 +559,30 @@ console.log('\n=== Rubros de viaticos y presupuesto sugerido ===');
   catch (err) { malo = err.message; }
   chk('un usuario comun NO puede definir presupuestos', /SOLO_ADMIN/.test(String(malo)), malo);
 
-  // Y el medidor viaja con los saldos, sin costar un viaje aparte.
+  // El medidor ya NO viaja con los saldos: tiene su propia pestana y se pide
+  // aparte. Mandarlo en cada consulta de saldos —que se refresca sola cada
+  // minuto— era pagar por algo que casi nadie estaba mirando.
   const saldos = JSON.parse(e.globales.doPost({ postData: { contents:
     JSON.stringify({ action: 'consultar_saldos', forzar: true }) } })._json);
-  chk('el medidor viaja dentro de consultar_saldos',
-      !!(saldos.presupuesto && saldos.presupuesto.rubros), Object.keys(saldos));
+  chk('los saldos ya no cargan el medidor',
+      saldos.presupuesto === undefined, Object.keys(saldos));
 
-  // ⚠️ El panel es SOLO de administradores, y se filtra en el SERVIDOR: si
-  // solo se ocultara en pantalla, el dato igual viajaria al navegador.
-  const sLaura = g.globales.consultarSaldos_(
-    g.globales.contextoDe_({ idToken: 'laura@energy-millennium.com' }), true);
-  chk('a un usuario comun el servidor NO le manda el medidor',
-      sLaura.presupuesto === null, sLaura.presupuesto);
-  const sNathan = g.globales.consultarSaldos_(
-    g.globales.contextoDe_({ idToken: 'nathan@ylevigroup.com' }), true);
-  chk('a un admin si', !!(sNathan.presupuesto && sNathan.presupuesto.rubros), sNathan.presupuesto);
+  // El detalle del dia, que es lo que pinta el panel.
+  const conDetalle = JSON.parse(e.globales.doPost({ postData: { contents:
+    JSON.stringify({ action: 'consultar_presupuesto' }) } })._json).presupuesto;
+  chk('consultar_presupuesto trae el detalle pago por pago',
+      Array.isArray(conDetalle.detalle) && conDetalle.detalle.length > 0, conDetalle.detalle);
+  chk('y el detalle suma exactamente el total',
+      conDetalle.detalle.reduce(function (a, d) { return a + d.valor; }, 0) === conDetalle.totalGastado,
+      [conDetalle.detalle.length, conDetalle.totalGastado]);
+  chk('cada pago trae lo necesario para entenderlo',
+      conDetalle.detalle.every(function (d) {
+        return d.hora !== undefined && d.nombre !== undefined && d.valor !== undefined && d.rubro !== undefined;
+      }), conDetalle.detalle[0]);
+  chk('y se puede pedir OTRO dia',
+      JSON.parse(e.globales.doPost({ postData: { contents:
+        JSON.stringify({ action: 'consultar_presupuesto', fecha: '2026-09-27' }) } })._json)
+        .presupuesto.fecha === '27/09/2026');
 
   let vedado = null;
   try { g.globales.consultarPresupuesto_({ idToken: 'laura@energy-millennium.com' }); }

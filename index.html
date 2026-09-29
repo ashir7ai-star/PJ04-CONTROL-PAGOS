@@ -1562,6 +1562,90 @@
       border-top: 1px solid var(--border);
     }
 
+    /* ─── Control de Viáticos ────────────────────────────────────────────
+       Panel propio. Tres capas, de lo general a lo particular: resumen del
+       día, tarjetas por rubro, y el detalle pago por pago. */
+    .vt-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .vt-acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .vt-fecha {
+      width: 130px; padding: 8px 11px; font-size: .85rem; font-weight: 600;
+      background: var(--surface-1); border: 1px solid var(--border-subtle);
+      border-radius: 9px; color: var(--text-1); cursor: pointer;
+    }
+    .vt-fecha:focus { outline: none; border-color: #2563eb; }
+    .vt-btn-presu { padding: 8px 14px; font-size: .85rem; display: inline-flex; align-items: center; gap: 7px; }
+    .vt-btn-presu svg { width: 14px; height: 14px; }
+
+    /* Resumen */
+    .vt-resumen {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px;
+      background: var(--border-subtle); border: 1px solid var(--border-subtle);
+      border-radius: 14px; overflow: hidden; margin: 0 0 16px;
+    }
+    .vt-kpi { background: var(--surface-1); padding: 15px 16px; }
+    .vt-kpi-eti { font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); }
+    .vt-kpi-val { font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin-top: 4px; }
+    .vt-kpi-pie { font-size: .74rem; color: var(--text-muted); margin-top: 2px; }
+    .vt-kpi.bien .vt-kpi-val  { color: var(--success, #16a34a); }
+    .vt-kpi.mal  .vt-kpi-val  { color: var(--error); }
+
+    /* Tarjetas por rubro */
+    .vt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 12px; margin: 0 0 22px; }
+    .vt-card {
+      position: relative; background: var(--surface-1); border: 1px solid var(--border-subtle);
+      border-radius: 13px; padding: 14px 15px 13px; overflow: hidden;
+    }
+    .vt-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: #2563eb; }
+    .vt-card.cerca::before    { background: #d97706; }
+    .vt-card.excedido::before { background: var(--error); }
+    .vt-card.vacio::before    { background: var(--border-strong); }
+    .vt-card-eti { font-size: .82rem; font-weight: 700; color: var(--text-1); }
+    .vt-card-val { font-size: 1.15rem; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.01em; margin-top: 3px; }
+    .vt-card.excedido .vt-card-val { color: var(--error); }
+    .vt-card.cerca    .vt-card-val { color: #d97706; }
+    .vt-card-sub { font-size: .73rem; color: var(--text-muted); margin-top: 1px; }
+    .vt-card .presu-barra { margin: 10px 0 0; height: 6px; }
+    .vt-card.cerca    .presu-barra span { background: #d97706; }
+    .vt-card.excedido .presu-barra span { background: var(--error); }
+
+    /* Detalle */
+    .vt-detalle { margin-bottom: 30px; }
+    .vt-detalle-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 10px; flex-wrap: wrap; }
+    .vt-seccion { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); margin: 0; }
+    .vt-seccion-nota { font-size: .76rem; color: var(--text-muted); margin: 0; }
+    .vt-grupo { margin-bottom: 14px; }
+    .vt-grupo-cab {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+      padding: 7px 12px; background: var(--surface-2);
+      border: 1px solid var(--border-subtle); border-radius: 9px 9px 0 0;
+      font-size: .78rem; font-weight: 700; color: var(--text-1);
+    }
+    .vt-grupo-total { font-variant-numeric: tabular-nums; color: var(--text-2); }
+    .vt-pago {
+      display: grid; grid-template-columns: 62px 1fr auto auto; gap: 4px 12px; align-items: baseline;
+      padding: 9px 12px; border: 1px solid var(--border-subtle); border-top: 0;
+      font-size: .84rem;
+    }
+    .vt-grupo .vt-pago:last-child { border-radius: 0 0 9px 9px; }
+    .vt-hora  { font-size: .74rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .vt-nom   { font-weight: 600; color: var(--text-1); }
+    .vt-val   { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+    .vt-link  { font-size: .74rem; color: #3b82f6; text-decoration: none; white-space: nowrap; }
+    .vt-link:hover { text-decoration: underline; }
+    .vt-meta  { grid-column: 2 / -1; font-size: .74rem; color: var(--text-muted); }
+    .vt-vacio { padding: 26px 16px; text-align: center; color: var(--text-muted); font-size: .86rem;
+                border: 1px dashed var(--border-subtle); border-radius: 12px; }
+    @media (max-width: 560px) {
+      .vt-header { flex-direction: column; }
+      .vt-acciones { width: 100%; }
+      .vt-fecha { flex: 1; }
+      .vt-pago { grid-template-columns: 1fr auto; }
+      .vt-hora { grid-column: 1; }
+      .vt-nom  { grid-column: 1; }
+      .vt-val  { grid-column: 2; grid-row: 2; }
+      .vt-link { grid-column: 2; grid-row: 1; }
+    }
+
     /* ─── Medidor de presupuesto diario de viáticos ──────────────────────
        Un solo presupuesto para todo el equipo, por día. Lo que cambia la
        conducta es verlo ANTES de gastar, no el correo de después. */
@@ -2306,6 +2390,13 @@
       </svg>
       <span id="navSearchLabel">Consultar Pagos</span>
     </button>
+    <button class="nav-tab" data-view="viaticos" id="navViaticos" style="display:none;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="7" width="20" height="14" rx="2"/>
+        <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+      </svg>
+      Control de Viáticos
+    </button>
     <button class="nav-tab" data-view="aprobaciones">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
@@ -2313,6 +2404,13 @@
         <path d="m9 14 2 2 4-4"/>
       </svg>
       Aprobaciones
+    </button>
+    <button class="nav-tab" data-view="traslados" id="navTraslados" style="display:none;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+        <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+      </svg>
+      Traslados
     </button>
     <button class="nav-tab" data-view="config" id="navConfig" style="display:none;">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2323,13 +2421,6 @@
       </svg>
       Configuración
     </button>
-    <button class="nav-tab" data-view="traslados" id="navTraslados" style="display:none;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
-        <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-      </svg>
-      Traslados
-    </button>
   </nav>
 
   <!-- Main -->
@@ -2338,9 +2429,6 @@
       <p class="page-title" id="formTitle">Nuevo Pago</p>
       <p class="page-subtitle" id="formSubtitle">Completa los datos y envía el pago al sistema.</p>
     </div>
-
-    <!-- Presupuesto diario de viáticos -->
-    <div class="presu" id="presupuesto" style="display:none;"></div>
 
     <!-- Saldos disponibles -->
     <section class="saldos" id="seccionSaldos">
@@ -3023,6 +3111,49 @@
   </div>
 
   <!-- Traslados entre cuentas propias (solo administradores) -->
+  <!-- ─── Control de Viáticos ───────────────────────────────────────────
+       Panel propio: en qué se fue la plata del día, rubro por rubro, contra
+       el presupuesto sugerido. Solo administradores. -->
+  <main id="viewViaticos" style="display:none;">
+    <div class="page-header vt-header">
+      <div>
+        <p class="page-title">Control de Viáticos</p>
+        <p class="page-subtitle">En qué se fue la plata del día, rubro por rubro.</p>
+      </div>
+      <div class="vt-acciones">
+        <input type="text" id="vtFecha" class="vt-fecha" placeholder="Hoy" autocomplete="off" />
+        <button type="button" class="btn-refrescar" id="vtRefrescar" title="Actualizar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          Actualizar
+        </button>
+        <button type="button" class="btn-pri vt-btn-presu" id="vtEditarPresupuesto">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+          </svg>
+          Presupuestos
+        </button>
+      </div>
+    </div>
+
+    <!-- Resumen del día -->
+    <div class="vt-resumen" id="vtResumen"></div>
+
+    <!-- Una tarjeta por rubro -->
+    <div class="vt-grid" id="vtGrid"></div>
+
+    <!-- El detalle: cada pago del día -->
+    <section class="vt-detalle">
+      <div class="vt-detalle-cab">
+        <p class="vt-seccion">Detalle del día</p>
+        <p class="vt-seccion-nota" id="vtDetalleNota"></p>
+      </div>
+      <div id="vtDetalle"></div>
+    </section>
+  </main>
+
   <main id="viewTraslados" style="display:none;">
     <div class="page-header">
       <p class="page-title">Traslados</p>
@@ -3650,8 +3781,9 @@
     const viewAprobaciones   = document.getElementById('viewAprobaciones');
     const viewConfig         = document.getElementById('viewConfig');
     const viewTraslados      = document.getElementById('viewTraslados');
+    const viewViaticos       = document.getElementById('viewViaticos');
     const vistasPorNombre    = { form: viewForm, search: viewSearch, aprobaciones: viewAprobaciones,
-                                 config: viewConfig, traslados: viewTraslados };
+                                 config: viewConfig, traslados: viewTraslados, viaticos: viewViaticos };
 
     navTabs.forEach(tab => {
       tab.addEventListener('click', () => {
@@ -3666,6 +3798,7 @@
         }
         if (tab.dataset.view === 'config')    cargarUsuarios();
         if (tab.dataset.view === 'traslados') cargarTraslados();
+        if (tab.dataset.view === 'viaticos')  cargarControlViaticos();
       });
     });
 
@@ -4353,9 +4486,6 @@
       const esViatico = String(tipoHidden.value || '').toLowerCase() === 'viaticos';
       campoRubro.style.display = esViatico ? '' : 'none';
       if (!esViatico) selectRubro.selectedIndex = 0;
-      // El panel de viáticos acompaña al campo: solo se ve cuando se está
-      // registrando un viático. En cualquier otro tipo de pago es ruido.
-      if (typeof actualizarVisibilidadPresupuesto === 'function') actualizarVisibilidadPresupuesto();
     }
 
     // ─── Formateador de valor ──────────────────────────────────────
@@ -4662,8 +4792,6 @@
       tipoHidden.value = '';
       selectRubro.selectedIndex = 0;
       campoRubro.style.display = 'none';
-      // Al limpiar el formulario ya no hay tipo elegido: el panel se va con él.
-      actualizarVisibilidadPresupuesto();
       tipoBtns.forEach(b => b.classList.remove('active'));
       uploadNuevoPago.reset();
       fechaPicker.setDate('today');
@@ -5596,6 +5724,11 @@
 
       // Se precargan los campos que el sistema ya conoce, para no hacérselos
       // escribir. Quedan editables: alguien puede registrar en nombre de otro.
+      // Control de Viáticos es de administradores: el servidor tampoco le
+      // manda los datos a nadie más.
+      const navVt = document.getElementById('navViaticos');
+      if (navVt) navVt.style.display = (sesion.rol === 'admin') ? '' : 'none';
+
       [['solicitadoPor', sesion.nombre], ['registradoPor', sesion.nombre]].forEach(([id, valor]) => {
         const campo = document.getElementById(id);
         if (campo && !campo.value.trim() && valor) campo.value = valor;
@@ -5854,8 +5987,6 @@
       if (!r || r.status !== 'success') return;
       saldosPuedeEditar = !!r.puedeEditar;
       pintarSaldos(r);
-      // El medidor viene en la misma respuesta que los saldos.
-      pintarPresupuesto(r.presupuesto);
       // Cualquier camino que pinte saldos cuenta como refresco: los que vienen
       // dentro de la respuesta de un pago o un traslado también son datos
       // frescos. Si no se marcara acá, el contador mentiría.
@@ -6046,88 +6177,157 @@
     });
     window.addEventListener('online', () => refrescarSaldosSolo());
 
-    // ─── Presupuesto sugerido por rubro ──────────────────────────────────
+    // ─── Control de Viáticos ─────────────────────────────────────────────
     //
-    // Muestra en qué se fue la plata de viáticos del día, rubro por rubro, y
-    // cuánto se había sugerido para cada uno.
+    // Tres capas, de lo general a lo particular: el resumen del día, una
+    // tarjeta por rubro contra su presupuesto sugerido, y el detalle pago por
+    // pago. Solo administradores — el servidor tampoco se lo manda a nadie más.
     //
-    // ⚠️ Es una REFERENCIA, no un límite. No descuenta de ningún saldo ni
-    // bloquea nada — pedido explícito: "no quiero que haga matemáticas con lo
-    // que registran, únicamente que se pueda visualizar".
-    const presuCaja = document.getElementById('presupuesto');
+    // ⚠️ Los presupuestos son una REFERENCIA, no un límite: no descuentan de
+    // ningún saldo ni bloquean nada.
+    let vtDatos = null;
+    let vtPickerFecha = null;
 
-    // Lo último que mandó el servidor. Se guarda para poder mostrar y ocultar
-    // el panel al cambiar de tipo de pago sin volver a pedir nada.
-    let ultimoPresupuesto = null;
-
-    // Se ve SOLO si se cumplen las tres cosas:
-    //   · es administrador (el servidor tampoco se lo manda a nadie más),
-    //   · hay datos,
-    //   · y se está registrando un VIÁTICO.
-    // En cualquier otro tipo de pago el panel no aporta y distrae.
-    function actualizarVisibilidadPresupuesto() {
-      if (!presuCaja) return;
-      const esViatico = String(tipoHidden.value || '').toLowerCase() === 'viaticos';
-      presuCaja.style.display = (ultimoPresupuesto && saldosPuedeEditar && esViatico) ? '' : 'none';
+    function vtDia() {
+      const v = document.getElementById('vtFecha').value;
+      return v || '';   // vacío = hoy, lo resuelve el servidor
     }
 
-    function pintarPresupuesto(p) {
-      if (!presuCaja) return;
+    async function cargarControlViaticos() {
+      const grid = document.getElementById('vtGrid');
+      const res  = document.getElementById('vtResumen');
+      res.innerHTML = '';
+      grid.innerHTML = '<div class="vt-vacio">Cargando…</div>';
+      document.getElementById('vtDetalle').innerHTML = '';
+      document.getElementById('vtDetalleNota').textContent = '';
 
-      ultimoPresupuesto = (p && saldosPuedeEditar) ? p : null;
-      if (!ultimoPresupuesto) {
-        presuCaja.style.display = 'none';
+      let r;
+      try {
+        r = await postAppsScript({ action: 'consultar_presupuesto', fecha: vtDia() }, 60000);
+      } catch (err) {
+        grid.innerHTML = '<div class="vt-vacio">' + escapeHtml(mensajeDeError(err)) + '</div>';
         return;
       }
-      actualizarVisibilidadPresupuesto();
+      if (!r || r.status !== 'success') {
+        grid.innerHTML = '<div class="vt-vacio">' + escapeHtml((r && r.message) || 'No se pudo cargar.') + '</div>';
+        return;
+      }
 
-      const lapizP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-        '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
-      const boton = saldosPuedeEditar
-        ? '<button type="button" class="presu-editar" id="btnEditarPresupuesto" title="Definir presupuesto sugerido">' + lapizP + '</button>'
-        : '';
+      vtDatos = r.presupuesto;
+      pintarControlViaticos(vtDatos);
+    }
 
-      // Solo los rubros con algo que mostrar: los que tienen gasto hoy o un
-      // sugerido cargado. Diez renglones en cero no informan nada.
+    function pintarControlViaticos(p) {
+      // ─── Resumen ───
+      const dif = p.totalSugerido - p.totalGastado;
+      const hayPresupuesto = p.totalSugerido > 0;
+      document.getElementById('vtResumen').innerHTML =
+        '<div class="vt-kpi">' +
+          '<div class="vt-kpi-eti">Registrado</div>' +
+          '<div class="vt-kpi-val">' + formatoPesos(p.totalGastado) + '</div>' +
+          '<div class="vt-kpi-pie">' + p.pagos + ' pago(s) · ' + escapeHtml(p.fecha) +
+            (p.esHoy ? ' (hoy)' : '') + '</div>' +
+        '</div>' +
+        (hayPresupuesto
+          ? '<div class="vt-kpi">' +
+              '<div class="vt-kpi-eti">Presupuesto del día</div>' +
+              '<div class="vt-kpi-val">' + formatoPesos(p.totalSugerido) + '</div>' +
+              '<div class="vt-kpi-pie">suma de los rubros con monto cargado</div>' +
+            '</div>' +
+            '<div class="vt-kpi ' + (dif < 0 ? 'mal' : 'bien') + '">' +
+              '<div class="vt-kpi-eti">' + (dif < 0 ? 'Por encima' : 'Disponible') + '</div>' +
+              '<div class="vt-kpi-val">' + formatoPesos(Math.abs(dif)) + '</div>' +
+              '<div class="vt-kpi-pie">' + (dif < 0 ? 'se pasó del sugerido' : 'queda del sugerido') + '</div>' +
+            '</div>'
+          : '<div class="vt-kpi">' +
+              '<div class="vt-kpi-eti">Presupuesto del día</div>' +
+              '<div class="vt-kpi-val" style="font-size:1.05rem;color:var(--text-muted)">Sin definir</div>' +
+              '<div class="vt-kpi-pie">tocá “Presupuestos” para cargarlos</div>' +
+            '</div>') +
+        (p.sinRubro > 0
+          ? '<div class="vt-kpi">' +
+              '<div class="vt-kpi-eti">Sin rubro</div>' +
+              '<div class="vt-kpi-val" style="font-size:1.05rem">' + formatoPesos(p.sinRubro) + '</div>' +
+              '<div class="vt-kpi-pie">pagos sin clasificar</div>' +
+            '</div>'
+          : '');
+
+      // ─── Una tarjeta por rubro ───
+      // Solo los que tienen gasto o sugerido: diez tarjetas en cero no informan.
       const visibles = (p.rubros || []).filter(r => r.gastado > 0 || r.sugerido > 0);
+      document.getElementById('vtGrid').innerHTML = visibles.length
+        ? visibles.map(r => {
+            const cerca = !r.excedido && r.sugerido > 0 && r.porcentaje >= 80;
+            const clase = r.excedido ? 'excedido' : cerca ? 'cerca' : (r.sugerido > 0 ? '' : 'vacio');
+            return '<div class="vt-card ' + clase + '">' +
+              '<div class="vt-card-eti">' + escapeHtml(r.etiqueta) + '</div>' +
+              '<div class="vt-card-val">' + formatoPesos(r.gastado) + '</div>' +
+              '<div class="vt-card-sub">' +
+                (r.sugerido > 0
+                  ? 'de ' + formatoPesos(r.sugerido) +
+                    (r.excedido ? ' · +' + formatoPesos(r.exceso) : '')
+                  : 'sin presupuesto') +
+                ' · ' + r.pagos + ' pago(s)' +
+              '</div>' +
+              (r.sugerido > 0
+                ? '<div class="presu-barra"><span style="width:' + r.porcentaje + '%"></span></div>'
+                : '') +
+            '</div>';
+          }).join('')
+        : '<div class="vt-vacio">No se registraron viáticos este día.</div>';
 
-      const filas = visibles.map(r => {
-        const cerca = !r.excedido && r.sugerido > 0 && r.porcentaje >= 80;
-        const clase = r.excedido ? ' excedido' : cerca ? ' cerca' : '';
-        const derecha = r.sugerido > 0
-          ? formatoPesos(r.gastado) + ' <span class="presu-de">de ' + formatoPesos(r.sugerido) + '</span>'
-          : formatoPesos(r.gastado) + ' <span class="presu-de">sin sugerido</span>';
-        return '<div class="presu-rubro' + clase + '">' +
-          '<div class="presu-rubro-cab">' +
-            '<span class="presu-rubro-eti">' + escapeHtml(r.etiqueta) + (r.pagos ? ' <span class="presu-de">· ' + r.pagos + '</span>' : '') + '</span>' +
-            '<span class="presu-rubro-val">' + derecha + '</span>' +
+      // ─── Detalle, agrupado por rubro ───
+      const det = p.detalle || [];
+      document.getElementById('vtDetalleNota').textContent =
+        det.length ? det.length + ' pago(s), del más reciente al más antiguo' : '';
+
+      if (!det.length) {
+        document.getElementById('vtDetalle').innerHTML = '';
+        return;
+      }
+
+      const etiquetaDe = {};
+      (p.rubros || []).forEach(r => { etiquetaDe[r.clave] = r.etiqueta; });
+
+      // Se agrupa respetando el orden de los rubros, y lo sin clasificar al final.
+      const orden = (p.rubros || []).map(r => r.clave).concat(['']);
+      const porRubro = {};
+      det.forEach(d => { (porRubro[d.rubro] = porRubro[d.rubro] || []).push(d); });
+
+      document.getElementById('vtDetalle').innerHTML = orden.filter(c => porRubro[c]).map(clave => {
+        const pagos = porRubro[clave];
+        const total = pagos.reduce((a, x) => a + x.valor, 0);
+        return '<div class="vt-grupo">' +
+          '<div class="vt-grupo-cab">' +
+            '<span>' + escapeHtml(etiquetaDe[clave] || 'Sin rubro') + '</span>' +
+            '<span class="vt-grupo-total">' + formatoPesos(total) + ' · ' + pagos.length + '</span>' +
           '</div>' +
-          (r.sugerido > 0
-            ? '<div class="presu-barra"><span style="width:' + r.porcentaje + '%"></span></div>'
-            : '') +
+          pagos.map(d =>
+            '<div class="vt-pago">' +
+              '<span class="vt-hora">' + escapeHtml(d.hora) + '</span>' +
+              '<span class="vt-nom">' + escapeHtml(d.nombre || '—') + '</span>' +
+              '<span class="vt-val">' + formatoPesos(d.valor) + '</span>' +
+              (d.url
+                ? '<a class="vt-link" href="' + escapeHtml(d.url) + '" target="_blank" rel="noopener">Comprobante</a>'
+                : '<span class="vt-link" style="color:var(--text-muted)">sin archivo</span>') +
+              '<span class="vt-meta">' +
+                escapeHtml(d.proveedor || '—') +
+                (d.quien ? ' · ' + escapeHtml(d.quien) : '') +
+                // Solo se aclara cuando el gasto NO es del día que se mira: es
+                // justo el caso que confunde.
+                (d.fechaPago && d.fechaPago !== p.fecha
+                  ? ' · gasto del ' + escapeHtml(d.fechaPago)
+                  : '') +
+              '</span>' +
+            '</div>').join('') +
         '</div>';
       }).join('');
-
-      const pie = p.sinRubro > 0
-        ? '<div class="presu-pie">' + formatoPesos(p.sinRubro) + ' sin rubro — son pagos anteriores a esta función.</div>'
-        : '';
-
-      presuCaja.innerHTML = boton +
-        '<div class="presu-titulo">Viáticos registrados hoy · ' + escapeHtml(p.fecha) + '</div>' +
-        '<div class="presu-total">' + formatoPesos(p.totalGastado) +
-          '<span class="presu-eti">en ' + p.pagos + ' pago(s)' +
-          (p.totalSugerido > 0 ? ' · sugerido ' + formatoPesos(p.totalSugerido) : '') + '</span></div>' +
-        (filas
-          ? '<div class="presu-lista">' + filas + '</div>'
-          : '<div class="presu-pie">Todavía no hay gastos hoy' +
-            (p.configurado ? '.' : (saldosPuedeEditar
-              ? ' ni presupuestos sugeridos. Tocá el lápiz para cargarlos.'
-              : '.')) + '</div>') +
-        pie;
-
-      const btn = document.getElementById('btnEditarPresupuesto');
-      if (btn) btn.addEventListener('click', () => abrirModalPresupuesto(p));
     }
+
+    document.getElementById('vtRefrescar').addEventListener('click', cargarControlViaticos);
+    document.getElementById('vtEditarPresupuesto').addEventListener('click', () => {
+      if (vtDatos) abrirModalPresupuesto(vtDatos);
+    });
 
     // ─── Definir los montos sugeridos (solo administradores) ─────────────
     const modalPresu = document.getElementById('modalPresupuesto');
@@ -6172,8 +6372,10 @@
           return;
         }
         cerrarModalPresupuesto();
-        showToast('success', 'Presupuestos actualizados', 'Desde ahora el medidor usa estos montos.');
-        pintarPresupuesto(r.presupuesto);
+        showToast('success', 'Presupuestos actualizados', 'Desde ahora el panel usa estos montos.');
+        // Se vuelve a pedir en vez de pintar lo que devolvió el guardado: la
+        // respuesta trae el estado de HOY, y el panel puede estar mirando otro día.
+        cargarControlViaticos();
       } catch (err) {
         showToast('error', 'No se pudo guardar', mensajeDeError(err));
       } finally {
