@@ -54,7 +54,7 @@ Verificado con `servidor/comparar-backends.js` contra las hojas reales: las **se
 
 ⚠️ **Las hojas son TABLAS de Sheets, y eso cambia dónde caen los datos nuevos.** `appendRow()` agrega tras la última fila con datos; `values.append` agrega tras la **Tabla**. Si una Tabla abarca más filas que sus datos, un pago nuevo cae al fondo y **desaparece de la vista sin dar ningún error**. Vigilarlo en `GET /salud` → `filasFueraDeLugar` (tiene que estar siempre vacío) y, si aparece algo, correr `node servidor/limpiar-filas-vacias.js` (simula; `--aplicar` para borrar).
 
-`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-28-d` · `sw.js` → `control-pagos-v92` · `MODO_LOGIN` = `'estricto'`.
+`API` → `https://ashir-pj04-pagos-api.nr6aco.easypanel.host` · `REVISION_BACKEND` = `2026-09-30-a` · `sw.js` → `control-pagos-v93` · `MODO_LOGIN` = `'estricto'`.
 
 ## ⚠️ Nota operativa: el hook de auto-push puede fallar en silencio (NO RESUELTO DEL TODO — seguir verificando)
 El 2026-08-30/31 el hook de `Stop` hizo el commit local pero **no llegó a subirlo a GitHub** tres veces seguidas (branch quedó "ahead of origin" sin ningún mensaje de error visible), incluso después de subir el timeout de 30s a 60s (no era problema de tiempo).
@@ -483,6 +483,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-30**: 🔁 **El presupuesto vuelve a ser UNO SOLO por día**, no uno por rubro. Ej.: $650.000 el día, se reparta como se reparta.
+  - La hoja `PRESUPUESTO` perdió la columna `RUBRO` (estaba vacía, sin datos que migrar) y quedó en `FECHA · MONTO DIARIO · REGISTRADO POR · NOTA`. Vale la última fila; el historial se conserva.
+  - **Los rubros siguen existiendo y se siguen mostrando** — el panel ya no compara cada rubro contra un tope propio, sino que informa su **participación** en el gasto del período. Responde "en qué se fue la plata" sin inventar topes que nadie definió.
+  - **Para un rango, el diario se multiplica por los días.** Comparar una semana contra el tope de un día sería un rojo garantizado que no significa nada.
+  - El **aviso por correo** pasa a ser del día entero: sale en el pago que cruza la línea, una sola vez por día.
+  - El modal quedó con **un solo campo**. Sigue validando que sea un número mayor que cero: `montoANumero_` devuelve 0 ante cualquier texto, así que "abc" entraría como $0 sin avisar.
+  - **Verificado contra datos reales con $650.000/día:** el 28/09 quedó en $642.600 (disponible $7.400), y la semana del 22 al 28 **$2.910.150 por encima** — con Alojamiento pesando el 40% del gasto.
 - **2026-09-28**: 🎨 **Control de Viáticos rediseñado, con filtros de verdad.** La primera versión no gustó, y con razón.
   - 🐛 **El campo de fecha de arriba a la derecha era un `<input>` que nunca inicialicé**: una caja de texto que no hacía nada y que nadie podía adivinar para qué estaba. Ahora son **dos calendarios** (Desde / Hasta) con su etiqueta.
   - **Filtros completos:** atajos **Hoy · Ayer · Últimos 7 días · Este mes**, rango de fechas libre, **búsqueda por texto** (concepto, proveedor o persona) y **filtro por rubro**. La búsqueda y el filtro se aplican en el navegador sobre lo ya traído: escribir no cuesta una petición por tecla.
@@ -593,7 +600,7 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 - **2026-09-21**: 🚨 **Registrar un pago en Viáticos fallaba: `Range (Viaticos!AA1) exceeds grid limits`.** Una usuaria lo reportó; el servidor tenía **4 intentos fallidos desde el sábado 19 a la mañana** — todo pago fuera de PAGOS REGISTRADOS fallaba (Viáticos, Caja Menor, Nómina, Impuestos, Seguridad Social). **Ninguno quedó a medias**: el encabezado se escribe antes que la fila, y al fallar no se llegó a la fila. Hay que volver a registrarlos.
   - **La causa, otra diferencia Apps Script ↔ API:** `getRange(1, 27).setValue()` en Apps Script **agranda la hoja sola**; la API responde `exceeds grid limits` y no escribe nada. `asegurarColumnas_` quiso crear `ID REGISTRO` (el guardia contra duplicados) en la **columna 27** de una hoja de 26.
   - **Por qué la 27 y no la 12:** la conversión a Tabla dejó **15 encabezados basura `Column 1`…`Column 15`** después de los 11 reales, y la lógica los contaba como ocupados.
-  - **Arreglo en `apps-script.gs`** (`asegurarColumnas_`): los `Column N` y los vacíos son **lugares libres** y se reusan antes de agrandar. `ID REGISTRO` cae en la columna 12. `REVISION_BACKEND` = `2026-09-28-d`. ⚠️ **Falta pegarlo en el editor de Google** (solo importa para la vuelta atrás y los reportes).
+  - **Arreglo en `apps-script.gs`** (`asegurarColumnas_`): los `Column N` y los vacíos son **lugares libres** y se reusan antes de agrandar. `ID REGISTRO` cae en la columna 12. `REVISION_BACKEND` = `2026-09-30-a`. ⚠️ **Falta pegarlo en el editor de Google** (solo importa para la vuelta atrás y los reportes).
   - **Red de seguridad en `escribir.js`:** si Sheets rechaza una escritura por tamaño, **se agranda lo justo (filas y/o columnas) y se reintenta una vez**. No se comprueba antes —costaría una lectura por petición— porque el rechazo es de validación y ocurre antes de escribir nada. Un error que no es de tamaño se deja pasar tal cual.
   - **Verificado contra la hoja real, en los dos niveles:** (1) `asegurarColumnas_` con la lógica real sobre las 5 hojas sin `ID REGISTRO` → las 5 lo tienen ahora en la **columna 12**, con una sola escritura; (2) escritura en la columna 27 de una hoja de 26 → rechazo, +1 columna, reintento OK, y se limpió después.
   - 🧭 **`/salud` ya tenía los 4 errores registrados desde el sábado y nadie lo miró.** El monitoreo existe; falta que avise solo. Anotado como pendiente.

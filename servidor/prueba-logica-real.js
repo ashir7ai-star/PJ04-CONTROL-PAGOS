@@ -460,17 +460,15 @@ console.log('\n=== Historial de movimientos: tiene que CUADRAR con el saldo ==='
 }
 
 
-console.log('\n=== Rubros de viaticos y presupuesto sugerido ===');
+console.log('\n=== Presupuesto diario unico, y rubros por participacion ===');
 {
-  // Lista CERRADA a proposito: con el nombre a mano, "HIDRATACION" y
-  // "HIDRATACIÓN" ya eran dos cosas distintas (24 y 10 pagos que deberian
-  // ser 34). Con texto libre cualquier agrupacion miente.
+  // UN monto para todo el dia, no uno por rubro. Los rubros se siguen
+  // mostrando para ver EN QUE se fue la plata, pero el tope es uno solo.
   const HOY = new Date(2026, 8, 28, 10, 0, 0);
   const dia = (d, h) => new Date(2026, 8, d, h || 9, 0, 0);
-  // ENC_PAGOS + RUBRO al final
   const ENC = ENC_PAGOS.concat(['RUBRO']);
-  // (diaRegistro, valor, rubro, tipo, diaPago) — se separan a proposito: el
-  // medidor agrupa por FECHA REGISTRO, no por fecha de pago.
+  // (diaRegistro, valor, rubro, tipo, diaPago) — el panel agrupa por FECHA
+  // REGISTRO, no por fecha de pago.
   const pago = (d, valor, rubro, tipo, diaPago) =>
     [dia(d, 12), 'AMPAC SAS', tipo || 'viaticos', 'Laura', 'X', 'Prov',
      dia(diaPago === undefined ? d : diaPago), valor, '', '', '', rubro || ''];
@@ -480,22 +478,18 @@ console.log('\n=== Rubros de viaticos y presupuesto sugerido ===');
     'Viaticos': [ENC,
       pago(28,  40000, 'desayuno'),
       pago(28,  55000, 'almuerzo'),
-      pago(28, 120000, 'cena'),        // se pasa del sugerido de 90.000
-      pago(28,  30000, ''),            // sin rubro: un pago viejo
-      // EL caso que no cuadraba: registrado HOY con fecha de pago de AYER.
-      // Antes no aparecia en el medidor de hoy y el usuario veia 7 pagos en la
-      // lista y 5 en el medidor.
-      pago(28, 161000, 'cena', 'viaticos', 27),
+      pago(28, 120000, 'cena'),
+      pago(28,  30000, ''),                        // sin rubro: un pago viejo
+      pago(28, 161000, 'cena', 'viaticos', 27),    // registrado hoy, gasto de ayer
       pago(27, 200000, 'cena')],
     'Compra Materiales': [ENC, pago(28, 999999, '', 'compra_materiales')],
     'Caja Menor': [ENC],
     'SALDOS':   [['FECHA','CUENTA','SALDO BASE','CONCEPTO','REGISTRADO POR']],
     'TRASLADOS':[['FECHA','ORIGEN','DESTINO','MONTO','REGISTRADO POR','NOTA','URL COMPROBANTE','FECHA REGISTRO','REALIZADO POR']],
-    'PRESUPUESTO': [['FECHA','RUBRO','MONTO DIARIO','REGISTRADO POR','NOTA'],
-                    [new Date(2026, 8, 1, 8, 0, 0), 'cena',     70000, 'Nathan', 'inicial'],
-                    [new Date(2026, 8, 20, 8, 0, 0), 'cena',    90000, 'Nathan', 'ajuste'],
-                    [new Date(2026, 8, 20, 8, 0, 0), 'desayuno', 60000, 'Nathan', ''],
-                    [new Date(2026, 8, 20, 8, 0, 0), 'almuerzo', 90000, 'Nathan', '']],
+    // UN presupuesto diario. Vale la ultima fila cargada.
+    'PRESUPUESTO': [['FECHA','MONTO DIARIO','REGISTRADO POR','NOTA'],
+                    [new Date(2026, 8, 1, 8, 0, 0),  500000, 'Nathan', 'inicial'],
+                    [new Date(2026, 8, 20, 8, 0, 0), 650000, 'Nathan', 'ajuste']],
     'USUARIOS': [['CORREO','NOMBRE','TELEFONO','ROL','SECCIONES','ESTADO','FECHA REGISTRO','ULTIMO ACCESO'],
                  ['nathan@ylevigroup.com','Nathan','300','admin','todas','activo','',''],
                  ['laura@energy-millennium.com','Laura','300','usuario','viaticos','activo','','']],
@@ -506,48 +500,46 @@ console.log('\n=== Rubros de viaticos y presupuesto sugerido ===');
   };
 
   const e = montar(foto, 'off');
-  const est = e.globales.estadoPresupuesto_(HOY);
+  const est = e.globales.estadoPresupuesto_(HOY, HOY);
   const de = c => est.rubros.filter(r => r.clave === c)[0];
 
   chk('hay 10 rubros', est.rubros.length === 10, est.rubros.length);
-  chk('vale el sugerido mas reciente de cada rubro', de('cena').sugerido === 90000, de('cena').sugerido);
+  chk('vale el presupuesto diario mas reciente', est.montoDiario === 650000, est.montoDiario);
+  chk('el tope del dia es ese monto', est.totalSugerido === 650000, est.totalSugerido);
 
   chk('cada rubro suma lo suyo',
       de('desayuno').gastado === 40000 && de('almuerzo').gastado === 55000,
       est.rubros.map(r => r.clave + ':' + r.gastado));
   // Lo registrado hoy con fecha de pago de ayer SI cuenta hoy: es lo que la
-  // persona ve en la lista, y el medidor tiene que coincidir con eso.
+  // persona ve en la lista, y el panel tiene que coincidir con eso.
   chk('un pago registrado hoy con fecha de ayer cuenta HOY',
       de('cena').gastado === 281000, de('cena').gastado);
   chk('y el total coincide con lo registrado hoy',
       est.totalGastado === 406000, est.totalGastado);
-  chk('un rubro que se paso se marca', de('cena').excedido === true, de('cena'));
-  chk('y dice por cuanto', de('cena').exceso === 191000, de('cena').exceso);
-  chk('uno que no se paso, no', de('desayuno').excedido === false, de('desayuno'));
-  chk('sin sugerido no se compara',
-      de('peajes').sugerido === 0 && de('peajes').excedido === false, de('peajes'));
 
-  // Lo que no tiene rubro no desaparece: se muestra aparte.
-  chk('el total incluye TODO lo de viaticos', est.totalGastado === 406000, est.totalGastado);
+  // Los rubros ya no tienen tope propio: se informa cuanto PESA cada uno.
+  chk('cada rubro informa su participacion',
+      de('cena').participacion === Math.round(281000 / 406000 * 100), de('cena').participacion);
+  chk('un rubro ya NO trae presupuesto propio', de('cena').sugerido === undefined, de('cena'));
+  chk('ni marca excedido por su cuenta', de('cena').excedido === undefined, de('cena'));
+
   chk('lo que no tiene rubro se informa aparte', est.sinRubro === 30000, est.sinRubro);
   chk('Compra Materiales NO entra', est.totalGastado === 406000, est.totalGastado);
-  chk('suma el total sugerido', est.totalSugerido === 240000, est.totalSugerido);
 
-  // Solo el dia pedido.
-  const ayer = e.globales.estadoPresupuesto_(dia(27));
+  const ayer = e.globales.estadoPresupuesto_(dia(27), dia(27));
   chk('otro dia cuenta lo REGISTRADO ese dia',
-      ayer.rubros.filter(r => r.clave === 'cena')[0].gastado === 200000,
-      ayer.totalGastado);
+      ayer.rubros.filter(r => r.clave === 'cena')[0].gastado === 200000, ayer.totalGastado);
 
-  // Un rubro inventado no entra.
-  chk('un rubro desconocido se rechaza',
-      e.globales.ajustarPresupuesto_({ rubro: 'pizza', monto: '100' }).status === 'error');
+  // Validaciones del monto.
   chk('un monto que no es numero se rechaza',
-      e.globales.ajustarPresupuesto_({ rubro: 'cena', monto: 'abc' }).status === 'error');
-  chk('se pueden guardar varios de una vez',
-      e.globales.ajustarPresupuesto_({ rubros: [
-        { rubro: 'peajes', monto: '30000' }, { rubro: 'parqueadero', monto: '20000' }
-      ]}).status === 'success');
+      e.globales.ajustarPresupuesto_({ monto: 'abc' }).status === 'error');
+  chk('y cero tampoco vale: no significa "sin limite"',
+      e.globales.ajustarPresupuesto_({ monto: '0' }).status === 'error');
+  chk('un monto vacio se rechaza',
+      e.globales.ajustarPresupuesto_({ monto: '' }).status === 'error');
+  const ok = e.globales.ajustarPresupuesto_({ monto: '700000' });
+  chk('un monto valido se guarda',
+      ok.status === 'success' && ok.presupuesto.montoDiario === 700000, ok.presupuesto);
 
   // Permisos.
   const g = montar(foto, 'estricto');
@@ -555,61 +547,41 @@ console.log('\n=== Rubros de viaticos y presupuesto sugerido ===');
     'verificarIdToken_ = function (t) { return t ? { correo: String(t), nombre: String(t) } : null; };',
     g.globales);
   let malo = null;
-  try { g.globales.ajustarPresupuesto_({ idToken: 'laura@energy-millennium.com', rubro: 'cena', monto: '1' }); }
+  try { g.globales.ajustarPresupuesto_({ idToken: 'laura@energy-millennium.com', monto: '1' }); }
   catch (err) { malo = err.message; }
-  chk('un usuario comun NO puede definir presupuestos', /SOLO_ADMIN/.test(String(malo)), malo);
+  chk('un usuario comun NO puede definir el presupuesto', /SOLO_ADMIN/.test(String(malo)), malo);
 
-  // El medidor ya NO viaja con los saldos: tiene su propia pestana y se pide
-  // aparte. Mandarlo en cada consulta de saldos —que se refresca sola cada
-  // minuto— era pagar por algo que casi nadie estaba mirando.
+  let vedado = null;
+  try { g.globales.consultarPresupuesto_({ idToken: 'laura@energy-millennium.com' }); }
+  catch (err) { vedado = err.message; }
+  chk('ni consultarlo', /SOLO_ADMIN/.test(String(vedado)), vedado);
+
+  // El panel ya no viaja con los saldos: tiene su pestana.
   const saldos = JSON.parse(e.globales.doPost({ postData: { contents:
     JSON.stringify({ action: 'consultar_saldos', forzar: true }) } })._json);
-  chk('los saldos ya no cargan el medidor',
-      saldos.presupuesto === undefined, Object.keys(saldos));
+  chk('los saldos ya no cargan el panel', saldos.presupuesto === undefined, Object.keys(saldos));
 
-  // El detalle del dia, que es lo que pinta el panel.
+  // Con fecha explicita: sin ella pide el dia de HOY de verdad, y los datos de
+  // esta prueba son del 28/09.
   const conDetalle = JSON.parse(e.globales.doPost({ postData: { contents:
-    JSON.stringify({ action: 'consultar_presupuesto' }) } })._json).presupuesto;
+    JSON.stringify({ action: 'consultar_presupuesto', desde: '2026-09-28', hasta: '2026-09-28' }) } })._json).presupuesto;
   chk('consultar_presupuesto trae el detalle pago por pago',
-      Array.isArray(conDetalle.detalle) && conDetalle.detalle.length > 0, conDetalle.detalle);
+      Array.isArray(conDetalle.detalle) && conDetalle.detalle.length > 0, conDetalle.detalle.length);
   chk('y el detalle suma exactamente el total',
       conDetalle.detalle.reduce(function (a, d) { return a + d.valor; }, 0) === conDetalle.totalGastado,
       [conDetalle.detalle.length, conDetalle.totalGastado]);
-  chk('cada pago trae lo necesario para entenderlo',
-      conDetalle.detalle.every(function (d) {
-        return d.hora !== undefined && d.nombre !== undefined && d.valor !== undefined && d.rubro !== undefined;
-      }), conDetalle.detalle[0]);
-  chk('y se puede pedir OTRO dia',
-      JSON.parse(e.globales.doPost({ postData: { contents:
-        JSON.stringify({ action: 'consultar_presupuesto', desde: '2026-09-27', hasta: '2026-09-27' }) } })._json)
-        .presupuesto.desdeTexto === '27/09/2026');
 
-  // Un RANGO, no solo un dia: "revisar la semana" es una pregunta tan normal
-  // como "que paso hoy".
+  // Un RANGO: el presupuesto diario se multiplica por los dias.
   const rango = JSON.parse(e.globales.doPost({ postData: { contents:
     JSON.stringify({ action: 'consultar_presupuesto', desde: '2026-09-27', hasta: '2026-09-28' }) } })._json).presupuesto;
   chk('un rango abarca los dos extremos', rango.dias === 2, rango.dias);
   chk('y suma lo de todos los dias',
       rango.totalGastado === est.totalGastado + ayer.totalGastado,
       [rango.totalGastado, est.totalGastado, ayer.totalGastado]);
-  // El presupuesto es DIARIO: comparar una semana contra el tope de un dia
-  // seria un rojo garantizado y no significaria nada.
-  // Se recalcula el dia AHORA: unas lineas mas arriba se cargaron mas rubros,
-  // asi que el total de `est` ya quedo viejo.
-  const hoyAhora = e.globales.estadoPresupuesto_(HOY, HOY);
   chk('el presupuesto del rango es el diario x los dias',
-      rango.totalSugerido === hoyAhora.totalSugerido * 2,
-      [rango.totalSugerido, hoyAhora.totalSugerido]);
-  chk('el detalle del rango suma su total',
-      rango.detalle.reduce(function (a, d) { return a + d.valor; }, 0) === rango.totalGastado,
-      rango.detalle.length);
-  chk('y cada fila dice de que dia es', rango.detalle.every(function (d) { return !!d.dia; }), rango.detalle[0]);
-
-  let vedado = null;
-  try { g.globales.consultarPresupuesto_({ idToken: 'laura@energy-millennium.com' }); }
-  catch (err) { vedado = err.message; }
-  chk('y consultar_presupuesto tambien es solo de admins',
-      /SOLO_ADMIN/.test(String(vedado)), vedado);
+      rango.totalSugerido === rango.montoDiario * 2, [rango.totalSugerido, rango.montoDiario]);
+  chk('y cada fila del detalle dice de que dia es',
+      rango.detalle.every(function (d) { return !!d.dia; }), rango.detalle[0]);
 }
 
 console.log('\n=== El rubro se guarda solo si es de la lista ===');
@@ -622,13 +594,16 @@ console.log('\n=== El rubro se guarda solo si es de la lista ===');
 
   const reg = fuente.split('function registrarPago_')[1].split('\n}\n')[0];
   chk('solo se guarda en viaticos', /seccion === 'viaticos' && rubroValido_/.test(reg), 'se guardaria en cualquier seccion');
-  chk('un rubro invalido se guarda VACIO, no se inventa', /: ''/.test(reg.split("'RUBRO'")[1].slice(0, 160)), 'se estaria inventando');
+  chk('un rubro invalido se guarda VACIO, no se inventa',
+      /: ''/.test(reg.split("'RUBRO'")[1].slice(0, 160)), 'se estaria inventando');
 
   const av = fuente.split('function avisarSiCruzaPresupuesto_')[1].split('\n}\n')[0];
-  chk('el aviso es por rubro', /rubroValido_\(rubro\)/.test(av), av.slice(0, 80));
-  chk('y mide el mismo dia que el medidor: el de registro',
+  chk('el aviso es del DIA entero, no por rubro',
+      /presupuestoDiarioVigente_/.test(av) && !/rubroValido_/.test(av), av.slice(0, 90));
+  chk('mide el mismo dia que el panel: el de registro',
       /const dia = new Date\(\);/.test(av), 'sigue mirando la fecha de pago');
-  chk('y solo al CRUZAR la linea', /antes <= sugerido\.monto && despues > sugerido\.monto/.test(av));
+  chk('y solo al CRUZAR la linea',
+      /antes <= vigente\.monto && despues > vigente\.monto/.test(av), 'avisaria en cada pago');
   chk('el correo aclara que no es un limite',
       /no un límite|no es un límite/.test(av), 'falta aclararlo');
   chk('y que el pago se registro igual', /se registró con normalidad/.test(av), 'falta aclararlo');

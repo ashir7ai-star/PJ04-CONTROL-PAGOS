@@ -3288,18 +3288,28 @@
   <!-- Cargar / corregir el saldo de una cuenta (solo administradores) -->
   <!-- Historial de movimientos de una cuenta. Responde "¿por qué quedó en este
        número?", que es distinto de "¿cuánto hay?". -->
-  <!-- Presupuesto sugerido por rubro (solo administradores) -->
+  <!-- Presupuesto diario de viáticos (solo administradores) -->
   <div class="modal-fondo" id="modalPresupuesto" style="display:none;">
-    <div class="modal-caja mov-caja">
-      <h3>Presupuesto sugerido por rubro</h3>
-      <p class="modal-sub">Monto por día para cada clase de gasto de viáticos. Dejá en blanco los que no quieras presupuestar.</p>
+    <div class="modal-caja">
+      <h3>Presupuesto diario de viáticos</h3>
+      <p class="modal-sub" id="mPresuSub"></p>
 
-      <div class="presu-campos" id="mPresuCuerpo"></div>
+      <div class="field-group">
+        <div class="field">
+          <label for="mPresuMonto">Monto por día <span class="req">*</span></label>
+          <input type="text" id="mPresuMonto" placeholder="$ 0" autocomplete="off" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="mPresuNota">Nota (opcional)</label>
+          <input type="text" id="mPresuNota" placeholder="Ej: ajustado por temporada alta" />
+        </div>
+      </div>
 
       <div class="login-aviso info" style="margin:18px 0 0;">
-        Es una <strong>referencia</strong>, no un límite: no descuenta de ningún saldo
-        y <strong>no bloquea</strong> ningún pago. Si un rubro se pasa, les llega un correo
-        a los administradores.
+        Un solo monto para <strong>todo el día</strong>, sin repartir por rubro. Los rubros
+        siguen mostrándose para ver <strong>en qué</strong> se fue la plata.
+        Es una <strong>referencia</strong>: no descuenta de ningún saldo y <strong>no bloquea</strong>
+        ningún pago. Si el día lo supera, les llega un correo a los administradores.
       </div>
 
       <div class="modal-acciones">
@@ -6328,7 +6338,7 @@
           ? '<div class="vt-kpi">' +
               '<div class="vt-kpi-eti">Presupuesto</div>' +
               '<div class="vt-kpi-val">' + formatoPesos(p.totalSugerido) + '</div>' +
-              '<div class="vt-kpi-pie">' + (p.dias > 1 ? p.dias + ' días × el diario' : 'del día') + '</div>' +
+              '<div class="vt-kpi-pie">' + (p.dias > 1 ? formatoPesos(p.montoDiario) + ' × ' + p.dias + ' días' : 'por día') + '</div>' +
             '</div>' +
             '<div class="vt-kpi ' + (dif < 0 ? 'mal' : 'bien') + '">' +
               '<div class="vt-kpi-eti">' + (dif < 0 ? 'Por encima' : 'Disponible') + '</div>' +
@@ -6349,34 +6359,44 @@
           : '');
 
       // ─── Tabla por rubro ───
-      // De mayor a menor gasto: lo que más pesa, primero.
-      const rubros = (p.rubros || []).filter(r => r.gastado > 0 || r.sugerido > 0)
+      //
+      // Los rubros ya no tienen tope propio: el presupuesto es uno solo para
+      // todo el día. Por eso lo que se muestra es la PARTICIPACIÓN de cada
+      // rubro en el gasto, que es lo que responde "en qué se fue la plata".
+      // De mayor a menor: lo que más pesa, primero.
+      const rubros = (p.rubros || []).filter(r => r.gastado > 0)
                                      .sort((a, b) => b.gastado - a.gastado);
       document.getElementById('vtRubrosNota').textContent =
-        p.dias > 1 ? 'Presupuesto = el diario × ' + p.dias + ' días' : '';
+        p.montoDiario > 0
+          ? 'Presupuesto ' + formatoPesos(p.montoDiario) + ' por día' +
+            (p.dias > 1 ? ' · ' + formatoPesos(p.totalSugerido) + ' en ' + p.dias + ' días' : '')
+          : '';
 
       document.getElementById('vtRubros').innerHTML = rubros.length
         ? '<thead><tr><th>Rubro</th><th class="num">Pagos</th><th class="num">Gastado</th>' +
-          '<th class="num">Presupuesto</th><th>Uso</th></tr></thead><tbody>' +
-          rubros.map(r => {
-            const cerca = !r.excedido && r.sugerido > 0 && r.porcentaje >= 80;
-            const clase = r.excedido ? 'excedido' : cerca ? 'cerca' : (r.sugerido > 0 ? '' : 'sin-presu');
-            return '<tr class="' + clase + '">' +
+          '<th>Participación</th></tr></thead><tbody>' +
+          rubros.map(r =>
+            '<tr>' +
               '<td><span class="vt-rubro-eti"><span class="vt-punto"></span>' + escapeHtml(r.etiqueta) + '</span></td>' +
               '<td class="num tenue">' + r.pagos + '</td>' +
-              '<td class="num fuerte gastado">' + formatoPesos(r.gastado) + '</td>' +
-              '<td class="num tenue">' + (r.sugerido > 0 ? formatoPesos(r.sugerido) : '—') + '</td>' +
-              '<td>' + (r.sugerido > 0
-                ? '<div class="vt-uso"><div class="vt-uso-barra"><span style="width:' + r.porcentaje + '%"></span></div>' +
-                  '<span class="vt-uso-pct">' + (r.excedido ? '+' + formatoPesos(r.exceso) : r.porcentaje + '%') + '</span></div>'
-                : '<span class="tenue">sin presupuesto</span>') + '</td>' +
-            '</tr>';
-          }).join('') +
+              '<td class="num fuerte">' + formatoPesos(r.gastado) + '</td>' +
+              '<td><div class="vt-uso"><div class="vt-uso-barra"><span style="width:' + r.participacion + '%"></span></div>' +
+                '<span class="vt-uso-pct">' + r.participacion + '%</span></div></td>' +
+            '</tr>').join('') +
+          (p.sinRubro > 0
+            ? '<tr class="sin-presu">' +
+                '<td><span class="vt-rubro-eti"><span class="vt-punto"></span>Sin rubro</span></td>' +
+                '<td class="num tenue">—</td>' +
+                '<td class="num fuerte">' + formatoPesos(p.sinRubro) + '</td>' +
+                '<td><span class="tenue">pagos sin clasificar</span></td>' +
+              '</tr>'
+            : '') +
           '<tr class="total"><td>Total</td>' +
             '<td class="num">' + p.pagos + '</td>' +
             '<td class="num">' + formatoPesos(p.totalGastado) + '</td>' +
-            '<td class="num">' + (p.totalSugerido > 0 ? formatoPesos(p.totalSugerido) : '—') + '</td>' +
-            '<td></td></tr></tbody>'
+            '<td class="num">' + (p.totalSugerido > 0
+              ? 'de ' + formatoPesos(p.totalSugerido)
+              : '') + '</td></tr></tbody>'
         : '<tbody><tr><td class="vt-vacio">No se registraron viáticos en este período.</td></tr></tbody>';
 
       // ─── Tabla de detalle ───
@@ -6420,52 +6440,52 @@
       if (vtDatos) abrirModalPresupuesto(vtDatos);
     });
 
-    // ─── Definir los montos sugeridos (solo administradores) ─────────────
+    // ─── Definir el presupuesto diario (solo administradores) ────────────
+    //
+    // UN monto para todo el día, no uno por rubro. Los rubros se siguen
+    // mostrando para ver en qué se fue la plata, pero el tope es uno solo.
     const modalPresu = document.getElementById('modalPresupuesto');
 
     function abrirModalPresupuesto(p) {
-      const cuerpo = document.getElementById('mPresuCuerpo');
-      cuerpo.innerHTML = (p.rubros || []).map(r =>
-        '<div class="presu-campo">' +
-          '<label for="mPresu_' + r.clave + '">' + escapeHtml(r.etiqueta) + '</label>' +
-          '<input type="text" id="mPresu_' + r.clave + '" data-rubro="' + r.clave + '" ' +
-            'inputmode="numeric" autocomplete="off" placeholder="$ 0" ' +
-            'value="' + (r.sugerido > 0 ? Number(r.sugerido).toLocaleString('es-CO') : '') + '" />' +
-        '</div>').join('');
-      cuerpo.querySelectorAll('input[data-rubro]').forEach(i => initFormateadorValor(i.id));
+      const hay = p && p.montoDiario > 0;
+      document.getElementById('mPresuMonto').value = hay ? Number(p.montoDiario).toLocaleString('es-CO') : '';
+      document.getElementById('mPresuNota').value  = '';
+      document.getElementById('mPresuSub').textContent = hay
+        ? 'Vigente: ' + formatoPesos(p.montoDiario) + ' por día' +
+          (p.puestoPor ? ' · lo puso ' + p.puestoPor : '') +
+          (p.desdeCuando ? ' el ' + p.desdeCuando : '')
+        : 'Todavía no hay un presupuesto definido.';
       modalPresu.style.display = 'flex';
+      setTimeout(() => document.getElementById('mPresuMonto').focus(), 60);
     }
     function cerrarModalPresupuesto() { modalPresu.style.display = 'none'; }
 
     document.getElementById('mPresuCancelar').addEventListener('click', cerrarModalPresupuesto);
     modalPresu.addEventListener('click', e => { if (e.target === modalPresu) cerrarModalPresupuesto(); });
+    initFormateadorValor('mPresuMonto');
 
     document.getElementById('mPresuGuardar').addEventListener('click', async () => {
-      // Solo se mandan los que tienen algo escrito: dejar uno en blanco es
-      // "este rubro no lo quiero presupuestar", no "ponelo en cero".
-      const rubros = [];
-      document.querySelectorAll('#mPresuCuerpo input[data-rubro]').forEach(i => {
-        const crudo = i.value.replace(/\./g, '').trim();
-        if (!crudo) return;
-        rubros.push({ rubro: i.dataset.rubro, monto: crudo });
-      });
-      if (!rubros.length) {
-        showToast('error', 'Nada que guardar', 'Escribí al menos un monto sugerido.');
+      const crudo = document.getElementById('mPresuMonto').value.replace(/\./g, '').trim();
+      if (!crudo || isNaN(Number(crudo)) || Number(crudo) <= 0) {
+        showToast('error', 'Monto inválido', 'Escribí el presupuesto diario en pesos.');
         return;
       }
-
       const btn = document.getElementById('mPresuGuardar');
       btn.disabled = true;
       try {
-        const r = await postAppsScript({ action: 'ajustar_presupuesto', rubros: rubros }, 60000);
+        const r = await postAppsScript({
+          action: 'ajustar_presupuesto',
+          monto:  crudo,
+          nota:   document.getElementById('mPresuNota').value.trim()
+        }, 60000);
         if (r.status !== 'success') {
           showToast('error', 'No se pudo guardar', r.message || 'Intentá de nuevo.');
           return;
         }
         cerrarModalPresupuesto();
-        showToast('success', 'Presupuestos actualizados', 'Desde ahora el panel usa estos montos.');
+        showToast('success', 'Presupuesto actualizado', 'Desde ahora el panel usa este monto.');
         // Se vuelve a pedir en vez de pintar lo que devolvió el guardado: la
-        // respuesta trae el estado de HOY, y el panel puede estar mirando otro día.
+        // respuesta trae HOY, y el panel puede estar mirando otro período.
         cargarControlViaticos();
       } catch (err) {
         showToast('error', 'No se pudo guardar', mensajeDeError(err));
