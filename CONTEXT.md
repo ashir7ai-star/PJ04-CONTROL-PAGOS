@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-09-30** — 📧 **El aviso de viáticos pasados de presupuesto ahora tiene su propia lista** (`AVISO_PRESUPUESTO`): los administradores más Yedidia Bivas. Deliberadamente separada de la de los reportes, que llevan el PDF con toda la contabilidad. Backend en `2026-09-30-d`.
+
 **2026-09-30** — 👁️ **Control de Viáticos ahora lo ve quien tenga la sección Viáticos**, con los mismos datos que un admin; definir el presupuesto sigue siendo solo de administradores. Junto con el cambio de “Registrado por”, el backend va en `2026-09-30-c`.
 
 **2026-09-30** — 🔒 **"Registrado por" ya no se escribe a mano: lo pone la sesión.** Eran 11 formas de escribir 6 personas y 150 de 275 pagos a nombre de alguien sin cuenta. Se agregó la columna `CORREO REGISTRO` y un script que unificó los 275 registros. Pendiente de aplicar en producción: primero el script, después el backend.
@@ -501,6 +503,11 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-30**: 📧 **El aviso de presupuesto pasa a tener destinatarios propios.** Lo pidió Nathan: que le llegue también a **Yedidia Bivas** (`yedidiah20@gmail.com`), que no es administrador.
+  - **No se lo agregó a `DESTINATARIOS`, y ese es el punto.** Esa lista recibe los reportes **diario y mensual**, que llevan adjunto el PDF y el Excel con **todos los pagos de la empresa, Pago Nómina incluida**. Sumarlo ahí hubiera sido darle la contabilidad entera para que se enterara de los viáticos.
+  - Se creó **`AVISO_PRESUPUESTO = DESTINATARIOS.concat(['yedidiah20@gmail.com'])`**: los tres administradores más él. Ese correo no lleva adjuntos — solo presupuesto, gastado y excedido.
+  - Para sumar a alguien más al aviso, se agrega a esa lista. Para sumarlo a los reportes completos, a `DESTINATARIOS`. Son decisiones distintas y ahora se ven como distintas.
+  - **Pruebas:** 4 nuevas, incluida una que comprueba que Yedidia **NO** esté en `DESTINATARIOS`. Las 12 mutaciones se detectan (369 comprobaciones en total).
 - **2026-09-30**: 👁️ **Control de Viáticos deja de ser solo para administradores.** Ahora lo ve **quien tenga la sección Viáticos habilitada** (Laura, Didier, jose, Yedidia, JND IA SYSTEMS).
   - **Ven lo mismo que un admin**, no una versión recortada. Es a propósito: el presupuesto es **uno solo para todo el equipo**, así que mostrarle a cada uno nada más lo suyo comparado contra el tope de todos daría verde siempre y no querría decir nada.
   - **DEFINIR el presupuesto sigue siendo de administradores.** Un control que el controlado puede subir deja de ser un control. El botón “Presupuestos” no le aparece, y `ajustarPresupuesto_` lo rechaza igual si alguien llama la acción por fuera de la app.

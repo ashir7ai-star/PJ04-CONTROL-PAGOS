@@ -17,7 +17,22 @@
 // A) REPORTES AUTOMÁTICOS (diario / mensual)
 // ══════════════════════════════════════════════════════════════════════════
 
+// Quién recibe los REPORTES diario y mensual. Ojo: esos correos llevan
+// adjunto el PDF y el Excel con TODOS los pagos de la empresa — las siete
+// secciones, Pago Nómina incluida. Sumar a alguien acá es darle acceso a toda
+// la contabilidad, no solo al tema que le interesa.
 const DESTINATARIOS = ['nathan@ylevigroup.com', 'joseph@ylevigroup.com', 'contabilidad@energy-millennium.com'];
+
+// Quién recibe el aviso de que los viáticos se pasaron del presupuesto del día.
+//
+// Lista APARTE de DESTINATARIOS, y a propósito: este aviso no lleva adjuntos
+// ni datos de otras secciones, solo tres cifras de viáticos. Sirve a quien
+// está en el terreno gastando, no solo a quien mira los números después.
+//
+// Yedidia Bivas no es administrador (2026-09-30, pedido por Nathan). Se lo
+// agrega acá y NO a DESTINATARIOS: ahí le llegaría el reporte completo de la
+// empresa todos los días.
+const AVISO_PRESUPUESTO = DESTINATARIOS.concat(['yedidiah20@gmail.com']);
 const ZONA = 'America/Bogota';
 
 // ─── Cada hoja se lee UNA SOLA VEZ por petición ───────────────────────────
@@ -1807,7 +1822,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-30-c · control de viaticos para quien tenga la seccion';
+const REVISION_BACKEND = '2026-09-30-d · aviso de presupuesto con destinatarios propios';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -3260,7 +3275,7 @@ function avisarSiCruzaPresupuesto_(montoDelPago) {
     const pesos = function (n) { return '$' + Math.round(n).toLocaleString('es-CO'); };
 
     MailApp.sendEmail({
-      to: DESTINATARIOS.join(','),
+      to: AVISO_PRESUPUESTO.join(','),
       subject: 'Viáticos del ' + dTxt + ': se pasó el presupuesto diario',
       body:
         'El gasto de viáticos del ' + dTxt + ' superó el presupuesto diario.\n\n' +

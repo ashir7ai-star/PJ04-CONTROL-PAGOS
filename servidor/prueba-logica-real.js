@@ -639,6 +639,26 @@ console.log('\n=== El rubro se guarda solo si es de la lista ===');
   chk('el correo aclara que no es un limite',
       /no un límite|no es un límite/.test(av), 'falta aclararlo');
   chk('y que el pago se registro igual', /se registró con normalidad/.test(av), 'falta aclararlo');
+
+  // El aviso tiene su propia lista de destinatarios, que NO es la de los
+  // reportes. Los reportes llevan adjunto el PDF con todos los pagos de la
+  // empresa (Pago Nomina incluida); el aviso lleva tres cifras de viaticos.
+  // Mezclarlas seria darle la contabilidad entera a quien solo tiene que
+  // enterarse de que los viaticos se pasaron.
+  chk('el aviso usa su propia lista, no la de los reportes',
+      /to: AVISO_PRESUPUESTO/.test(av) && !/to: DESTINATARIOS/.test(av),
+      'le mandaria a los de los reportes, o al reves');
+
+  const listas = fuente.split('const AVISO_PRESUPUESTO')[1].split(';')[0];
+  chk('la lista del aviso incluye a los administradores',
+      /DESTINATARIOS\.concat/.test(listas), listas);
+  chk('y suma a quien no es administrador',
+      /yedidiah20@gmail\.com/.test(listas), listas);
+
+  const reportes = fuente.split('const DESTINATARIOS')[1].split(';')[0];
+  chk('pero los REPORTES no le llegan a quien no es administrador',
+      !/yedidiah20@gmail\.com/.test(reportes),
+      'recibiria el PDF con todos los pagos de la empresa, Nomina incluida');
 }
 
 
