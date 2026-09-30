@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-09-30** — ✅ **VERSIÓN ESTABLE: `v2.3-identidad-verificada`.** “Registrado por” **sale de la sesión y el servidor ignora lo que mande el navegador**: se acabaron las 14 formas de escribir 6 personas. La hoja quedó unificada con la columna nueva `CORREO REGISTRO`, **281 de 281 pagos con identidad**. Además, Control de Viáticos lo ve quien tenga la sección habilitada (definir el presupuesto sigue siendo solo de administradores), y el aviso de presupuesto pasado le llega también a Yedidia sin darle los reportes completos. Verificado en producción: reporte corrido contra los datos reales con **0 celdas `undefined`**.
+
 **2026-09-30** — ✅ **Todo aplicado en producción.** Backend `2026-09-30-d` en Apps Script y EasyPanel. "Registrado por" sale de la sesión, la hoja quedó unificada (14 variantes → 6 personas, 281/281 con correo), Control de Viáticos lo ve quien tenga la sección, y el aviso de presupuesto le llega también a Yedidia. Reporte verificado contra datos reales: 0 celdas `undefined`.
 
 **2026-09-30** — 📧 **El aviso de viáticos pasados de presupuesto ahora tiene su propia lista** (`AVISO_PRESUPUESTO`): los administradores más Yedidia Bivas. Deliberadamente separada de la de los reportes, que llevan el PDF con toda la contabilidad. Backend en `2026-09-30-d`.
