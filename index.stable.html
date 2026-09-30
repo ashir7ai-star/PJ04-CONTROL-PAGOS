@@ -5785,10 +5785,22 @@
       navConfig.style.display    = sesion.rol === 'admin' ? '' : 'none';
       navTraslados.style.display = sesion.rol === 'admin' ? '' : 'none';
 
-      // Control de Viáticos es de administradores: el servidor tampoco le
-      // manda los datos a nadie más.
+      // Control de Viáticos lo ve quien tenga la sección habilitada, no solo
+      // los administradores. Ve LO MISMO que un admin: el gasto de todo el
+      // equipo contra el presupuesto del día, porque el presupuesto es uno
+      // solo para todos y mostrarle a cada uno nada más lo suyo contra el tope
+      // del equipo daría verde siempre.
+      //
+      // Esconder la pestaña no es la seguridad: `consultarPresupuesto_` vuelve
+      // a comprobarlo en el servidor con puedeVerViaticos_.
       const navVt = document.getElementById('navViaticos');
-      if (navVt) navVt.style.display = (sesion.rol === 'admin') ? '' : 'none';
+      if (navVt) navVt.style.display = puede('viaticos') ? '' : 'none';
+
+      // Pero DEFINIR el presupuesto sigue siendo de administradores: un
+      // control que el controlado puede subir deja de ser un control. El
+      // servidor lo rechaza igual aunque alguien llame la acción por fuera.
+      const btnPresu = document.getElementById('vtEditarPresupuesto');
+      if (btnPresu) btnPresu.style.display = esAdministrador ? '' : 'none';
 
       // "Registrado por" ya no se escribe: es la cuenta con la que entraste.
       //

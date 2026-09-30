@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-09-30** — 👁️ **Control de Viáticos ahora lo ve quien tenga la sección Viáticos**, con los mismos datos que un admin; definir el presupuesto sigue siendo solo de administradores. Junto con el cambio de “Registrado por”, el backend va en `2026-09-30-c`.
+
 **2026-09-30** — 🔒 **"Registrado por" ya no se escribe a mano: lo pone la sesión.** Eran 11 formas de escribir 6 personas y 150 de 275 pagos a nombre de alguien sin cuenta. Se agregó la columna `CORREO REGISTRO` y un script que unificó los 275 registros. Pendiente de aplicar en producción: primero el script, después el backend.
 
 **2026-09-30** — 🔄 **El Apps Script del editor quedó al día** (`2026-09-30-a`, verificado desde afuera). Estaba 10 commits atrás. De paso se detectó que este archivo documentaba como vigente una **URL de un despliegue viejo** que sigue vivo contra la hoja de producción; ya está corregido.
@@ -499,6 +501,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-30**: 👁️ **Control de Viáticos deja de ser solo para administradores.** Ahora lo ve **quien tenga la sección Viáticos habilitada** (Laura, Didier, jose, Yedidia, JND IA SYSTEMS).
+  - **Ven lo mismo que un admin**, no una versión recortada. Es a propósito: el presupuesto es **uno solo para todo el equipo**, así que mostrarle a cada uno nada más lo suyo comparado contra el tope de todos daría verde siempre y no querría decir nada.
+  - **DEFINIR el presupuesto sigue siendo de administradores.** Un control que el controlado puede subir deja de ser un control. El botón “Presupuestos” no le aparece, y `ajustarPresupuesto_` lo rechaza igual si alguien llama la acción por fuera de la app.
+  - El permiso vive en un solo lugar, `puedeVerViaticos_`, y el servidor lo vuelve a comprobar: esconder la pestaña nunca fue la seguridad.
+  - Mensaje propio `SIN_PERMISO_VIATICOS`, en vez de reusar el de “registrar en esa sección”, que hablaba de otra cosa.
+  - ⚠️ Esto **invierte** la decisión del 2026-09-28 (“que este panel solo lo veamos los administradores”). Queda anotado para que el cambio no parezca un descuido.
+  - **Pruebas:** la prueba vieja (“ni consultarlo”) **falló al cambiar el permiso**, que es justo lo que tenía que hacer. Se reemplazó por cuatro: que el usuario con la sección SÍ puede mirar, que ve lo mismo que el admin, que quien no la tiene sigue afuera, y que igual no puede definir el presupuesto. Las 9 mutaciones se detectan.
 - **2026-09-30**: 🔒 **"Registrado por" deja de ser texto libre: sale de la sesión.**
   - **La medición que lo motivó:** 275 pagos, **11 formas de escribir 6 personas**, y **150 pagos (55%) a nombre de alguien sin cuenta**. Uno decía `Laura Leyton❤️‍🩹`, con emoji incluido.
   - **Dónde estaba el agujero:** `registrarPago_` escribía `body.registrado_por` tal cual. El formulario **ya precargaba** el nombre de la sesión, pero eso no servía de nada: el campo era editable y, sobre todo, **el formulario no es una barrera** — cualquiera puede mandar otro nombre por fuera de la app.

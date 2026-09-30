@@ -137,10 +137,18 @@ console.log('\n=== Control de Viáticos: su propia pestaña, solo para administr
       /<label for="vtBuscar">/.test(html) && /<label for="vtRubro">/.test(html),
       'un campo sin nombre no se entiende');
 
-  // La pestaña es de administradores. El servidor tampoco manda los datos a
-  // nadie más, así que esto es la segunda barrera, no la única.
-  chk('la pestaña solo se muestra a administradores',
-      /navViaticos[\s\S]{0,180}?sesion\.rol === 'admin'/.test(codigo), 'la verían todos');
+  // Desde el 2026-09-30 la pestaña es de quien tenga la sección Viáticos, no
+  // solo de administradores. El servidor lo vuelve a comprobar en
+  // puedeVerViaticos_, así que esto es la segunda barrera, no la única.
+  chk('la pestaña se muestra a quien tenga la sección Viáticos',
+      /navVt[\s\S]{0,120}?puede\('viaticos'\)/.test(codigo),
+      'o volvió a ser solo de admins, o la verían todos');
+
+  // Pero el tope diario lo define solo un administrador: un control que el
+  // controlado puede subir deja de ser un control.
+  chk('y el botón de presupuesto sigue siendo solo de administradores',
+      /btnPresu[\s\S]{0,120}?esAdministrador/.test(codigo),
+      'cualquiera podría subir el presupuesto que lo controla');
 
   // Orden del menú, tal como se pidió.
   const nav = html.split('<nav class="app-nav">')[1].split('</nav>')[0];

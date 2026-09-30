@@ -551,10 +551,42 @@ console.log('\n=== Presupuesto diario unico, y rubros por participacion ===');
   catch (err) { malo = err.message; }
   chk('un usuario comun NO puede definir el presupuesto', /SOLO_ADMIN/.test(String(malo)), malo);
 
+  // Pero SÍ puede MIRARLO: desde el 2026-09-30 el panel lo ve quien tenga la
+  // sección Viáticos habilitada, no solo los administradores. Laura la tiene.
+  let mira = null, miroBien = false;
+  try {
+    mira = g.globales.consultarPresupuesto_({ idToken: 'laura@energy-millennium.com' });
+    miroBien = mira.status === 'success';
+  } catch (err) { mira = err.message; }
+  chk('pero un usuario CON la seccion Viaticos si puede mirarlo', miroBien, mira);
+
+  // Y ve lo mismo que un admin, no una version recortada: el presupuesto es
+  // uno solo para todo el equipo, asi que mostrarle nada mas lo suyo contra el
+  // tope de todos daría verde siempre y no querría decir nada.
+  const comoAdmin = g.globales.consultarPresupuesto_({ idToken: 'nathan@ylevigroup.com' });
+  chk('y ve EXACTAMENTE lo mismo que un administrador',
+      miroBien && mira.presupuesto.totalGastado === comoAdmin.presupuesto.totalGastado &&
+      mira.presupuesto.detalle.length === comoAdmin.presupuesto.detalle.length,
+      [mira && mira.presupuesto && mira.presupuesto.totalGastado,
+       comoAdmin.presupuesto.totalGastado]);
+
+  // Quien NO tiene la seccion sigue afuera.
+  const sinViaticos = JSON.parse(JSON.stringify(foto));
+  sinViaticos['USUARIOS'].push(
+    ['otro@energy-millennium.com', 'Otro', '300', 'usuario', 'caja_menor', 'activo', '', '']);
+  const g2 = montar(sinViaticos, 'estricto');
+  require('vm').runInContext(
+    'verificarIdToken_ = function (t) { return t ? { correo: String(t), nombre: String(t) } : null; };',
+    g2.globales);
   let vedado = null;
-  try { g.globales.consultarPresupuesto_({ idToken: 'laura@energy-millennium.com' }); }
+  try { g2.globales.consultarPresupuesto_({ idToken: 'otro@energy-millennium.com' }); }
   catch (err) { vedado = err.message; }
-  chk('ni consultarlo', /SOLO_ADMIN/.test(String(vedado)), vedado);
+  chk('quien NO tiene la seccion Viaticos no lo puede mirar',
+      /SIN_PERMISO_VIATICOS/.test(String(vedado)), vedado);
+  chk('y el mensaje dice el motivo real, no uno prestado',
+      /Viáticos/.test(String(require('fs').readFileSync(RUTA, 'utf8')
+        .split('SIN_PERMISO_VIATICOS:')[1] || '').slice(0, 80)),
+      'sin mensaje propio, el usuario ve un codigo en ingles');
 
   // El panel ya no viaja con los saldos: tiene su pestana.
   const saldos = JSON.parse(e.globales.doPost({ postData: { contents:
@@ -748,6 +780,15 @@ console.log('\n=== El formulario no deja escribir ese campo ===');
       /if \(campoQuien\) campoQuien\.value = quienSoy;/.test(html) &&
       !/campoQuien[^;]*\.value\.trim\(\)/.test(html),
       'si solo se precarga cuando esta vacio, entra el autocompletado del navegador');
+
+  // La pestana de Control de Viaticos: visible para quien tenga la seccion,
+  // pero el boton que DEFINE el presupuesto solo para administradores.
+  chk('la pestana se muestra por seccion, no por ser admin',
+      /navVt\.style\.display = puede\('viaticos'\)/.test(html),
+      'volvio a ser solo para administradores');
+  chk('el boton de presupuesto sigue siendo solo de administradores',
+      /btnPresu\.style\.display = esAdministrador/.test(html),
+      'un control que el controlado puede subir no es un control');
 }
 
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));

@@ -1341,7 +1341,8 @@ const CODIGOS_ACCESO = {
   PENDIENTE_APROBACION: 'Tu acceso está esperando la aprobación de un administrador.',
   USUARIO_INACTIVO:     'Tu acceso está desactivado. Hablá con un administrador.',
   SOLO_ADMIN:           'Esta acción es solo para administradores.',
-  SIN_PERMISO_SECCION:  'No tenés permiso para registrar en esa sección.'
+  SIN_PERMISO_SECCION:  'No tenés permiso para registrar en esa sección.',
+  SIN_PERMISO_VIATICOS: 'No tenés habilitada la sección de Viáticos.'
 };
 
 function errorJson_(err) {
@@ -1806,7 +1807,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-30-b · registrado por sale de la sesion';
+const REVISION_BACKEND = '2026-09-30-c · control de viaticos para quien tenga la seccion';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -2138,6 +2139,22 @@ function seccionesDeUsuario_(usuario) {
 
 function esAdmin_(ctx) {
   return ctx.rol === 'admin';
+}
+
+// Quién puede ABRIR Control de Viáticos.
+//
+// Cambió el 2026-09-30: antes era solo administradores. Ahora también lo ve
+// quien tenga la sección Viáticos habilitada, y ve LO MISMO que un admin: el
+// gasto de todo el equipo contra el presupuesto del día.
+//
+// Es a propósito. El presupuesto es UNO SOLO para todos, así que mostrarle a
+// cada uno nada más lo suyo comparado contra el tope del equipo daría verde
+// siempre y no querría decir nada.
+//
+// DEFINIR el presupuesto sigue siendo solo de administradores: un control que
+// el controlado puede subir deja de ser un control. Ver ajustarPresupuesto_.
+function puedeVerViaticos_(ctx) {
+  return esAdmin_(ctx) || ctx.secciones.indexOf('viaticos') !== -1;
 }
 
 // La dirección de la hoja de cálculo, tomada del propio Sheet al que está
@@ -3180,7 +3197,7 @@ function estadoPresupuesto_(desde, hasta) {
 
 function consultarPresupuesto_(body) {
   const ctx = contextoDe_(body);
-  if (MODO_LOGIN !== 'off' && !esAdmin_(ctx)) throw new Error('SOLO_ADMIN');
+  if (MODO_LOGIN !== 'off' && !puedeVerViaticos_(ctx)) throw new Error('SIN_PERMISO_VIATICOS');
   // Un rango, no un día suelto: "revisar la semana" es una pregunta tan normal
   // como "qué pasó hoy". Si no viene nada, es hoy.
   const desde = body && body.desde ? fechaDeTextoISO_(body.desde) : null;
