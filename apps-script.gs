@@ -391,7 +391,23 @@ function registrarPago_(body) {
     'FECHA REGISTRO': new Date(),
     'EMPRESA':        body.empresa || '',
     'TIPO FACTURA':   body.tipo_factura || '',
-    'REGISTRADO POR': body.registrado_por || '',
+    // QUIÉN REGISTRA NO LO DECIDE EL NAVEGADOR.
+    //
+    // Hasta el 2026-09-30 esto era `body.registrado_por`: el servidor escribía
+    // el nombre que le mandaran, sin contrastarlo con quién estaba
+    // autenticado. Resultado medido sobre 275 pagos: 11 formas de escribir 6
+    // personas y 150 pagos (55%) a nombre de alguien sin cuenta — uno de
+    // ellos con un emoji en el nombre.
+    //
+    // Precargar el campo en el formulario NO alcanzaba: seguía siendo
+    // editable, y cualquiera podía mandar otro nombre por fuera de la app. El
+    // formulario es una comodidad, no una barrera. La barrera va acá.
+    //
+    // Sin sesión (MODO_LOGIN 'off' o 'suave', que es como corren las pruebas)
+    // se acepta lo que llegue: no hay identidad que imponer.
+    'REGISTRADO POR':  ctx.autenticado ? (ctx.nombre || ctx.correo)
+                                       : String(body.registrado_por || ''),
+    'CORREO REGISTRO': ctx.autenticado ? ctx.correo : '',
     'NOMBRE DE PAGO': body.nombre_pago || '',
     'PROVEEDOR':      body.proveedor || '',
     'FECHA DE PAGO':  fechaDeTextoISO_(body.fecha_pago),
@@ -443,7 +459,11 @@ const ENCABEZADOS_PAGOS = [
   // propósito: los reportes mapean cada hoja con los encabezados de la
   // principal, y una hoja con una columna que otra no tiene produce celdas
   // `undefined` que hacen fallar el PDF sin avisar. Ya pasó con ID REGISTRO.
-  'RUBRO'
+  'RUBRO',
+  // Quien registró, pero como identidad Única. El NOMBRE no sirve de clave:
+  // hay dos cuentas "Joseph De Lima" (una por dominio) y los nombres cambian.
+  // El correo sale de la sesión y el navegador no lo puede elegir.
+  'CORREO REGISTRO'
 ];
 
 const COLUMNAS_CON_HORA = ['FECHA REGISTRO', 'FECHA SOLICITUD', 'FECHA DECISION', 'ULTIMO ACCESO'];
@@ -1786,7 +1806,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-30-a · presupuesto diario unico de viaticos';
+const REVISION_BACKEND = '2026-09-30-b · registrado por sale de la sesion';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [

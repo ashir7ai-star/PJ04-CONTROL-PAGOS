@@ -633,6 +633,23 @@
       margin-bottom: 16px;
     }
 
+    /* ─── Campo que no se escribe: lo pone la cuenta ──────────────
+       Se ve distinto a propósito: un campo bloqueado que parece editable
+       invita a pelearse con él. */
+    .campo-fijo input[readonly] {
+      background: var(--surface-2);
+      color: var(--text-2);
+      cursor: default;
+      font-weight: 600;
+    }
+    .campo-fijo input[readonly]:focus { outline: none; border-color: var(--border-subtle); }
+    .campo-fijo .candado {
+      display: block;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 5px;
+    }
+
     /* ─── Submit button ──────────────────────────────────────────── */
     .btn-submit {
       width: 100%;
@@ -2581,9 +2598,11 @@
                 <option value="AMPAC SAS">AMPAC SAS</option>
               </select>
             </div>
-            <div class="field">
-              <label for="registradoPor">Registrado por <span class="req">*</span></label>
-              <input type="text" id="registradoPor" name="registrado_por" placeholder="Nombre completo" required />
+            <div class="field campo-fijo">
+              <label for="registradoPor">Registrado por</label>
+              <input type="text" id="registradoPor" name="registrado_por" readonly tabindex="-1"
+                     title="Sale de tu cuenta. El servidor lo escribe desde tu sesión." />
+              <span class="candado">🔒 Tu cuenta — no se puede cambiar</span>
             </div>
           </div>
 
@@ -4736,7 +4755,10 @@
         return;
       }
 
-      const required = ['empresa', 'registradoPor', 'nombrePago', 'proveedor', 'fechaPago', 'monto'];
+      // 'registradoPor' sale de la lista: no lo completa el usuario, lo pone la
+      // sesión. Pedirle que "complete" un campo que no puede tocar sería un
+      // callejón sin salida.
+      const required = ['empresa', 'nombrePago', 'proveedor', 'fechaPago', 'monto'];
       for (const id of required) {
         const el = document.getElementById(id);
         if (!el.value.trim()) {
@@ -5763,17 +5785,28 @@
       navConfig.style.display    = sesion.rol === 'admin' ? '' : 'none';
       navTraslados.style.display = sesion.rol === 'admin' ? '' : 'none';
 
-      // Se precargan los campos que el sistema ya conoce, para no hacérselos
-      // escribir. Quedan editables: alguien puede registrar en nombre de otro.
       // Control de Viáticos es de administradores: el servidor tampoco le
       // manda los datos a nadie más.
       const navVt = document.getElementById('navViaticos');
       if (navVt) navVt.style.display = (sesion.rol === 'admin') ? '' : 'none';
 
-      [['solicitadoPor', sesion.nombre], ['registradoPor', sesion.nombre]].forEach(([id, valor]) => {
-        const campo = document.getElementById(id);
-        if (campo && !campo.value.trim() && valor) campo.value = valor;
-      });
+      // "Registrado por" ya no se escribe: es la cuenta con la que entraste.
+      //
+      // Se PISA siempre, aunque el campo ya tenga algo. Antes se respetaba lo
+      // que hubiera ("if (!campo.value.trim())"), y por ahí se coló el
+      // autocompletado del navegador con nombres viejos.
+      //
+      // Esto es solo lo que se VE. La garantía está en el servidor, que
+      // reescribe el campo desde la sesión e ignora lo que mande el navegador.
+      const quienSoy = sesion.nombre || sesion.correo || '';
+      const campoQuien = document.getElementById('registradoPor');
+      if (campoQuien) campoQuien.value = quienSoy;
+
+      // "Solicitado por" SÍ sigue editable: una solicitud de aprobación puede
+      // pedirla alguien a nombre de otro, y el servidor filtra por correo, no
+      // por este texto. Se precarga solo si está vacío.
+      const campoSolicita = document.getElementById('solicitadoPor');
+      if (campoSolicita && !campoSolicita.value.trim() && quienSoy) campoSolicita.value = quienSoy;
     }
 
     function seccionDeTipoFront(tipo) {

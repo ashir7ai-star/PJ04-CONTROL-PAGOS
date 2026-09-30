@@ -631,5 +631,124 @@ console.log('\n=== Lo que todavia NO esta, falla en voz alta ===');
   chk('registrar un pago depende de Drive AUNQUE no haya adjuntos', pagoFalla);
 }
 
+console.log('\n=== Quien registra sale de la SESION, no del navegador ===');
+{
+  // El agujero que esto cierra: hasta el 2026-09-30 registrarPago_ escribia
+  // `body.registrado_por` tal cual. Precargar el campo en el formulario no
+  // alcanzaba, porque el formulario no es una barrera: cualquiera puede
+  // mandar otro nombre por fuera de la app. Resultado medido sobre 275 pagos:
+  // 11 formas de escribir 6 personas y 150 a nombre de alguien sin cuenta.
+  const ENC = ENC_PAGOS.concat(['RUBRO', 'CORREO REGISTRO']);
+  const foto = {
+    'PAGOS REGISTRADOS': [ENC],
+    'Viaticos': [ENC],
+    'Compra Materiales': [ENC],
+    'Caja Menor': [ENC],
+    'SALDOS':    [['FECHA', 'CUENTA', 'SALDO BASE', 'CONCEPTO', 'REGISTRADO POR']],
+    'TRASLADOS': [['FECHA', 'ORIGEN', 'DESTINO', 'MONTO', 'REGISTRADO POR', 'NOTA',
+                   'URL COMPROBANTE', 'FECHA REGISTRO', 'REALIZADO POR']],
+    'PRESUPUESTO': [['FECHA', 'MONTO DIARIO', 'REGISTRADO POR', 'NOTA']],
+    'USUARIOS': [['CORREO', 'NOMBRE', 'TELEFONO', 'ROL', 'SECCIONES', 'ESTADO',
+                  'FECHA REGISTRO', 'ULTIMO ACCESO'],
+                 ['sst@energy-millennium.com', 'Laura Leyton', '300', 'usuario',
+                  'viaticos', 'activo', '', '']],
+    'SESIONES': [['HASH', 'CORREO', 'CREADA', 'ULTIMO USO', 'VENCE']],
+    'SOLICITUDES DE APROBACION': [['ID SOLICITUD', 'FECHA SOLICITUD', 'EMPRESA',
+      'TIPO DE PAGO', 'NOMBRE DEL PAGO', 'PROVEEDOR', 'FECHA DE PAGO', 'VALOR',
+      'SOLICITADO POR', 'CORREO', 'NOTAS', 'URL ARCHIVO', 'ESTADO',
+      'REVISADO POR', 'FECHA DECISION', 'COMENTARIO']]
+  };
+
+  const e = montar(foto, 'estricto');
+  // El token dice un nombre DISTINTO al de la hoja USUARIOS a proposito: el
+  // nombre bueno es el de la cuenta, no el que venga de afuera.
+  require('vm').runInContext(
+    "verificarIdToken_ = function (t) { return t ? { correo: String(t), nombre: 'NOMBRE DEL TOKEN' } : null; };" +
+    "subirArchivosASeccion_ = function () { return ''; };",
+    e.globales);
+
+  const hoja = () => e.globales.SpreadsheetApp.getActiveSpreadsheet()
+                      .getSheetByName('Viaticos').getDataRange().getValues();
+  const col = n => ENC.indexOf(n);
+
+  const r = e.globales.registrarPago_({
+    idToken: 'sst@energy-millennium.com',
+    tipo_factura: 'viaticos', empresa: 'AMPAC SAS', monto: '50000',
+    nombre_pago: 'Almuerzo', proveedor: 'Restaurante', fecha_pago: '2026-09-30',
+    fecha_envio: 'op-identidad-1', rubro: 'almuerzo', archivos: [],
+    // Lo que el navegador manda, y que el servidor tiene que IGNORAR.
+    registrado_por: 'Laura Castillo'
+  });
+  chk('el pago se registra', r.status === 'success', r);
+
+  const fila = hoja()[1] || [];
+  chk('NO se guarda el nombre que mando el navegador',
+      fila[col('REGISTRADO POR')] !== 'Laura Castillo', fila[col('REGISTRADO POR')]);
+  chk('se guarda el nombre de la CUENTA',
+      fila[col('REGISTRADO POR')] === 'Laura Leyton', fila[col('REGISTRADO POR')]);
+  chk('tampoco se usa el nombre que venga en el token de Google',
+      fila[col('REGISTRADO POR')] !== 'NOMBRE DEL TOKEN', fila[col('REGISTRADO POR')]);
+  chk('y queda el correo, que es la identidad que no se repite',
+      fila[col('CORREO REGISTRO')] === 'sst@energy-millennium.com',
+      fila[col('CORREO REGISTRO')]);
+
+  // Sin nombre en USUARIOS se cae al correo: nunca queda vacio, porque esta
+  // columna es la unica trazabilidad que tiene la contabilidad.
+  const foto2 = JSON.parse(JSON.stringify(foto));
+  foto2['USUARIOS'][1][1] = '';
+  const e2 = montar(foto2, 'estricto');
+  require('vm').runInContext(
+    "verificarIdToken_ = function (t) { return t ? { correo: String(t), nombre: '' } : null; };" +
+    "subirArchivosASeccion_ = function () { return ''; };",
+    e2.globales);
+  e2.globales.registrarPago_({
+    idToken: 'sst@energy-millennium.com', tipo_factura: 'viaticos',
+    empresa: 'AMPAC SAS', monto: '1000', nombre_pago: 'x', proveedor: 'y',
+    fecha_pago: '2026-09-30', fecha_envio: 'op-identidad-2', archivos: [],
+    registrado_por: 'Quien Sea'
+  });
+  const fila2 = e2.globales.SpreadsheetApp.getActiveSpreadsheet()
+                  .getSheetByName('Viaticos').getDataRange().getValues()[1] || [];
+  chk('sin nombre en la cuenta, cae al correo y NO al texto del navegador',
+      fila2[col('REGISTRADO POR')] === 'sst@energy-millennium.com',
+      fila2[col('REGISTRADO POR')]);
+
+  // La columna tiene que existir en TODAS las hojas de pago, no solo donde se
+  // escribio. Los reportes mapean cada hoja con los encabezados de la primera
+  // y una columna faltante produce celdas `undefined` que rompen el PDF sin
+  // avisar. Ya paso con ID REGISTRO y con RUBRO.
+  const fuente = require('fs').readFileSync(RUTA, 'utf8');
+  const enc = fuente.split('const ENCABEZADOS_PAGOS = [')[1].split('];')[0];
+  chk('CORREO REGISTRO es columna de todas las hojas de pago',
+      /'CORREO REGISTRO'/.test(enc), enc);
+
+  const reg = fuente.split('function registrarPago_')[1].split('\n}\n')[0];
+  chk('registrarPago_ ya no confia en body.registrado_por a secas',
+      !/'REGISTRADO POR':\s*body\.registrado_por/.test(reg),
+      'volvio a escribir lo que manda el navegador');
+  chk('y lo toma del contexto autenticado',
+      /'REGISTRADO POR':\s*ctx\.autenticado/.test(reg), reg.slice(0, 120));
+}
+
+console.log('\n=== El formulario no deja escribir ese campo ===');
+{
+  const html = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'index.html'), 'utf8');
+  const campo = html.split('id="registradoPor"')[1].slice(0, 260);
+
+  chk('el campo es de solo lectura', /readonly/.test(campo), campo.slice(0, 90));
+  chk('y no se puede llegar a el con el tabulador', /tabindex="-1"/.test(campo), campo.slice(0, 90));
+  chk('ya no se pide como campo a completar',
+      !/const required = \[[^\]]*'registradoPor'/.test(html),
+      'seguiria pidiendo completar un campo que no se puede tocar');
+  // Ojo con como se comprueba esto: buscar solo "campoQuien.value = quienSoy"
+  // NO sirve, porque ese texto sigue estando aunque se le ponga un `if` que lo
+  // condicione. Se exige la forma incondicional Y la ausencia del guardia.
+  chk('se pisa SIEMPRE con la sesion, no solo si esta vacio',
+      /if \(campoQuien\) campoQuien\.value = quienSoy;/.test(html) &&
+      !/campoQuien[^;]*\.value\.trim\(\)/.test(html),
+      'si solo se precarga cuando esta vacio, entra el autocompletado del navegador');
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);

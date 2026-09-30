@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-09-30** — 🔒 **"Registrado por" ya no se escribe a mano: lo pone la sesión.** Eran 11 formas de escribir 6 personas y 150 de 275 pagos a nombre de alguien sin cuenta. Se agregó la columna `CORREO REGISTRO` y un script que unificó los 275 registros. Pendiente de aplicar en producción: primero el script, después el backend.
+
 **2026-09-30** — 🔄 **El Apps Script del editor quedó al día** (`2026-09-30-a`, verificado desde afuera). Estaba 10 commits atrás. De paso se detectó que este archivo documentaba como vigente una **URL de un despliegue viejo** que sigue vivo contra la hoja de producción; ya está corregido.
 
 **2026-09-30** — ✅ **VERSIÓN ESTABLE: `v2.2-control-viaticos`.** Pestaña propia de **Control de Viáticos** con filtros por fecha, búsqueda y rubro; los viáticos se clasifican por **rubro** al registrarlos; y hay un **presupuesto diario único** con aviso por correo al pasarse. Verificado contra los datos reales.
@@ -497,6 +499,16 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-30**: 🔒 **"Registrado por" deja de ser texto libre: sale de la sesión.**
+  - **La medición que lo motivó:** 275 pagos, **11 formas de escribir 6 personas**, y **150 pagos (55%) a nombre de alguien sin cuenta**. Uno decía `Laura Leyton❤️‍🩹`, con emoji incluido.
+  - **Dónde estaba el agujero:** `registrarPago_` escribía `body.registrado_por` tal cual. El formulario **ya precargaba** el nombre de la sesión, pero eso no servía de nada: el campo era editable y, sobre todo, **el formulario no es una barrera** — cualquiera puede mandar otro nombre por fuera de la app.
+  - **Por eso un desplegable de usuarios tampoco alcanzaba:** arregla la ortografía, no la veracidad. Se podía seguir eligiendo a un compañero.
+  - **Ahora:** el servidor toma el nombre de `ctx` e **ignora** lo que mande el navegador. El campo quedó de solo lectura. Es lo que ya hacían Traslados y Presupuesto; Pagos era el único módulo que confiaba en el cliente.
+  - **Columna nueva `CORREO REGISTRO`** en las 7 hojas de pago. El nombre no sirve de clave — hay dos cuentas "Joseph De Lima", una por dominio — y además cambia. El correo no.
+  - **`servidor/unificar-registrado-por.js`** unifica el historial. **No adivina:** solo resuelve por nombre exacto, exacto sin símbolos, nombre de pila único, parte local del correo, o alias confirmado a mano. Resolvió **275 de 275**.
+  - ⚠️ **Orden obligatorio: primero el script, después el backend.** `leerDatos_` arma el reporte con `headers.map(h => r[h])` usando los encabezados de la hoja principal; si esa hoja recibe la columna y las otras no, el PDF sale con celdas `undefined` y falla. El script la crea en las 7 de una sola vez.
+  - **Lo que NO arregla:** los 150 pagos viejos no se pueden auditar hacia atrás. Como el nombre lo ponía el navegador, no quedó registro de quién estaba autenticado. Se unifica la ortografía, no se recupera la verdad.
+  - **Pruebas:** +13 comprobaciones (359 en total). Las 4 se verificaron **reintroduciendo el defecto**; una primera versión de la prueba del formulario **pasaba con el defecto puesto** (buscaba `campoQuien.value = quienSoy`, que sigue ahí aunque se le agregue un `if`) y hubo que endurecerla.
 - **2026-09-30**: ✅ **Apps Script sincronizado y redesplegado.** El editor de Google estaba **10 commits / +541 líneas atrás** (`2026-09-19-a`). Verificado después de pegar: `estado_login` devuelve **`2026-09-30-a`**, y `probar_fecha` interpreta bien `30/09/2026`, `2026-09-30` y `30/09/2026 11:22:47`.
   - Con esto el editor deja de contar `PRESUPUESTO` como hoja de pagos, y entran los arreglos de `asegurarColumnas_` (reusar columnas libres) y `limpiarSesionesVencidas_` (borrar por bloques).
   - ❌ **Falsa alarma, anotada a propósito:** avisé que el reporte diario iba a fallar esa noche por la fila de `PRESUPUESTO`. **No era cierto.** Corrí el código viejo (`22803f8`) contra los datos reales: 6 filas en el reporte, **0 celdas `undefined`**. `parseFechaRegistro_(undefined)` da `null` y el filtro de fecha descarta esa fila antes de `setValues`.
