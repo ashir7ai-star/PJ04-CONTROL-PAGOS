@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-09-30** — ✅ **Todo aplicado en producción.** Backend `2026-09-30-d` en Apps Script y EasyPanel. "Registrado por" sale de la sesión, la hoja quedó unificada (14 variantes → 6 personas, 281/281 con correo), Control de Viáticos lo ve quien tenga la sección, y el aviso de presupuesto le llega también a Yedidia. Reporte verificado contra datos reales: 0 celdas `undefined`.
+
 **2026-09-30** — 📧 **El aviso de viáticos pasados de presupuesto ahora tiene su propia lista** (`AVISO_PRESUPUESTO`): los administradores más Yedidia Bivas. Deliberadamente separada de la de los reportes, que llevan el PDF con toda la contabilidad. Backend en `2026-09-30-d`.
 
 **2026-09-30** — 👁️ **Control de Viáticos ahora lo ve quien tenga la sección Viáticos**, con los mismos datos que un admin; definir el presupuesto sigue siendo solo de administradores. Junto con el cambio de “Registrado por”, el backend va en `2026-09-30-c`.
@@ -503,6 +505,12 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-30**: ✅ **APLICADO EN PRODUCCIÓN.** Apps Script y EasyPanel en `2026-09-30-d`, y la hoja unificada.
+  - **`unificar-registrado-por.js --aplicar`**: 443 celdas en **1 lectura + 3 escrituras** (el `values.batchUpdate` manda todos los rangos juntos; de a una habrían sido 443 peticiones y la cuota son 60/min).
+  - **14 formas de escribir → 6 personas.** Laura Leyton 173, Nathan De Lima 69, Yedidia Bivas 16, Sandra Cardozo 14, jose Durango 8, JND IA SYSTEMS 1. **281 de 281** con correo.
+  - **Verificado corriendo el código real del reporte contra los datos reales:** 14 encabezados, 281 filas barridas, **0 celdas `undefined`**. El reporte diario y el mensual no fallan.
+  - **Respaldo** de los 281 valores viejos en `servidor/respaldo-registrado-por.json` (ignorado por git: el repo es público). El valor viejo no se puede deducir del nuevo — "Nathan", "nathan" y "Nathan De Lima" quedaron los tres iguales — así que sin ese archivo no habría vuelta atrás.
+  - ⚠️ **El orden se rompió y hubo una ventana de riesgo.** El backend se desplegó antes de correr el script, así que durante un rato el primer pago de la sección "Pagos" hubiera creado `CORREO REGISTRO` **solo en la hoja principal**, dejando las otras con una columna menos y haciendo fallar el reporte de la noche. No llegó a pasar. Para la próxima: **el script que toca columnas va SIEMPRE antes del despliegue**.
 - **2026-09-30**: 📧 **El aviso de presupuesto pasa a tener destinatarios propios.** Lo pidió Nathan: que le llegue también a **Yedidia Bivas** (`yedidiah20@gmail.com`), que no es administrador.
   - **No se lo agregó a `DESTINATARIOS`, y ese es el punto.** Esa lista recibe los reportes **diario y mensual**, que llevan adjunto el PDF y el Excel con **todos los pagos de la empresa, Pago Nómina incluida**. Sumarlo ahí hubiera sido darle la contabilidad entera para que se enterara de los viáticos.
   - Se creó **`AVISO_PRESUPUESTO = DESTINATARIOS.concat(['yedidiah20@gmail.com'])`**: los tres administradores más él. Ese correo no lleva adjuntos — solo presupuesto, gastado y excedido.
