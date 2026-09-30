@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-09-30** — ✅ **VERSIÓN ESTABLE: `v2.2-control-viaticos`.** Pestaña propia de **Control de Viáticos** con filtros por fecha, búsqueda y rubro; los viáticos se clasifican por **rubro** al registrarlos; y hay un **presupuesto diario único** con aviso por correo al pasarse. Verificado contra los datos reales.
+
 **2026-09-28** — ✅ **VERSIÓN ESTABLE: `v2.1-adjuntos`.** Se recuperó la subida de comprobantes desde el celular, que estuvo caída un día entero. Confirmado en producción: **36 escrituras nuevas**, pagos de dos personas distintas, **todos con comprobante**, sin errores ni filas fuera de lugar.
 
 **2026-09-23** — ✅ **VERSIÓN ESTABLE: `v2.0-saldos-en-vivo`.** Los saldos se actualizan solos cada 60 s (medido: no mueve la cuota), cada cuenta tiene su **historial de movimientos** que cuadra con el saldo, y la hoja quedó saneada: **346 celdas de fecha, 0 en texto**, `FECHA DE PAGO` sin hora y sin columnas basura.
