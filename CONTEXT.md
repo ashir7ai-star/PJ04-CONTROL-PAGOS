@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-09-30** — 🔄 **El Apps Script del editor quedó al día** (`2026-09-30-a`, verificado desde afuera). Estaba 10 commits atrás. De paso se detectó que este archivo documentaba como vigente una **URL de un despliegue viejo** que sigue vivo contra la hoja de producción; ya está corregido.
+
 **2026-09-30** — ✅ **VERSIÓN ESTABLE: `v2.2-control-viaticos`.** Pestaña propia de **Control de Viáticos** con filtros por fecha, búsqueda y rubro; los viáticos se clasifican por **rubro** al registrarlos; y hay un **presupuesto diario único** con aviso por correo al pasarse. Verificado contra los datos reales.
 
 **2026-09-28** — ✅ **VERSIÓN ESTABLE: `v2.1-adjuntos`.** Se recuperó la subida de comprobantes desde el celular, que estuvo caída un día entero. Confirmado en producción: **36 escrituras nuevas**, pagos de dos personas distintas, **todos con comprobante**, sin errores ni filas fuera de lugar.
@@ -93,9 +95,19 @@ Todo vive en un único [index.html](index.html) (HTML + CSS + JS inline).
 
 ## ✅ Módulo de Aprobaciones — 2026-09-15, **desplegado y en producción**
 
-**Web App URL (en `APPS_SCRIPT_URL` de index.html):**
-`https://script.google.com/macros/s/AKfycbyDHauDZGvZ1CSH3WOY9h-JLnxoKYcRBdV4v7hpPjDW86kK27o3ieFk01ggpBOmHA4-nA/exec`
-Desplegado como Web app · Execute as: Me · Who has access: Anyone. Verificado con `curl` (devuelve `[]`). Nota: si se prueba con `curl` sin User-Agent de navegador, Google devuelve HTML en vez del JSON — no es un error de la app, hay que mandar `-H "User-Agent: Mozilla/5.0"`.
+**Web App URL vigente** (la de vuelta atrás — hoy la app habla con EasyPanel, no con esta):
+`https://script.google.com/macros/s/AKfycbwngWbZFP9c0Rn5u5efkTNRM1zBlK_wKQ8TaE-kbFCz8FXN85-KahlkkVXab6x5YPoS1A/exec`
+Desplegado como Web app · Execute as: Me · Who has access: Anyone. Es la URL que está comentada en `index.html` junto a `APPS_SCRIPT_URL`, lista para descomentar si hubiera que volver atrás.
+
+**⚠️ Hay un despliegue VIEJO todavía vivo** en el mismo proyecto de Apps Script:
+`.../AKfycbyDHauDZGvZ1CSH3WOY9h-JLnxoKYcRBdV4v7hpPjDW86kK27o3ieFk01ggpBOmHA4-nA/exec`
+Esa URL **es la que este archivo documentaba por error hasta el 2026-09-30**. Corre código anterior al `2026-09-19-a` — su `estado_login` ni siquiera devuelve `revision` ni `secciones` — contra la **misma hoja de producción**. Si alguien hiciera una vuelta atrás copiando esa URL, la app quedaría escribiendo con las reglas viejas de fechas y de `append`. **No usarla; conviene archivarla** en Deploy → Manage deployments.
+
+**Cómo verificar qué versión está realmente desplegada** (no toca datos):
+```
+curl -s -L -H "User-Agent: Mozilla/5.0" "<URL>/exec?action=estado_login"
+```
+Debe devolver el mismo `revision` que `REVISION_BACKEND` en `apps-script.gs`. Sin el `User-Agent` de navegador, Google responde HTML en vez de JSON — no es un error de la app.
 
 ### 🚫 Decisión de arquitectura: NO usar n8n (2026-09-15)
 El usuario pidió explícitamente **no depender de n8n en este módulo ni en desarrollos futuros**. Por eso el backend de Aprobaciones se implementó como un **Google Apps Script Web App**, en el MISMO proyecto de Apps Script que ya existe en el Sheet (el de los reportes diario/mensual). Ventajas: ya está en la cuenta correcta, tiene acceso nativo a Sheets/Drive/Gmail, y el código lo escribe Claude completo (a diferencia de n8n, que requería armar nodos a mano en su GUI).
@@ -485,6 +497,10 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-09-30**: ✅ **Apps Script sincronizado y redesplegado.** El editor de Google estaba **10 commits / +541 líneas atrás** (`2026-09-19-a`). Verificado después de pegar: `estado_login` devuelve **`2026-09-30-a`**, y `probar_fecha` interpreta bien `30/09/2026`, `2026-09-30` y `30/09/2026 11:22:47`.
+  - Con esto el editor deja de contar `PRESUPUESTO` como hoja de pagos, y entran los arreglos de `asegurarColumnas_` (reusar columnas libres) y `limpiarSesionesVencidas_` (borrar por bloques).
+  - ❌ **Falsa alarma, anotada a propósito:** avisé que el reporte diario iba a fallar esa noche por la fila de `PRESUPUESTO`. **No era cierto.** Corrí el código viejo (`22803f8`) contra los datos reales: 6 filas en el reporte, **0 celdas `undefined`**. `parseFechaRegistro_(undefined)` da `null` y el filtro de fecha descarta esa fila antes de `setValues`.
+  - ⚠️ **Apareció un despliegue viejo todavía vivo** — y era el que este archivo documentaba como el bueno. Ver “Módulo de Aprobaciones” más arriba.
 - **2026-09-30**: 🔁 **El presupuesto vuelve a ser UNO SOLO por día**, no uno por rubro. Ej.: $650.000 el día, se reparta como se reparta.
   - La hoja `PRESUPUESTO` perdió la columna `RUBRO` (estaba vacía, sin datos que migrar) y quedó en `FECHA · MONTO DIARIO · REGISTRADO POR · NOTA`. Vale la última fila; el historial se conserva.
   - **Los rubros siguen existiendo y se siguen mostrando** — el panel ya no compara cada rubro contra un tope propio, sino que informa su **participación** en el gasto del período. Responde "en qué se fue la plata" sin inventar topes que nadie definió.
