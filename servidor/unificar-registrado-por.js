@@ -32,6 +32,8 @@
 // y se anota en ALIAS; no se deduce. Lo que no se resuelve se deja como está
 // y se lista al final.
 
+const fs   = require('fs');
+const path = require('path');
 const { nombresDeHojas, leerHojas } = require('./src/hojas');
 const esc  = require('./src/escribir');
 const cupo = require('./src/cupo-lecturas');
@@ -225,6 +227,30 @@ const esLibre = h => h === '' || /^Column \d+$/i.test(String(h));
     console.log('\nNo hay nada que cambiar.');
     return;
   }
+
+  // ─── Respaldo ANTES de escribir ───
+  // Esto pisa una columna de la contabilidad real, y el valor viejo NO se puede
+  // deducir del nuevo: "Nathan", "nathan" y "Nathan De Lima" terminan los tres
+  // iguales. Sin este archivo, la vuelta atrás sería imposible.
+  const respaldo = { fecha: new Date().toISOString(), filas: [] };
+  Object.keys(crudo).forEach(hoja => {
+    if (NO_PAGOS.some(n => hoja.toUpperCase().indexOf(n) !== -1)) return;
+    const filas = crudo[hoja] || [];
+    const enc = (filas[0] || []).map(String);
+    const cQuien = enc.indexOf('REGISTRADO POR');
+    if (cQuien === -1) return;
+    for (let i = 1; i < filas.length; i++) {
+      const fila = filas[i] || [];
+      if (!fila.some(v => v !== '' && v != null)) continue;
+      respaldo.filas.push({ hoja: hoja, fila: i + 1, col: cQuien + 1,
+                            valor: String(fila[cQuien] || '') });
+    }
+  });
+
+  const destino = path.join(__dirname, 'respaldo-registrado-por.json');
+  fs.writeFileSync(destino, JSON.stringify(respaldo, null, 2), 'utf8');
+  console.log('\nrespaldo de ' + respaldo.filas.length + ' valores guardado en:');
+  console.log('  ' + destino);
 
   cupo.reiniciar();
   await esc.aplicar(cambios);

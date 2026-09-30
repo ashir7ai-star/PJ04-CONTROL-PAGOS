@@ -26,3 +26,7 @@ npm-debug.log*
 # Temporales del sistema
 .DS_Store
 Thumbs.db
+
+# Respaldos de datos de la hoja. No son credenciales, pero son la
+# contabilidad de la empresa y este repositorio es PUBLICO.
+servidor/respaldo-*.json
