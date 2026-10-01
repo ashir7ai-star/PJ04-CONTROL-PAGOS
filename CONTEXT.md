@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-10-01** — 💳 **“Dinero Disponible” es ahora una pestaña propia, la primera del menú.** Salió de Nuevo Pago. El refresco automático se arregló para que no siga pidiendo saldos desde otras pestañas. Solo cambia la pantalla: el backend sigue en `2026-10-01-b`.
+
 **2026-10-01** — 📅 **Control de Viáticos agrupa por fecha del gasto.** El criterio viejo (fecha de carga) escondía que el **30/09 se pasó por $240.400**. El aviso por correo mide el mismo día. Backend `2026-10-01-b`.
 
 **2026-10-01** — 💰 **Compra de Materiales ya no descuenta de Viáticos: tiene fondo propio.** Sin efecto retroactivo (verificado). De paso se corrigió que los selectores de Traslados tenían las cuentas escritas a mano y no habrían dejado mandarle plata al fondo nuevo. Backend `2026-10-01-a`.
@@ -511,6 +513,12 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-01**: 💳 **“Dinero disponible” sale de Nuevo Pago y pasa a ser su propia pestaña, la primera.** Lo pidió Nathan: el bloque de saldos le robaba la atención al formulario.
+  - **Es la pestaña que arranca activa**, así que al abrir la app se sigue viendo la plata primero — que es lo que pasaba cuando el bloque vivía arriba del formulario. Nuevo Pago queda segunda.
+  - ⚠️ **Lo que casi se rompe al mover el bloque:** `seVenLosSaldos()` miraba el `display` de la **propia sección**. Ahora la sección sigue visible y el que se oculta es el `<main>` que la contiene, así que habría seguido pidiendo saldos **cada 60 s estando parado en otra pestaña**, gastando cuota de lectura para nadie. Se cambió a `offsetParent !== null`, que es null cuando cualquier padre está oculto.
+  - Al entrar a la pestaña se refresca **solo si los datos tienen más de 15 s**: ir y venir entre pestañas no puede costar una lectura cada vez.
+  - Sin cuentas asignadas ya no se oculta la sección (dejaba la pestaña en blanco, que parece una falla): se explica que las cuentas se asignan por sección en Configuración.
+  - **Pruebas:** 10 comprobaciones nuevas en `prueba-referencias.js`, incluida que la sección exista **una sola vez** (dos ids iguales dejarían uno muerto). Las **24 mutaciones** se detectan; el verificador ahora corre también `prueba-referencias.js`, porque con solo `prueba-logica-real.js` las mutaciones de pantalla pasaban limpias.
 - **2026-10-01**: 📅 **Control de Viáticos agrupa por FECHA DEL GASTO, no por fecha de carga.** Lo pidió Nathan y tiene razón: si registran hoy una cena de ayer, esa plata es de ayer.
   - **Revierte el cambio del 28/09**, cuando lo moví a fecha de registro porque “el medidor no cuadraba con la lista”. El problema de fondo nunca fue cuál fecha usar, sino que **el medidor y la lista usaban criterios distintos**. Mientras los dos miren la fecha de pago, cuadran. Queda anotado en el código para que no se vuelva a dar la vuelta.
   - **El criterio viejo escondía un exceso real.** Con los datos de producción: el **30/09 pasa de verse normal a $890.400, que son $240.400 POR ENCIMA** del presupuesto; el 01/10 baja de $233.750 a $88.500. Tres cenas del 30/09 se habían cargado el 01/10 y estaban inflándole el día equivocado.

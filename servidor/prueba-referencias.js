@@ -110,6 +110,51 @@ sueltos.forEach(([n, ctx]) => console.log('  >>> ' + n + '   en: ' + ctx));
 chk('ningún identificador de plantilla queda sin declarar',
     sueltos.length === 0, sueltos.map(s => s[0]));
 
+console.log('\n=== Dinero Disponible: pestana propia, la primera ===');
+{
+  chk('existe la vista', /id="viewSaldos"/.test(html), 'falta la vista');
+  chk('esta registrada en el navegador de pestanas',
+      /saldos: viewSaldos/.test(codigo), 'la pestana no mostraria nada');
+
+  // El orden importa: es lo que se pidio. Y la primera pestana es la que
+  // arranca activa, asi que al abrir la app se sigue viendo la plata primero,
+  // igual que cuando el bloque vivia arriba del formulario.
+  const tabs = (html.match(/data-view="[a-z]+"/g) || []);
+  chk('va primera en el menu', tabs[0] === 'data-view="saldos"', tabs.slice(0, 3));
+  chk('y es la que arranca activa',
+      /class="nav-tab active" data-view="saldos"/.test(html), 'arrancaria en otra pestana');
+  chk('Nuevo Pago queda segunda', tabs[1] === 'data-view="form"', tabs.slice(0, 3));
+
+  // El bloque se fue de Nuevo Pago: si quedara en los dos lados habria dos
+  // elementos con el mismo id y uno de los dos no se actualizaria nunca.
+  chk('la seccion de saldos existe UNA sola vez',
+      (html.match(/id="seccionSaldos"/g) || []).length === 1,
+      'dos ids iguales: uno quedaria muerto');
+
+  // Sin esto se verian las dos vistas apiladas al abrir la app.
+  const mainOculto = html.indexOf('<main style="display:none;">');
+  const tituloForm = html.indexOf('id="formTitle"');
+  chk('y el formulario de Nuevo Pago arranca oculto',
+      mainOculto !== -1 && tituloForm > mainOculto && tituloForm - mainOculto < 220,
+      'se verian dos vistas a la vez al abrir la app');
+
+  // Lo que mas facil se rompe al mover un bloque: el refresco automatico
+  // miraba el display de la PROPIA seccion. Ahora la seccion sigue visible y
+  // el que se oculta es el <main> que la contiene, asi que hay que mirar al
+  // padre o se pide cada 60 s estando parado en otra pestana.
+  chk('el refresco mira si la pestana esta realmente a la vista',
+      codigo.indexOf('s.offsetParent !== null') !== -1,
+      'refrescaria cada 60 s desde otra pestana, gastando cuota de lectura');
+  chk('al entrar se refresca solo si esta viejo',
+      codigo.indexOf("dataset.view === 'saldos' && Date.now() - ultimoRefresco >= 15000") !== -1,
+      'o no refresca nunca, o pide de nuevo en cada clic');
+
+  // Sin cuentas asignadas: antes se ocultaba la seccion, que dentro de Nuevo
+  // Pago estaba bien. Siendo una pestana entera, dejaria la pagina en blanco.
+  chk('sin cuentas asignadas explica por que, no deja la pagina en blanco',
+      /ninguna cuenta asignada/.test(codigo), 'quedaria una pestana vacia');
+}
+
 // El caso concreto que se escapó, por si alguien vuelve a mover el bloque.
 console.log('\n=== Control de Viáticos: su propia pestaña, solo para administradores ===');
 {

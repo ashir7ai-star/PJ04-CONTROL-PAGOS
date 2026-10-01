@@ -1663,6 +1663,17 @@
        Si se pierde, nadie entiende por que un gasto de ayer aparece hoy. */
     .vt-tarde { color: var(--text-muted); font-size: .72rem; font-style: italic; }
 
+    /* Mensaje cuando la pestaña de saldos no tiene nada que mostrar. Una
+       pestaña en blanco parece una falla; un texto explica. */
+    .saldos-vacio {
+      grid-column: 1 / -1;
+      padding: 26px 16px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: .86rem;
+      line-height: 1.5;
+    }
+
     .vt-rubro-eti { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
     .vt-punto { width: 8px; height: 8px; border-radius: 3px; background: #2563eb; flex: none; }
     tr.cerca    .vt-punto { background: #d97706; }
@@ -2405,7 +2416,17 @@
 
   <!-- Navegación -->
   <nav class="app-nav">
-    <button class="nav-tab active" data-view="form">
+    <!-- Primera a propósito: antes los saldos vivían arriba de Nuevo Pago, así
+         que al abrir la app lo primero que se veía era la plata. Separarlos en
+         su propia pestaña no tiene por qué cambiar eso. -->
+    <button class="nav-tab active" data-view="saldos">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="6" width="20" height="13" rx="2"/>
+        <path d="M2 10h20"/><circle cx="17" cy="14.5" r="1.5"/>
+      </svg>
+      <span>Dinero Disponible</span>
+    </button>
+    <button class="nav-tab" data-view="form">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
         <polyline points="14 2 14 8 20 8"/>
@@ -2452,14 +2473,15 @@
     </button>
   </nav>
 
-  <!-- Main -->
-  <main>
+  <!-- Dinero disponible: pestaña propia desde el 01/10. Antes vivía arriba
+       del formulario de Nuevo Pago y le robaba la atención a lo que la gente
+       entra a hacer. -->
+  <main id="viewSaldos">
     <div class="page-header">
-      <p class="page-title" id="formTitle">Nuevo Pago</p>
-      <p class="page-subtitle" id="formSubtitle">Completa los datos y envía el pago al sistema.</p>
+      <p class="page-title">Dinero Disponible</p>
+      <p class="page-subtitle">Cuánto queda en cada cuenta y en qué se fue.</p>
     </div>
 
-    <!-- Saldos disponibles -->
     <section class="saldos" id="seccionSaldos">
       <div class="saldos-encabezado">
         <div>
@@ -2477,6 +2499,14 @@
       </div>
       <div class="saldos-grid" id="saldosGrid"></div>
     </section>
+  </main>
+
+  <!-- Main -->
+  <main style="display:none;">
+    <div class="page-header">
+      <p class="page-title" id="formTitle">Nuevo Pago</p>
+      <p class="page-subtitle" id="formSubtitle">Completa los datos y envía el pago al sistema.</p>
+    </div>
 
     <form id="paymentForm" novalidate>
 
@@ -3846,8 +3876,10 @@
     const viewConfig         = document.getElementById('viewConfig');
     const viewTraslados      = document.getElementById('viewTraslados');
     const viewViaticos       = document.getElementById('viewViaticos');
-    const vistasPorNombre    = { form: viewForm, search: viewSearch, aprobaciones: viewAprobaciones,
-                                 config: viewConfig, traslados: viewTraslados, viaticos: viewViaticos };
+    const viewSaldos         = document.getElementById('viewSaldos');
+    const vistasPorNombre    = { saldos: viewSaldos, form: viewForm, search: viewSearch,
+                                 aprobaciones: viewAprobaciones, config: viewConfig,
+                                 traslados: viewTraslados, viaticos: viewViaticos };
 
     navTabs.forEach(tab => {
       tab.addEventListener('click', () => {
@@ -3863,6 +3895,12 @@
         if (tab.dataset.view === 'config')    cargarUsuarios();
         if (tab.dataset.view === 'traslados') cargarTraslados();
         if (tab.dataset.view === 'viaticos')  aplicarRango('hoy');
+        // Al entrar a los saldos se refresca si están viejos. No siempre: si
+        // alguien va y viene entre pestañas, pedir de nuevo cada vez gasta
+        // cuota de lectura para mostrar lo mismo.
+        if (tab.dataset.view === 'saldos' && Date.now() - ultimoRefresco >= 15000) {
+          refrescarSaldosSolo();
+        }
       });
     });
 
@@ -6114,14 +6152,19 @@
     }
 
     function pintarSaldos(r) {
-      // A un usuario sin cuentas asignadas no se le muestra un panel vacío:
-      // se oculta la sección entera.
+      // Sin cuentas asignadas se explica por qué, en vez de esconder la
+      // sección. Mientras los saldos vivían dentro de Nuevo Pago, ocultarlos
+      // tenía sentido; ahora son una pestaña entera y dejarla en blanco parece
+      // que la app se rompió.
       const seccion = document.getElementById('seccionSaldos');
+      seccion.style.display = '';
       if (!r.cuentas || !r.cuentas.length) {
-        seccion.style.display = 'none';
+        saldosNota.textContent = 'No tenés ninguna cuenta asignada.';
+        saldosGrid.innerHTML =
+          '<p class="saldos-vacio">Las cuentas se asignan por sección en Configuración. ' +
+          'Pedile a un administrador que te habilite las que necesites.</p>';
         return;
       }
-      seccion.style.display = '';
 
       const sinConfigurar = r.cuentas.filter(c => !c.configurado).length;
 
@@ -6213,7 +6256,12 @@
 
     function seVenLosSaldos() {
       const s = document.getElementById('seccionSaldos');
-      return !!s && s.style.display !== 'none' &&
+      // `offsetParent` es null cuando el elemento O CUALQUIER PADRE está en
+      // display:none. Hace falta mirar al padre desde que los saldos viven en
+      // su propia pestaña: la sección queda visible, pero el <main> que la
+      // contiene no. Mirando solo la sección, se refrescaría cada 60 s estando
+      // en otra pestaña, gastando cuota de lectura para nadie.
+      return !!s && s.offsetParent !== null &&
              loginOverlay.style.display === 'none' &&
              document.visibilityState === 'visible';
     }
