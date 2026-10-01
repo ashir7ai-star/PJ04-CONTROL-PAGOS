@@ -588,25 +588,41 @@ console.log('\n=== Presupuesto diario unico, y rubros por participacion ===');
   chk('cada rubro suma lo suyo',
       de('desayuno').gastado === 40000 && de('almuerzo').gastado === 55000,
       est.rubros.map(r => r.clave + ':' + r.gastado));
-  // Lo registrado hoy con fecha de pago de ayer SI cuenta hoy: es lo que la
-  // persona ve en la lista, y el panel tiene que coincidir con eso.
-  chk('un pago registrado hoy con fecha de ayer cuenta HOY',
-      de('cena').gastado === 281000, de('cena').gastado);
-  chk('y el total coincide con lo registrado hoy',
-      est.totalGastado === 406000, est.totalGastado);
+  // EL DIA DEL GASTO, NO EL DE LA CARGA (cambiado el 01/10, pedido del
+  // usuario). La foto tiene una cena de 161.000 cargada el 28 con fecha de
+  // pago del 27: esa plata es del 27. Hasta el 01/10 contaba el 28, que
+  // inflaba un dia y vaciaba el otro.
+  chk('un pago cargado hoy con fecha de AYER no cuenta hoy',
+      de('cena').gastado === 120000, de('cena').gastado);
+  chk('y el total del dia es solo lo GASTADO ese dia',
+      est.totalGastado === 245000, est.totalGastado);
 
   // Los rubros ya no tienen tope propio: se informa cuanto PESA cada uno.
   chk('cada rubro informa su participacion',
-      de('cena').participacion === Math.round(281000 / 406000 * 100), de('cena').participacion);
+      de('cena').participacion === Math.round(120000 / 245000 * 100), de('cena').participacion);
   chk('un rubro ya NO trae presupuesto propio', de('cena').sugerido === undefined, de('cena'));
   chk('ni marca excedido por su cuenta', de('cena').excedido === undefined, de('cena'));
 
   chk('lo que no tiene rubro se informa aparte', est.sinRubro === 30000, est.sinRubro);
-  chk('Compra Materiales NO entra', est.totalGastado === 406000, est.totalGastado);
+  chk('Compra Materiales NO entra', est.totalGastado === 245000, est.totalGastado);
 
+  // Y el 27 recibe las dos cenas: la que se cargo ese dia (200.000) y la que
+  // se cargo el 28 pero se gasto el 27 (161.000). Es el reverso exacto de la
+  // comprobacion de arriba: lo que salio de un dia tiene que aparecer en el otro.
   const ayer = e.globales.estadoPresupuesto_(dia(27), dia(27));
-  chk('otro dia cuenta lo REGISTRADO ese dia',
-      ayer.rubros.filter(r => r.clave === 'cena')[0].gastado === 200000, ayer.totalGastado);
+  chk('y ese gasto aparece en el dia que SI le corresponde',
+      ayer.rubros.filter(r => r.clave === 'cena')[0].gastado === 361000,
+      ayer.rubros.filter(r => r.clave === 'cena')[0].gastado);
+  chk('sin perder ni duplicar plata entre los dos dias',
+      est.totalGastado + ayer.totalGastado === 606000,
+      [est.totalGastado, ayer.totalGastado]);
+
+  // El detalle dice cuando se CARGO, para que se entienda por que un gasto de
+  // ayer aparece en la lista de ayer habiendose cargado hoy.
+  const tarde = (ayer.detalle || []).filter(d => d.registrado && d.registrado !== d.dia);
+  chk('el detalle marca lo que se cargo otro dia', tarde.length === 1, ayer.detalle);
+  chk('y dice de que dia es el gasto, no el de la carga',
+      tarde.length === 1 && tarde[0].valor === 161000, tarde);
 
   // Validaciones del monto.
   chk('un monto que no es numero se rechaza',
@@ -710,8 +726,19 @@ console.log('\n=== El rubro se guarda solo si es de la lista ===');
   const av = fuente.split('function avisarSiCruzaPresupuesto_')[1].split('\n}\n')[0];
   chk('el aviso es del DIA entero, no por rubro',
       /presupuestoDiarioVigente_/.test(av) && !/rubroValido_/.test(av), av.slice(0, 90));
-  chk('mide el mismo dia que el panel: el de registro',
-      /const dia = new Date\(\);/.test(av), 'sigue mirando la fecha de pago');
+  chk('mide el mismo dia que el panel: el del GASTO',
+      /fechaDelGasto instanceof Date/.test(av), 'volvio a avisar del dia de la carga');
+  chk('y si el gasto es de otro dia, el correo lo aclara',
+      /mismoDia_\(dia, new Date\(\)\)/.test(av) && /no de hoy/.test(av),
+      'llegaria un correo del 30/09 el 01/10 sin explicacion');
+
+  // No alcanza con que la funcion SEPA recibir la fecha: hay que comprobar que
+  // quien la llama se la manda. Sin este chequeo, borrar el argumento deja el
+  // aviso mirando "hoy" otra vez y ninguna prueba se entera — comprobado con
+  // una mutacion, que pasaba limpia.
+  const llamada = fuente.split('avisarSiCruzaPresupuesto_(')[1].split(')')[0];
+  chk('y quien lo llama le pasa la fecha del pago',
+      /fecha_pago/.test(llamada), llamada);
   chk('y solo al CRUZAR la linea',
       /antes <= vigente\.monto && despues > vigente\.monto/.test(av), 'avisaria en cada pago');
   chk('el correo aclara que no es un limite',

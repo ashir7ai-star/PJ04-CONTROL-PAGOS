@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-10-01** — 📅 **Control de Viáticos agrupa por fecha del gasto.** El criterio viejo (fecha de carga) escondía que el **30/09 se pasó por $240.400**. El aviso por correo mide el mismo día. Backend `2026-10-01-b`.
+
 **2026-10-01** — 💰 **Compra de Materiales ya no descuenta de Viáticos: tiene fondo propio.** Sin efecto retroactivo (verificado). De paso se corrigió que los selectores de Traslados tenían las cuentas escritas a mano y no habrían dejado mandarle plata al fondo nuevo. Backend `2026-10-01-a`.
 
 **2026-09-30** — ✅ **VERSIÓN ESTABLE: `v2.3-identidad-verificada`.** “Registrado por” **sale de la sesión y el servidor ignora lo que mande el navegador**: se acabaron las 14 formas de escribir 6 personas. La hoja quedó unificada con la columna nueva `CORREO REGISTRO`, **281 de 281 pagos con identidad**. Además, Control de Viáticos lo ve quien tenga la sección habilitada (definir el presupuesto sigue siendo solo de administradores), y el aviso de presupuesto pasado le llega también a Yedidia sin darle los reportes completos. Verificado en producción: reporte corrido contra los datos reales con **0 celdas `undefined`**.
@@ -509,6 +511,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-01**: 📅 **Control de Viáticos agrupa por FECHA DEL GASTO, no por fecha de carga.** Lo pidió Nathan y tiene razón: si registran hoy una cena de ayer, esa plata es de ayer.
+  - **Revierte el cambio del 28/09**, cuando lo moví a fecha de registro porque “el medidor no cuadraba con la lista”. El problema de fondo nunca fue cuál fecha usar, sino que **el medidor y la lista usaban criterios distintos**. Mientras los dos miren la fecha de pago, cuadran. Queda anotado en el código para que no se vuelva a dar la vuelta.
+  - **El criterio viejo escondía un exceso real.** Con los datos de producción: el **30/09 pasa de verse normal a $890.400, que son $240.400 POR ENCIMA** del presupuesto; el 01/10 baja de $233.750 a $88.500. Tres cenas del 30/09 se habían cargado el 01/10 y estaban inflándole el día equivocado.
+  - **Reconciliado:** la suma de los días sueltos da $978.900, igual que el rango 30/09–01/10. No se pierde ni se duplica plata.
+  - **El aviso por correo mide el mismo día**, el del gasto. Si alguien carga hoy algo de ayer y con eso ayer se pasó, el correo habla de AYER — y lo aclara en el cuerpo, porque recibir un aviso del 30/09 el 01/10 sin explicación parece un error del sistema.
+  - Un pago **sin fecha de pago** se cuenta en su fecha de carga (no puede desaparecer del panel) y la pantalla lo marca, para que no pase por dato firme.
+  - **Pruebas:** 393 comprobaciones. Las **21 mutaciones** se detectan. Una NO se detectaba: borrar el argumento de `avisarSiCruzaPresupuesto_(body.monto, ...)` dejaba el aviso mirando “hoy” y la suite pasaba limpia — no alcanzaba con probar la función, había que probar **la llamada**.
 - **2026-10-01**: 💰 **Compra de Materiales pasa a tener FONDO PROPIO.** Deja de descontar del saldo de Viáticos: el usuario separó las dos bolsas para manejarlas independientes.
   - Es la tercera vuelta de esta decisión y queda anotada entera en el código: hasta el 17/09 salía del banco, del 17/09 al 30/09 descontaba de Viáticos, y desde hoy tiene cuenta propia.
   - **Efecto cero hacia atrás, verificado antes de aplicar:** los **17 pagos de materiales son todos anteriores al SALDO BASE** de Viáticos (27/09 11:24), así que no pesaban en el cálculo. El saldo queda en **-$119.696** antes y después.

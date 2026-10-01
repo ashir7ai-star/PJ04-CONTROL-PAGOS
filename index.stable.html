@@ -1659,6 +1659,10 @@
     tr.excedido .vt-uso-pct        { color: var(--error); font-weight: 700; }
     tr.excedido .num.gastado       { color: var(--error); }
 
+    /* Nota de "cargado el X": es un dato secundario, pero tiene que leerse.
+       Si se pierde, nadie entiende por que un gasto de ayer aparece hoy. */
+    .vt-tarde { color: var(--text-muted); font-size: .72rem; font-style: italic; }
+
     .vt-rubro-eti { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
     .vt-punto { width: 8px; height: 8px; border-radius: 3px; background: #2563eb; flex: none; }
     tr.cerca    .vt-punto { background: #d97706; }
@@ -3144,7 +3148,7 @@
   <main id="viewViaticos" style="display:none;">
     <div class="page-header">
       <p class="page-title">Control de Viáticos</p>
-      <p class="page-subtitle">Seguimiento del gasto por rubro.</p>
+      <p class="page-subtitle">Seguimiento del gasto por rubro. Los pagos se agrupan por <strong>fecha del gasto</strong>, no por cuándo se cargaron.</p>
     </div>
 
     <!-- Filtros. Cada control con su etiqueta: un campo sin nombre no se sabe
@@ -6452,17 +6456,24 @@
       (p.rubros || []).forEach(r => { etiquetaDe[r.clave] = r.etiqueta; });
 
       document.getElementById('vtDetalle').innerHTML = det.length
-        ? '<thead><tr><th>Fecha</th><th>Rubro</th><th>Concepto</th><th>Proveedor</th>' +
+        ? '<thead><tr><th>Fecha del gasto</th><th>Rubro</th><th>Concepto</th><th>Proveedor</th>' +
           '<th>Registró</th><th class="num">Valor</th><th></th></tr></thead><tbody>' +
           det.map(d =>
             '<tr>' +
-              '<td class="tenue">' + escapeHtml(d.dia) + '<br>' + escapeHtml(d.hora) + '</td>' +
+              // La fecha que manda es la del GASTO. Debajo, cuándo se cargó,
+              // pero solo si fue otro día: ponerlo siempre sería ruido.
+              '<td class="tenue">' + escapeHtml(d.dia) +
+                (d.registrado && d.registrado !== d.dia
+                  ? '<br><span class="vt-tarde">cargado el ' + escapeHtml(d.registrado) + '</span>'
+                  : '<br>' + escapeHtml(d.hora)) +
+              '</td>' +
               '<td>' + escapeHtml(etiquetaDe[d.rubro] || 'Sin rubro') + '</td>' +
               '<td class="fuerte">' + escapeHtml(d.nombre || '—') +
-                // Solo cuando el gasto NO es del día en que se registró: es el
-                // caso que confunde, así que se dice en vez de esconderse.
-                (d.fechaPago && d.fechaPago !== d.dia
-                  ? '<br><span class="tenue">gasto del ' + escapeHtml(d.fechaPago) + '</span>'
+                // Un pago sin fecha de pago está parado en la fecha de carga,
+                // que puede no ser la que corresponde. Se dice en vez de
+                // dejarlo pasar como si fuera un dato firme.
+                (d.sinFechaPago
+                  ? '<br><span class="vt-tarde">sin fecha de pago</span>'
                   : '') +
               '</td>' +
               '<td>' + escapeHtml(d.proveedor || '—') + '</td>' +

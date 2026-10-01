@@ -444,7 +444,7 @@ function registrarPago_(body) {
   // de escribir la fila y dentro de su propio try: un aviso que falle no puede
   // voltear un pago que ya quedó registrado.
   if (seccion === 'viaticos') {
-    avisarSiCruzaPresupuesto_(body.monto);
+    avisarSiCruzaPresupuesto_(body.monto, fechaDeTextoISO_(body.fecha_pago));
   }
 
   // Los saldos nuevos viajan con la confirmación del pago: el navegador los
@@ -1822,7 +1822,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-10-01-a · compra de materiales con fondo propio';
+const REVISION_BACKEND = '2026-10-01-b · viaticos agrupados por fecha de pago';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -3102,7 +3102,23 @@ function gastoViaticosPorRubro_(desde, hasta) {
   for (let i = 1; i < valores.length; i++) {
     const fila = valores[i];
     if (!fila.some(function (v) { return v !== ''; })) continue;
-    const cuando = fechaHoraDeRegistro_(fila[cFecha]);
+    const registro = fechaHoraDeRegistro_(fila[cFecha]);
+    const pago     = cPago === -1 ? null : fechaHoraDeRegistro_(fila[cPago]);
+
+    // EL DIA QUE MANDA ES EL DEL GASTO, no el de la carga.
+    //
+    // Si alguien registra hoy una cena de ayer, esa plata es de ayer. El
+    // presupuesto es DIARIO, asi que cargarsela al dia equivocado desmiente
+    // los dos dias a la vez: infla el de hoy y vacia el de ayer.
+    //
+    // ⚠️ Esto ya se cambio una vez al reves (28/09) porque el medidor no
+    // cuadraba con la lista. El problema de fondo no era cual fecha usar: era
+    // que el medidor y la lista usaban criterios distintos. Mientras los dos
+    // miren la fecha de pago, cuadran.
+    //
+    // Si falta la fecha de pago se usa la de registro: un pago sin fecha no
+    // puede desaparecer del panel sin que nadie se entere.
+    const cuando = pago || registro;
     if (!cuando || cuando.getTime() < d0.getTime() || cuando.getTime() > d1.getTime()) continue;
 
     const valor = montoANumero_(fila[cValor]);
@@ -3112,19 +3128,23 @@ function gastoViaticosPorRubro_(desde, hasta) {
     salida.pagos += 1;
 
     // El detalle: lo que hace falta para entender un gasto sin ir a la hoja.
-    const fechaPago = cPago === -1 ? null : fechaHoraDeRegistro_(fila[cPago]);
     salida.detalle.push({
       rubro:     rubroValido_(rubro) ? rubro : '',
-      // Con un rango de varios días, la hora sola no ubica nada.
+      // El dia del GASTO: el mismo con el que se agrupa, para que la lista y
+      // el medidor nunca puedan contar cosas distintas.
       dia:       Utilities.formatDate(cuando, ZONA_HORARIA, 'dd/MM/yyyy'),
-      hora:      Utilities.formatDate(cuando, ZONA_HORARIA, 'HH:mm'),
+      hora:      registro ? Utilities.formatDate(registro, ZONA_HORARIA, 'HH:mm') : '',
       nombre:    cNombre === -1 ? '' : String(fila[cNombre] || ''),
       proveedor: cProv   === -1 ? '' : String(fila[cProv]   || ''),
       quien:     cQuien  === -1 ? '' : String(fila[cQuien]  || ''),
       url:       cUrl    === -1 ? '' : String(fila[cUrl]    || ''),
       valor:     valor,
-      // Cuándo se gastó, que puede no ser el día en que se registró.
-      fechaPago: fechaPago ? Utilities.formatDate(fechaPago, ZONA_HORARIA, 'dd/MM/yyyy') : ''
+      // Cuando se CARGO al sistema, que puede ser otro dia. Se manda siempre;
+      // la pantalla solo lo muestra cuando no coincide con el del gasto.
+      registrado: registro ? Utilities.formatDate(registro, ZONA_HORARIA, 'dd/MM/yyyy') : '',
+      // Un pago sin fecha de pago se cuenta igual, pero se avisa: esta parado
+      // en la fecha de carga, que puede no ser la que corresponde.
+      sinFechaPago: !pago
     });
 
     if (!rubroValido_(rubro)) { salida.sinRubro += valor; continue; }
@@ -3260,13 +3280,18 @@ function ajustarPresupuesto_(body) {
 //
 // Un correo por cada pago posterior sería ruido, y el ruido se deja de leer:
 // ya pasó con los errores de /salud, dos días sin que nadie los mirara.
-function avisarSiCruzaPresupuesto_(montoDelPago) {
+function avisarSiCruzaPresupuesto_(montoDelPago, fechaDelGasto) {
   try {
     const vigente = presupuestoDiarioVigente_();
     if (!vigente || !(vigente.monto > 0)) return;
 
-    // El mismo criterio que el panel: el día en que se REGISTRA.
-    const dia = new Date();
+    // El mismo criterio que el panel: el día en que se GASTÓ.
+    //
+    // Si alguien carga hoy una cena de ayer, el día que se puede haber pasado
+    // es AYER, y es de ayer que hay que avisar. Avisar de hoy sería señalar un
+    // día que no tiene nada que ver con ese gasto.
+    const dia = (fechaDelGasto instanceof Date && !isNaN(fechaDelGasto.getTime()))
+      ? fechaDelGasto : new Date();
     const despues = gastoViaticosPorRubro_(dia, dia).total;   // ya incluye el pago recién escrito
     const antes   = despues - montoANumero_(montoDelPago);
 
@@ -3283,6 +3308,10 @@ function avisarSiCruzaPresupuesto_(montoDelPago) {
         'Presupuesto: ' + pesos(vigente.monto) + '\n' +
         'Gastado:     ' + pesos(despues) + '\n' +
         'Excedido en: ' + pesos(despues - vigente.monto) + '\n\n' +
+        // Si el gasto es de otro día, se dice. Recibir un correo sobre el
+        // 30/09 el 01/10 sin explicación parece un error del sistema.
+        (mismoDia_(dia, new Date()) ? ''
+          : 'Ojo: este aviso es del ' + dTxt + ', no de hoy. El gasto se cargó después.\n\n') +
         'Es una referencia, no un límite: el pago se registró con normalidad.\n' +
         'El detalle por rubro está en Control de Viáticos.\n\n' +
         'Correo generado automáticamente.'
