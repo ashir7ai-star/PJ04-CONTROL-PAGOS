@@ -619,7 +619,66 @@ function consultarPagos_(ctx) {
       resultado.push(obj);
     });
   });
+
+  // Los traslados también salen en Consultar Pagos (pedido del usuario,
+  // 01/10). Van marcados con TIPO FACTURA 'traslado'.
+  //
+  // ⚠️ UN TRASLADO NO ES UN GASTO. La plata sigue siendo de la empresa, solo
+  // cambió de bolsillo. Si se sumara al total de la pantalla se contaría DOS
+  // VECES la misma plata: una al mandarla al fondo y otra al gastarla desde
+  // ese fondo. Por eso viajan marcados y la pantalla los totaliza aparte.
+  //
+  // Solo administradores: mover dinero entre cuentas de la empresa es un acto
+  // administrativo y `consultarTraslados_` ya lo restringe. Si se colaran acá
+  // sin filtro, cualquiera los vería por la puerta de al lado.
+  if (MODO_LOGIN === 'off' || esAdmin_(contexto)) {
+    trasladosComoPagos_().forEach(function (t) { resultado.push(t); });
+  }
+
   return resultado;
+}
+
+// Un traslado, con la forma de una fila de pagos, para que Consultar Pagos lo
+// muestre sin tener que entender dos formatos distintos.
+function trasladosComoPagos_() {
+  const valores = valoresDeHoja_(hojaTraslados_());
+  if (valores.length < 2) return [];
+
+  const enc      = valores[0];
+  const formatos = inferirFormatosDeColumna_(enc, valores);
+  const col = function (n) { return enc.indexOf(n); };
+  const cFecha  = col('FECHA'),   cOrigen = col('ORIGEN'), cDestino = col('DESTINO');
+  const cMonto  = col('MONTO'),   cQuien  = col('REGISTRADO POR');
+  const cNota   = col('NOTA'),    cUrl    = col('URL COMPROBANTE');
+  const cReg    = col('FECHA REGISTRO');
+  if (cFecha === -1 || cMonto === -1) return [];
+
+  const salida = [];
+  valores.slice(1).forEach(function (fila, i) {
+    if (!fila.some(function (v) { return v !== ''; })) return;
+    const destino = etiquetaDeCuenta_(fila[cDestino]);
+    salida.push({
+      // La fecha del traslado va como FECHA DE PAGO a propósito: es con la que
+      // el usuario lo busca, igual que con cualquier otro movimiento.
+      'FECHA DE PAGO':   formatearValorDeCelda_('FECHA DE PAGO', fila[cFecha], formatos[cFecha]),
+      'FECHA REGISTRO':  cReg === -1 ? '' : formatearValorDeCelda_('FECHA REGISTRO', fila[cReg], formatos[cReg]),
+      // El origen es siempre una cuenta de banco, o sea una empresa.
+      'EMPRESA':         etiquetaDeCuenta_(fila[cOrigen]),
+      'TIPO FACTURA':    'traslado',
+      'NOMBRE DE PAGO':  'Traslado a ' + destino,
+      'PROVEEDOR':       destino,
+      'VALOR FACTURA':   fila[cMonto],
+      'NOTAS':           cNota  === -1 ? '' : String(fila[cNota] || ''),
+      'URL ARCHIVO':     cUrl   === -1 ? '' : String(fila[cUrl]  || ''),
+      'REGISTRADO POR':  cQuien === -1 ? '' : String(fila[cQuien] || ''),
+      // La hoja de traslados no tiene ID REGISTRO. Se arma uno con la fila
+      // para que la pantalla tenga una clave estable con la cual identificarlo.
+      'ID REGISTRO':     'traslado-' + (i + 2),
+      'RUBRO':           '',
+      'CORREO REGISTRO': ''
+    });
+  });
+  return salida;
 }
 
 // ─── Migración: repartir los pagos de la hoja principal por sección ───────
@@ -1822,7 +1881,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-10-01-b · viaticos agrupados por fecha de pago';
+const REVISION_BACKEND = '2026-10-01-c · traslados visibles en consultar pagos';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [

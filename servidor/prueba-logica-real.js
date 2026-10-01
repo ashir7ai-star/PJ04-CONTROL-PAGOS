@@ -916,5 +916,100 @@ console.log('\n=== El formulario no deja escribir ese campo ===');
       'un control que el controlado puede subir no es un control');
 }
 
+console.log('\n=== Los traslados salen en Consultar Pagos, pero NO suman ===');
+{
+  const ENC = ENC_PAGOS.concat(['RUBRO', 'CORREO REGISTRO']);
+  const foto = {
+    'PAGOS REGISTRADOS': [ENC,
+      [serie(2026, 9, 15, 10, 0), 'AMPAC SAS', 'compra', 'Nathan', 'n', 'p',
+       serie(2026, 9, 15), 300000, '', '', 'id1', '', '']],
+    'Viaticos': [ENC], 'Compra Materiales': [ENC], 'Caja Menor': [ENC],
+    'SALDOS': [['FECHA', 'CUENTA', 'SALDO BASE', 'CONCEPTO', 'REGISTRADO POR']],
+    'TRASLADOS': [['FECHA', 'ORIGEN', 'DESTINO', 'MONTO', 'REGISTRADO POR', 'NOTA',
+                   'URL COMPROBANTE', 'FECHA REGISTRO', 'REALIZADO POR'],
+      [serie(2026, 9, 16), 'banco_ampac', 'viaticos', 500000, 'Nathan De Lima',
+       'Envio para viaticos', 'https://drive/comp1', serie(2026, 9, 16, 9, 30),
+       'nathan@ylevigroup.com']],
+    'USUARIOS': [['CORREO', 'NOMBRE', 'TELEFONO', 'ROL', 'SECCIONES', 'ESTADO',
+                  'FECHA REGISTRO', 'ULTIMO ACCESO'],
+                 ['nathan@ylevigroup.com', 'Nathan De Lima', '300', 'admin', 'todas', 'activo', '', ''],
+                 ['laura@energy-millennium.com', 'Laura', '300', 'usuario', 'pagos', 'activo', '', '']],
+    'SESIONES': [['HASH', 'CORREO', 'CREADA', 'ULTIMO USO', 'VENCE']],
+    'SOLICITUDES DE APROBACION': [['ID SOLICITUD']]
+  };
+
+  const e = montar(foto, 'off');
+  const filas = e.globales.consultarPagos_();
+  const tras  = filas.filter(f => String(f['TIPO FACTURA']).toLowerCase() === 'traslado');
+
+  chk('el traslado aparece en la lista de pagos', tras.length === 1, filas.length);
+  chk('y va marcado como traslado, no como un pago cualquiera',
+      tras.length === 1 && tras[0]['TIPO FACTURA'] === 'traslado', tras[0]);
+
+  // El mapeo: lo que se ve en la tabla tiene que decir algo, no claves
+  // internas como "banco_ampac".
+  const t = tras[0] || {};
+  chk('la empresa es la cuenta de donde SALE, con su nombre',
+      t['EMPRESA'] === 'AMPAC SAS', t['EMPRESA']);
+  chk('el proveedor es la cuenta a donde ENTRA',
+      t['PROVEEDOR'] === 'Viáticos', t['PROVEEDOR']);
+  chk('el concepto dice a donde fue', /Traslado a Vi/.test(String(t['NOMBRE DE PAGO'])), t['NOMBRE DE PAGO']);
+  chk('el valor es el monto trasladado', Number(t['VALOR FACTURA']) === 500000, t['VALOR FACTURA']);
+  chk('el comprobante viaja como archivo del pago',
+      String(t['URL ARCHIVO']).indexOf('comp1') !== -1, t['URL ARCHIVO']);
+  chk('y queda quien lo registro', t['REGISTRADO POR'] === 'Nathan De Lima', t['REGISTRADO POR']);
+  chk('trae una clave estable para identificarlo',
+      /^traslado-/.test(String(t['ID REGISTRO'])), t['ID REGISTRO']);
+
+  // Las columnas tienen que ser LAS MISMAS que las de un pago: si faltara
+  // alguna, el Excel y el PDF saldrian con huecos.
+  const unPago = filas.filter(f => f['ID REGISTRO'] === 'id1')[0];
+  const faltan = Object.keys(unPago).filter(k => !(k in t));
+  chk('no le falta ninguna columna de las que tiene un pago', faltan.length === 0, faltan);
+
+  // Permisos: mover dinero entre cuentas es un acto administrativo.
+  const g = montar(foto, 'estricto');
+  require('vm').runInContext(
+    'verificarIdToken_ = function (t) { return t ? { correo: String(t), nombre: String(t) } : null; };',
+    g.globales);
+
+  const comoAdmin = g.globales.consultarPagos_(
+    g.globales.contextoDe_({ idToken: 'nathan@ylevigroup.com' }));
+  chk('un administrador los ve',
+      comoAdmin.some(f => String(f['TIPO FACTURA']).toLowerCase() === 'traslado'), comoAdmin.length);
+
+  const comoUsuario = g.globales.consultarPagos_(
+    g.globales.contextoDe_({ idToken: 'laura@energy-millennium.com' }));
+  chk('un usuario comun NO los ve por esta puerta',
+      !comoUsuario.some(f => String(f['TIPO FACTURA']).toLowerCase() === 'traslado'),
+      comoUsuario.filter(f => String(f['TIPO FACTURA']).toLowerCase() === 'traslado'));
+}
+
+console.log('\n=== Un traslado no es un gasto: no puede sumar al total ===');
+{
+  const html = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'index.html'), 'utf8');
+
+  // tipoInfo cae en "Venta" por defecto, asi que el caso del traslado tiene
+  // que estar ANTES de ese fallback o un traslado se etiquetaria como venta.
+  const ti = html.split('function tipoInfo')[1].split('\n    }')[0];
+  chk('el traslado tiene su propia etiqueta', /tipo === 'traslado'/.test(ti), ti.slice(0, 120));
+  chk('y esta antes del "Venta" por defecto',
+      ti.indexOf("tipo === 'traslado'") < ti.indexOf("label: 'Venta'"),
+      'un traslado saldria etiquetado como Venta');
+
+  chk('se puede filtrar por traslado', /<option value="traslado">/.test(html), 'falta la opcion');
+
+  // Lo importante: el total.
+  chk('los traslados se separan de los pagos para el total',
+      /const pagos\s*=\s*rows\.filter\(r => !esTraslado\(r\)\)/.test(html),
+      'entrarian al total');
+  chk('el total se calcula SOLO sobre los pagos',
+      /const total\s*=\s*pagos\.reduce/.test(html),
+      'contaria dos veces la misma plata');
+  chk('y se informa aparte cuanto suman los traslados',
+      /no suman/.test(html), 'el numero enganaria sin decirlo');
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);

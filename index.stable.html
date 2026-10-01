@@ -1663,6 +1663,11 @@
        Si se pierde, nadie entiende por que un gasto de ayer aparece hoy. */
     .vt-tarde { color: var(--text-muted); font-size: .72rem; font-style: italic; }
 
+    /* Un traslado no es un gasto: se ve distinto a propósito para que no se
+       confunda con los pagos de la lista. */
+    .badge-traslado { background: rgba(100, 116, 139, .16); color: #64748b; }
+    .results-total .aparte { color: var(--text-muted); font-weight: 600; }
+
     /* Mensaje cuando la pestaña de saldos no tiene nada que mostrar. Una
        pestaña en blanco parece una falla; un texto explica. */
     .saldos-vacio {
@@ -2761,6 +2766,7 @@
             <option value="seguridad_social">Seguridad Social</option>
             <option value="nomina">Pago Nómina</option>
             <option value="compra_materiales">Compra Materiales</option>
+            <option value="traslado">Traslado entre cuentas</option>
           </select>
         </div>
         <div class="field">
@@ -4034,6 +4040,9 @@
       // Los exactos van PRIMERO. Ojo: esta función termina devolviendo "Venta"
       // por defecto, así que un tipo sin caso propio se etiquetaría mal en vez
       // de fallar de forma visible.
+      // Antes que nada: esta funcion cae en "Venta" por defecto, asi que sin
+      // un caso propio un traslado se etiquetaria como una venta.
+      if (tipo === 'traslado')          return { badgeClass: 'badge-traslado',   label: 'Traslado' };
       if (tipo === 'compra_materiales') return { badgeClass: 'badge-materiales', label: 'Compra Materiales' };
       if (tipo.includes('impuesto')) return { badgeClass: 'badge-impuestos', label: 'Pago Impuestos' };
       if (tipo.includes('viatic'))   return { badgeClass: 'badge-viaticos',  label: 'Viáticos' };
@@ -4108,10 +4117,30 @@
       empty.style.display   = 'none';
       results.style.display = '';
 
-      const total = rows.reduce((s, r) => s + valorDe(r), 0);
+      // ⚠️ LOS TRASLADOS NO SUMAN AL TOTAL.
+      //
+      // Un traslado mueve plata entre cuentas de la empresa: no se gastó nada.
+      // Sumarlo acá contaría DOS VECES la misma plata — una al mandarla al
+      // fondo y otra al gastarla desde ese fondo. Con los datos de hoy serían
+      // $13.650.000 de más sobre $337.812.569, y el número dejaría de
+      // significar lo que la gente cree que significa.
+      //
+      // Se muestran igual, y se totalizan aparte.
+      const esTraslado = r => String(r['TIPO FACTURA'] || '').toLowerCase() === 'traslado';
+      const pagos      = rows.filter(r => !esTraslado(r));
+      const traslados  = rows.filter(esTraslado);
+      const total      = pagos.reduce((s, r) => s + valorDe(r), 0);
+      const totalTrasl = traslados.reduce((s, r) => s + valorDe(r), 0);
 
-      document.getElementById('resultsCount').textContent = rows.length + ' resultado' + (rows.length !== 1 ? 's' : '');
-      document.getElementById('resultsTotal').textContent = 'Total: $' + total.toLocaleString('es-CO');
+      document.getElementById('resultsCount').textContent =
+        rows.length + ' resultado' + (rows.length !== 1 ? 's' : '') +
+        (traslados.length ? ' · ' + traslados.length + ' traslado' + (traslados.length !== 1 ? 's' : '') : '');
+      document.getElementById('resultsTotal').innerHTML =
+        'Total: $' + total.toLocaleString('es-CO') +
+        (traslados.length
+          ? ' <span class="aparte">· traslados $' + totalTrasl.toLocaleString('es-CO') +
+            ' (no suman)</span>'
+          : '');
 
       tbody.innerHTML = rows.map(r => {
         const { badgeClass, label: tipoLabel } = tipoInfo(r['TIPO FACTURA']);
