@@ -155,6 +155,22 @@ console.log('\n=== Dinero Disponible: pestana propia, la primera ===');
       /ninguna cuenta asignada/.test(codigo), 'quedaria una pestana vacia');
 }
 
+console.log('\n=== Tipos de pago: tres por fila, dos en celular ===');
+{
+  // El de escritorio se ve de una. El de CELULAR no: alguien puede unificar
+  // la regla sin darse cuenta y dejar tres columnas en un telefono, donde
+  // "Seguridad Social" y "Compra Materiales" se parten.
+  const escritorio = html.split('.tipo-selector {')[1].split('}')[0];
+  chk('en escritorio van tres por fila',
+      /repeat\(3, 1fr\)/.test(escritorio), escritorio.replace(/\s+/g, ' ').slice(0, 90));
+
+  const movil = html.split('@media (max-width: 640px)')[1] || '';
+  const reglaMovil = movil.split('.tipo-selector {')[1] || '';
+  chk('pero en celular se quedan en dos',
+      /repeat\(2, 1fr\)/.test(reglaMovil.split('}')[0]),
+      'tres columnas en un telefono parten las etiquetas largas');
+}
+
 // El caso concreto que se escapó, por si alguien vuelve a mover el bloque.
 console.log('\n=== Control de Viáticos: su propia pestaña, solo para administradores ===');
 {

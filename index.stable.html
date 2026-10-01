@@ -255,9 +255,13 @@
     .section-label .req { color: var(--error); }
 
     /* ─── Tipo selector ──────────────────────────────────────────── */
+    /* TRES por fila (01/10, pedido del usuario). Con nueve tipos, de a dos
+       eran cinco filas y el formulario arrancaba muy abajo; de a tres son
+       tres filas. En celular se quedan en DOS: con tres, etiquetas como
+       "Seguridad Social" o "Compra Materiales" no entran sin partirse. */
     .tipo-selector {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 8px;
       margin-bottom: 24px;
     }
@@ -1887,10 +1891,9 @@
 
       .card { padding: 18px 16px; }
 
-      /* Dos tipos de pago por fila también en celular: con ocho opciones, una
-         por fila obligaba a desplazarse muchísimo antes de llegar al
-         formulario. Se compacta el botón para que los dos entren cómodos en
-         vez de bajar a una sola columna. */
+      /* En celular se mantienen DOS por fila. Una sola columna obligaba a
+         desplazarse muchísimo antes de llegar al formulario, y tres no entran:
+         "Seguridad Social" y "Compra Materiales" quedarían partidas. */
       .tipo-selector { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 20px; }
       .tipo-btn      { padding: 12px 6px 10px; }
       .tipo-icon     { width: 30px; height: 30px; border-radius: 9px; margin-bottom: 6px; }

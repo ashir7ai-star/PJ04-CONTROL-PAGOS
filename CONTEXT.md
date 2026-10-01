@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-10-01** — 🧱 **Tipos de pago en tres columnas** (dos en celular). Backend `2026-10-01-c` ya desplegado en Apps Script y EasyPanel, con los traslados visibles en Consultar Pagos.
+
 **2026-10-01** — 🔁 **Los traslados ya se ven en Consultar Pagos**, marcados y filtrables, pero **totalizados aparte**: sumarlos habría inflado el total en $13.650.000 contando dos veces la misma plata. Solo administradores. Backend `2026-10-01-c`.
 
 **2026-10-01** — 💳 **“Dinero Disponible” es ahora una pestaña propia, la primera del menú.** Salió de Nuevo Pago. El refresco automático se arregló para que no siga pidiendo saldos desde otras pestañas. Solo cambia la pantalla: el backend sigue en `2026-10-01-b`.
@@ -515,6 +517,10 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-01**: 🧱 **Los tipos de pago pasan a TRES por fila** (eran dos). Con nueve tipos, de a dos eran cinco filas y el formulario arrancaba muy abajo; ahora son tres filas.
+  - **En celular se quedan en DOS.** Con tres, etiquetas como “Seguridad Social” y “Compra Materiales” se parten. Hay una prueba para esto porque es el lado que **no se ve** desde un escritorio: alguien puede unificar la regla sin notarlo.
+  - También aplica al selector de Aprobaciones, que usa la misma clase.
+  - Desplegado y verificado: Apps Script y EasyPanel en `2026-10-01-c`.
 - **2026-10-01**: 🔁 **Los traslados aparecen también en Consultar Pagos**, marcados como `Traslado` y con su opción propia en el filtro de tipo.
   - ⚠️ **PERO NO SUMAN AL TOTAL, y eso es deliberado.** Un traslado mueve plata entre cuentas de la empresa: no se gastó nada. Sumarlo contaría **dos veces la misma plata** — una al mandarla al fondo y otra al gastarla desde ese fondo. Medido: el total pasaría de **$337.848.469 a $351.498.469**, inflado en los **$13.650.000** de los 15 traslados.
   - La pantalla muestra `Total: $337.848.469 · traslados $13.650.000 (no suman)`. El número dice lo que significa.
