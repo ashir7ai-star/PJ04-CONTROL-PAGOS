@@ -3214,20 +3214,20 @@
       <p class="card-title">Registrar traslado</p>
       <div class="field-group">
         <div class="field-row">
+          <!-- Las dos listas las llena pintarCuentasDeTraslado() con lo que
+               manda el servidor. Acá va solo el marcador: una copia escrita a
+               mano se desactualiza en silencio, que es justo lo que pasó
+               cuando Compra Materiales pasó a ser fondo propio. -->
           <div class="field">
             <label for="tOrigen">Sale de <span class="req">*</span></label>
             <select id="tOrigen">
               <option value="" disabled selected>Seleccionar</option>
-              <option value="banco_millennium">Millennium Co · Cuenta bancaria</option>
-              <option value="banco_ampac">AMPAC SAS · Cuenta bancaria</option>
             </select>
           </div>
           <div class="field">
             <label for="tDestino">Entra a <span class="req">*</span></label>
             <select id="tDestino">
               <option value="" disabled selected>Seleccionar</option>
-              <option value="viaticos">Viáticos</option>
-              <option value="caja_menor">Caja Menor</option>
             </select>
           </div>
         </div>
@@ -6861,6 +6861,33 @@
         ).join('');
     }
 
+    // Los dos selectores de cuenta salen del SERVIDOR, no de una lista escrita
+    // a mano en el HTML.
+    //
+    // Estaban escritos a mano, con Viáticos y Caja Menor nada más. Cuando el
+    // 01/10 Compra Materiales pasó a ser un fondo propio, el backend ya lo
+    // aceptaba como destino pero en la pantalla no había forma de elegirlo:
+    // no se le podía mandar plata y nada avisaba del problema. El día que se
+    // agregue otra cuenta, esto la muestra solo.
+    //
+    // Origen = cuentas de banco. Destino = fondos. Es la misma regla que
+    // valida registrarTraslado_ en el servidor, que es quien decide de verdad.
+    function pintarCuentasDeTraslado(cuentas) {
+      if (!cuentas || !cuentas.length) return;
+      [['tOrigen', 'banco'], ['tDestino', 'fondo']].forEach(([id, grupo]) => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        const elegido = sel.value;
+        sel.innerHTML = '<option value="" disabled' + (elegido ? '' : ' selected') +
+                        '>Seleccionar</option>' +
+          cuentas.filter(c => c.grupo === grupo).map(c =>
+            '<option value="' + escapeHtml(c.clave) + '"' +
+            (c.clave === elegido ? ' selected' : '') + '>' +
+            escapeHtml(c.etiqueta) + '</option>'
+          ).join('');
+      });
+    }
+
     async function cargarTraslados() {
       const cargando = document.getElementById('trasladosCargando');
       const cuerpo   = document.getElementById('cuerpoTraslados');
@@ -6875,6 +6902,7 @@
         // La lista de administradores llega con los traslados, así que el
         // selector se llena sin pedir nada más.
         pintarAutoresDeTraslado(r.administradores);
+        pintarCuentasDeTraslado(r.cuentas);
 
         if (!r.traslados.length) {
           cuerpo.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:26px;color:var(--text-muted);">Todavía no hay traslados registrados.</td></tr>';

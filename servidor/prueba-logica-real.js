@@ -94,7 +94,8 @@ console.log('\n=== La logica real calcula saldos sobre el adaptador ===');
       [serie(2026, 9, 15, 12, 0), 'AMPAC SAS', 'compra_materiales', 'q', 'n', 'p', serie(2026, 9, 15), 50000, '', '', 'id3']],
     'SALDOS': [['FECHA', 'CUENTA', 'SALDO BASE', 'CONCEPTO', 'REGISTRADO POR'],
       [serie(2026, 9, 15, 8, 0), 'banco_ampac', 1000000, 'base', 'admin'],
-      [serie(2026, 9, 15, 8, 0), 'viaticos',     500000, 'base', 'admin']],
+      [serie(2026, 9, 15, 8, 0), 'viaticos',     500000, 'base', 'admin'],
+      [serie(2026, 9, 15, 8, 0), 'compra_materiales', 200000, 'base', 'admin']],
     'TRASLADOS': [['FECHA', 'ORIGEN', 'DESTINO', 'MONTO', 'REGISTRADO POR', 'NOTA', 'URL COMPROBANTE', 'FECHA REGISTRO', 'REALIZADO POR']],
     'USUARIOS':  [['CORREO', 'NOMBRE', 'TELEFONO', 'ROL', 'SECCIONES', 'ESTADO', 'FECHA REGISTRO', 'ULTIMO ACCESO']],
     'SESIONES':  [['HASH', 'CORREO', 'CREADA', 'ULTIMO USO', 'VENCE']],
@@ -106,9 +107,86 @@ console.log('\n=== La logica real calcula saldos sobre el adaptador ===');
 
   chk('responde con exito', r.status === 'success', r.status);
   chk('banco AMPAC: 1.000.000 - 300.000', de('banco_ampac').saldo === 700000, de('banco_ampac').saldo);
-  chk('Viaticos descuenta viatico Y materiales: 500.000 - 150.000',
-      de('viaticos').saldo === 350000, de('viaticos').saldo);
+  // Desde el 2026-10-01 son DOS bolsas independientes. Antes materiales
+  // descontaba de Viaticos y esta misma prueba esperaba 350.000.
+  chk('Viaticos descuenta SOLO viaticos: 500.000 - 100.000',
+      de('viaticos').saldo === 400000, de('viaticos').saldo);
+  chk('Compra Materiales tiene su propia bolsa: 200.000 - 50.000',
+      de('compra_materiales').saldo === 150000, de('compra_materiales').saldo);
+  chk('y un pago de materiales NO toca el saldo de viaticos',
+      de('viaticos').gastado === 100000, de('viaticos').gastado);
   chk('ningun pago queda sin bolsa', r.sinCuenta === 0, r.sinCuenta);
+
+  // A que bolsa va cada tipo. Es la regla entera en una linea cada una.
+  const bolsa = t => e.globales.cuentaDePago_(t, 'AMPAC SAS');
+  chk('materiales ya NO sale de viaticos', bolsa('compra_materiales') === 'compra_materiales', bolsa('compra_materiales'));
+  chk('viaticos sigue saliendo de viaticos', bolsa('viaticos') === 'viaticos', bolsa('viaticos'));
+  chk('caja menor sigue en la suya', bolsa('caja_menor') === 'caja_menor', bolsa('caja_menor'));
+  chk('y lo demas sigue saliendo del banco', bolsa('proveedor') === 'banco_ampac', bolsa('proveedor'));
+
+  // El fondo nuevo tiene que servir como destino de un traslado desde el
+  // banco. Sale solo de `grupo: 'fondo'`, pero si alguien lo cambia a 'banco'
+  // se romperia en silencio: no habria forma de mandarle plata.
+  // Se comprueba sobre lo que DEVUELVE consultarSaldos_, no leyendo la
+  // constante: `const` dentro del contexto no queda como propiedad del global,
+  // y ademas el grupo asi comprobado es el mismo que mira registrarTraslado_.
+  chk('se le puede trasladar plata desde el banco',
+      de('compra_materiales').grupo === 'fondo', de('compra_materiales').grupo);
+}
+
+console.log('\n=== Cada fondo lo ve quien tiene su seccion ===');
+{
+  const foto = {
+    'PAGOS REGISTRADOS': [ENC_PAGOS], 'Viaticos': [ENC_PAGOS], 'Compra Materiales': [ENC_PAGOS],
+    'SALDOS': [['FECHA', 'CUENTA', 'SALDO BASE', 'CONCEPTO', 'REGISTRADO POR'],
+               [serie(2026, 9, 15, 8, 0), 'viaticos', 500000, 'base', 'admin'],
+               [serie(2026, 9, 15, 8, 0), 'compra_materiales', 200000, 'base', 'admin'],
+               [serie(2026, 9, 15, 8, 0), 'banco_ampac', 1000000, 'base', 'admin']],
+    'TRASLADOS': [['FECHA', 'ORIGEN', 'DESTINO', 'MONTO', 'REGISTRADO POR', 'NOTA', 'URL COMPROBANTE', 'FECHA REGISTRO', 'REALIZADO POR']],
+    'USUARIOS':  [['CORREO', 'NOMBRE', 'TELEFONO', 'ROL', 'SECCIONES', 'ESTADO', 'FECHA REGISTRO', 'ULTIMO ACCESO']],
+    'SESIONES':  [['HASH', 'CORREO', 'CREADA', 'ULTIMO USO', 'VENCE']],
+    'SOLICITUDES DE APROBACION': [['ID SOLICITUD']]
+  };
+  const e = montar(foto, 'estricto');
+  const ve = (secciones, clave) => e.globales.puedeVerCuenta_(
+    { rol: 'usuario', secciones: secciones }, clave);
+
+  chk('quien tiene materiales ve el fondo de materiales', ve(['compra_materiales'], 'compra_materiales'));
+  chk('pero NO ve el de viaticos', !ve(['compra_materiales'], 'viaticos'));
+  chk('quien tiene viaticos ve el de viaticos', ve(['viaticos'], 'viaticos'));
+  chk('y ya NO ve el de materiales', !ve(['viaticos'], 'compra_materiales'));
+  chk('ningun usuario comun ve los bancos', !ve(['viaticos', 'compra_materiales'], 'banco_ampac'));
+  chk('un admin ve todo', e.globales.puedeVerCuenta_({ rol: 'admin', secciones: [] }, 'banco_ampac'));
+
+  // El servidor manda la lista de cuentas con su grupo: de ahi salen los dos
+  // selectores de la pantalla de Traslados.
+  // Sin login: consultarTraslados_ es solo para administradores y aca no
+  // interesa el permiso, sino QUE CUENTAS manda.
+  const t = montar(foto, 'off').globales.consultarTraslados_({});
+  const clv = t.cuentas.map(c => c.clave);
+  chk('consultar_traslados incluye el fondo nuevo',
+      clv.indexOf('compra_materiales') !== -1, clv);
+  chk('y lo manda como fondo, para que sea DESTINO valido',
+      t.cuentas.filter(c => c.clave === 'compra_materiales')[0].grupo === 'fondo', t.cuentas);
+
+  // La pantalla ya no puede tener la lista escrita a mano: cuando materiales
+  // paso a fondo propio, el backend lo aceptaba como destino pero el <select>
+  // seguía con Viaticos y Caja Menor nada mas, y no habia forma de mandarle
+  // plata. Nada avisaba.
+  const html = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'index.html'), 'utf8');
+  const selOrigen  = html.split('id="tOrigen"')[1].split('</select>')[0];
+  const selDestino = html.split('id="tDestino"')[1].split('</select>')[0];
+  chk('el selector de origen no trae cuentas escritas a mano',
+      !/value="banco_/.test(selOrigen), selOrigen.slice(0, 120));
+  chk('ni el de destino',
+      !/value="viaticos"|value="caja_menor"/.test(selDestino), selDestino.slice(0, 120));
+  chk('los dos se llenan con lo que manda el servidor',
+      /pintarCuentasDeTraslado\(r\.cuentas\)/.test(html),
+      'nadie los llena: quedarian vacios');
+  chk('origen son los bancos y destino los fondos',
+      /\[\['tOrigen', 'banco'\], \['tDestino', 'fondo'\]\]/.test(html),
+      'si se invierte, se podria mandar plata de un fondo a un banco');
 }
 
 console.log('\n=== La logica real ESCRIBE a traves del adaptador ===');

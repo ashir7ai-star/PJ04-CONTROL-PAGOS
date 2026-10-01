@@ -1822,7 +1822,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-09-30-d · aviso de presupuesto con destinatarios propios';
+const REVISION_BACKEND = '2026-10-01-a · compra de materiales con fondo propio';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -2585,7 +2585,12 @@ const CUENTAS = {
   banco_millennium: { etiqueta: 'Millennium Co',  detalle: 'Cuenta bancaria', empresa: 'millennium', grupo: 'banco' },
   banco_ampac:      { etiqueta: 'AMPAC SAS',      detalle: 'Cuenta bancaria', empresa: 'ampac',      grupo: 'banco' },
   caja_menor:       { etiqueta: 'Caja Menor',     detalle: 'Fondo compartido', empresa: null,        grupo: 'fondo' },
-  viaticos:         { etiqueta: 'Viáticos',       detalle: 'Fondo compartido', empresa: null,        grupo: 'fondo' }
+  viaticos:         { etiqueta: 'Viáticos',       detalle: 'Fondo compartido', empresa: null,        grupo: 'fondo' },
+  // Fondo propio desde el 2026-10-01. Antes los materiales descontaban de
+  // Viáticos; el usuario decidió separar las dos bolsas y manejarlas
+  // independientes. Con `grupo: 'fondo'` ya queda habilitado como destino de
+  // traslados y visible para quien tenga la sección: no hay nada mas que tocar.
+  compra_materiales:{ etiqueta: 'Compra Materiales', detalle: 'Fondo compartido', empresa: null,    grupo: 'fondo' }
 };
 
 function etiquetaDeCuenta_(clave) {
@@ -2604,29 +2609,25 @@ function puedeVerCuenta_(contexto, clave) {
   if (MODO_LOGIN === 'off' || esAdmin_(contexto)) return true;
   const cfg = CUENTAS[clave];
   if (!cfg || cfg.grupo !== 'fondo') return false;
-  if (contexto.secciones.indexOf(clave) !== -1) return true;
-  // Quien gasta de un fondo tiene que poder verlo, aunque su sección se llame
-  // distinto: con el ajuste temporal, Compra Materiales descuenta de Viáticos.
-  // Se deriva del MISMO valor que decide el descuento, así que no pueden
-  // quedar desalineados.
-  return CUENTA_COMPRA_MATERIALES === clave &&
-         contexto.secciones.indexOf('compra_materiales') !== -1;
+  // Cada fondo se llama igual que la sección que gasta de él (viaticos,
+  // caja_menor, compra_materiales), así que con esto alcanza. Hubo un caso
+  // especial mientras materiales descontaba de Viáticos; se fue con él.
+  return contexto.secciones.indexOf(clave) !== -1;
 }
 
 // De qué bolsa sale un pago. Devuelve null si no debe tocar ningún saldo.
-// ⚠️ AJUSTE TEMPORAL (2026-09-17, pedido del usuario).
 //
-// La plata que se manda a Viáticos también se está usando para comprar
-// materiales, así que esos gastos tienen que descontarse del MISMO fondo. Si
-// siguieran saliendo del banco de la empresa, pasarían las dos cosas malas a
-// la vez: Viáticos mostraría más plata de la que realmente queda, y al banco
-// se le restaría una salida que ya se le había restado al hacer el traslado.
+// HISTORIA, porque explica por qué el código cambió dos veces:
+// • Hasta el 2026-09-17 los materiales salían del banco de la empresa.
+// • Del 17/09 al 30/09 descontaron de Viáticos, porque en la práctica la
+//   plata enviada a viáticos se estaba usando también para materiales, y
+//   dejarlos en el banco inflaba el fondo y restaba dos veces al banco.
+// • Desde el 2026-10-01 tienen FONDO PROPIO: el usuario separó las dos
+//   bolsas para manejarlas independientes.
 //
-// PARA VOLVER ATRÁS cuando se organice mejor: poner `null` acá abajo y Compra
-// Materiales vuelve a salir del banco de la empresa. Es el único lugar que hay
-// que tocar — la visibilidad del saldo se deriva de este mismo valor.
-const CUENTA_COMPRA_MATERIALES = 'viaticos';
-
+// El cambio no mueve ningún saldo hacia atrás: los 17 pagos de materiales
+// son todos anteriores al SALDO BASE de Viáticos (27/09 11:24), así que no
+// pesaban en el cálculo. Verificado contra los datos reales antes de aplicar.
 function cuentaDePago_(tipoFactura, empresa) {
   const t = String(tipoFactura || '').toLowerCase();
 
@@ -2636,7 +2637,7 @@ function cuentaDePago_(tipoFactura, empresa) {
 
   if (t === 'viaticos')   return 'viaticos';
   if (t === 'caja_menor') return 'caja_menor';
-  if (t === 'compra_materiales' && CUENTA_COMPRA_MATERIALES) return CUENTA_COMPRA_MATERIALES;
+  if (t === 'compra_materiales') return 'compra_materiales';
 
   // El resto (proveedor, compra, impuestos, seguridad social, nómina) sale del
   // banco de la empresa que figure en el registro.

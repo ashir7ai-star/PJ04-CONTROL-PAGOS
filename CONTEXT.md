@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-10-01** — 💰 **Compra de Materiales ya no descuenta de Viáticos: tiene fondo propio.** Sin efecto retroactivo (verificado). De paso se corrigió que los selectores de Traslados tenían las cuentas escritas a mano y no habrían dejado mandarle plata al fondo nuevo. Backend `2026-10-01-a`.
+
 **2026-09-30** — ✅ **VERSIÓN ESTABLE: `v2.3-identidad-verificada`.** “Registrado por” **sale de la sesión y el servidor ignora lo que mande el navegador**: se acabaron las 14 formas de escribir 6 personas. La hoja quedó unificada con la columna nueva `CORREO REGISTRO`, **281 de 281 pagos con identidad**. Además, Control de Viáticos lo ve quien tenga la sección habilitada (definir el presupuesto sigue siendo solo de administradores), y el aviso de presupuesto pasado le llega también a Yedidia sin darle los reportes completos. Verificado en producción: reporte corrido contra los datos reales con **0 celdas `undefined`**.
 
 **2026-09-30** — ✅ **Todo aplicado en producción.** Backend `2026-09-30-d` en Apps Script y EasyPanel. "Registrado por" sale de la sesión, la hoja quedó unificada (14 variantes → 6 personas, 281/281 con correo), Control de Viáticos lo ve quien tenga la sección, y el aviso de presupuesto le llega también a Yedidia. Reporte verificado contra datos reales: 0 celdas `undefined`.
@@ -507,6 +509,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-01**: 💰 **Compra de Materiales pasa a tener FONDO PROPIO.** Deja de descontar del saldo de Viáticos: el usuario separó las dos bolsas para manejarlas independientes.
+  - Es la tercera vuelta de esta decisión y queda anotada entera en el código: hasta el 17/09 salía del banco, del 17/09 al 30/09 descontaba de Viáticos, y desde hoy tiene cuenta propia.
+  - **Efecto cero hacia atrás, verificado antes de aplicar:** los **17 pagos de materiales son todos anteriores al SALDO BASE** de Viáticos (27/09 11:24), así que no pesaban en el cálculo. El saldo queda en **-$119.696** antes y después.
+  - Con `grupo: 'fondo'` la cuenta nueva queda **sola** habilitada como destino de traslados y visible para quien tenga la sección. Murió el caso especial de `puedeVerCuenta_`: ahora cada fondo se llama igual que su sección y alcanza con la regla normal.
+  - ⚠️ **Nathan debe fijar el SALDO BASE del fondo nuevo.** Hasta entonces aparece como “sin configurar” con saldo 0 — no muestra un rojo falso.
+  - 🐛 **Se encontró de paso un error que nadie habría visto:** los `<select>` de Traslados tenían las cuentas **escritas a mano en el HTML** (Viáticos y Caja Menor nada más). El backend ya aceptaba el fondo nuevo como destino, pero en la pantalla **no había forma de elegirlo**: no se le podía mandar plata y nada avisaba. Ahora los dos selectores se llenan con lo que manda `consultar_traslados`.
+  - **Pruebas:** 388 comprobaciones. Las **18 mutaciones** se detectan, incluidas “vuelve la lista escrita a mano” y “se invierte origen y destino”.
 - **2026-09-30**: ✅ **APLICADO EN PRODUCCIÓN.** Apps Script y EasyPanel en `2026-09-30-d`, y la hoja unificada.
   - **`unificar-registrado-por.js --aplicar`**: 443 celdas en **1 lectura + 3 escrituras** (el `values.batchUpdate` manda todos los rangos juntos; de a una habrían sido 443 peticiones y la cuota son 60/min).
   - **14 formas de escribir → 6 personas.** Laura Leyton 173, Nathan De Lima 69, Yedidia Bivas 16, Sandra Cardozo 14, jose Durango 8, JND IA SYSTEMS 1. **281 de 281** con correo.
