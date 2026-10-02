@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-10-02** — ✅ **VERSIÓN ESTABLE: `v2.4-cuentas-claras`.** **Compra Materiales tiene fondo propio** y deja de descontar de Viáticos. Control de Viáticos agrupa por **fecha del gasto**, no por fecha de carga — el criterio viejo escondía que el 30/09 se pasó por **$240.400**. Los **traslados se ven en Consultar Pagos**, marcados y filtrables, pero **totalizados aparte**: sumarlos habría inflado el total en $13.650.000 contando dos veces la misma plata. Y **“Dinero Disponible” es ahora su propia pestaña**, la primera. Verificado en producción: Apps Script y EasyPanel en `2026-10-01-c`, web en `v100`, 423 comprobaciones y 28 mutaciones detectadas.
+
 **2026-10-01** — 🧱 **Tipos de pago en tres columnas** (dos en celular). Backend `2026-10-01-c` ya desplegado en Apps Script y EasyPanel, con los traslados visibles en Consultar Pagos.
 
 **2026-10-01** — 🔁 **Los traslados ya se ven en Consultar Pagos**, marcados y filtrables, pero **totalizados aparte**: sumarlos habría inflado el total en $13.650.000 contando dos veces la misma plata. Solo administradores. Backend `2026-10-01-c`.
