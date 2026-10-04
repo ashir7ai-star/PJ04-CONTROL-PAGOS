@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-10-04** — 🐛 **Arreglados los reportes descargados.** El PDF mostraba una columna de fecha **vacía** y no llevaba ninguna de las dos fechas; el Excel ponía el TOTAL en la columna equivocada. Ahora los dos formatos salen de una sola lista de columnas. Solo pantalla: el backend sigue en `2026-10-01-c`.
+
 **2026-10-02** — ✅ **VERSIÓN ESTABLE: `v2.4-cuentas-claras`.** **Compra Materiales tiene fondo propio** y deja de descontar de Viáticos. Control de Viáticos agrupa por **fecha del gasto**, no por fecha de carga — el criterio viejo escondía que el 30/09 se pasó por **$240.400**. Los **traslados se ven en Consultar Pagos**, marcados y filtrables, pero **totalizados aparte**: sumarlos habría inflado el total en $13.650.000 contando dos veces la misma plata. Y **“Dinero Disponible” es ahora su propia pestaña**, la primera. Verificado en producción: Apps Script y EasyPanel en `2026-10-01-c`, web en `v100`, 423 comprobaciones y 28 mutaciones detectadas.
 
 **2026-10-01** — 🧱 **Tipos de pago en tres columnas** (dos en celular). Backend `2026-10-01-c` ya desplegado en Apps Script y EasyPanel, con los traslados visibles en Consultar Pagos.
@@ -519,6 +521,18 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-04**: 🐛 **Los reportes descargados salían sin las fechas, y el PDF con una columna VACÍA.** Lo vio Nathan en un PDF: la columna “Fecha” existía pero no tenía nada en ninguna fila.
+  - **Causa:** índices y claves escritos a mano en cada formato. Al agregar columnas quedaron corridos **sin que nada fallara**:
+    - el PDF leía `f['Fecha']`, una clave que ya no existía → columna vacía en todas las filas;
+    - las **dos fechas no llegaban al PDF** (solo 8 de las 9 columnas);
+    - el Excel ponía el **TOTAL debajo de “Registrado por”** y le aplicaba el formato de número a esa columna en vez de a Valor.
+  - **Arreglo de fondo:** una sola lista `COLUMNAS_EXPORT` de la que salen los dos formatos — orden, anchos, qué columna lleva el total y cuál se alinea a la derecha. Agregar una columna ahora entra sola en Excel y PDF.
+  - El PDF pasa a **nueve columnas** en A4 apaisado, con la letra y el relleno un poco más chicos para que no se parta el texto.
+  - **Pruebas:** la nueva compara las columnas **declaradas** contra las **armadas** y exige que sean idénticas — es la comprobación que faltaba y que habría cazado esto desde el principio.
+  - ⚠️ **Dos trampas al escribir estas pruebas, las dos encontradas con mutación:**
+    - una fallaba **por mi propio comentario**: busca `f['Fecha']` en el código, y el comentario que explica el bug menciona esa clave. Ahora se quitan los comentarios antes de buscar. (Ya había pasado el caso inverso: una prueba que *pasaba* por hacer match con un comentario.)
+    - otra pedía que `letra(COL_VALOR)` apareciera “en alguna parte”: con dos usos, romper uno dejaba el otro y la prueba pasaba igual. Ahora exige que **no quede ninguna celda ubicada por letra fija**.
+  - **434 comprobaciones**, 31 mutaciones detectadas.
 - **2026-10-01**: 🧱 **Los tipos de pago pasan a TRES por fila** (eran dos). Con nueve tipos, de a dos eran cinco filas y el formulario arrancaba muy abajo; ahora son tres filas.
   - **En celular se quedan en DOS.** Con tres, etiquetas como “Seguridad Social” y “Compra Materiales” se parten. Hay una prueba para esto porque es el lado que **no se ve** desde un escritorio: alguien puede unificar la regla sin notarlo.
   - También aplica al selector de Aprobaciones, que usa la misma clase.

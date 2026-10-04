@@ -171,6 +171,72 @@ console.log('\n=== Tipos de pago: tres por fila, dos en celular ===');
       'tres columnas en un telefono parten las etiquetas largas');
 }
 
+console.log('\n=== Excel y PDF exportan las mismas columnas, con las dos fechas ===');
+{
+  // El bug que esto cierra (04/10): el PDF leia f['Fecha'], una clave que ya
+  // no existia, y mostraba esa columna VACIA en todas las filas. Ademas no
+  // llevaba ninguna de las dos fechas, y el Excel ponia el TOTAL debajo de
+  // "Registrado por". Nada de eso daba error: eran indices escritos a mano
+  // que quedaron corridos al agregar columnas.
+
+  const listaCols = html.split('const COLUMNAS_EXPORT = [')[1].split('];')[0];
+  const declaradas = (listaCols.match(/clave: '[^']+'/g) || [])
+    .map(s => s.replace(/clave: '/, '').replace(/'$/, ''));
+
+  const cuerpo = html.split('function filasParaExportar()')[1].split('\n    }')[0];
+  const armadas = (cuerpo.match(/'[^']+':\s/g) || [])
+    .map(s => s.replace(/':\s$/, '').replace(/^'/, ''));
+
+  chk('la lista de columnas no esta vacia', declaradas.length > 0, declaradas);
+  // ESTA es la comprobacion que faltaba: si una lista dice una cosa y la otra
+  // dice otra, el reporte sale con una columna vacia y nadie se entera.
+  chk('las columnas declaradas son EXACTAMENTE las que se arman',
+      declaradas.join('|') === armadas.join('|'),
+      { declaradas: declaradas, armadas: armadas });
+
+  chk('el reporte lleva la fecha de registro',
+      declaradas.indexOf('Registrado') !== -1, declaradas);
+  chk('y la fecha de pago', declaradas.indexOf('Fecha de pago') !== -1, declaradas);
+
+  // Ni el PDF ni el Excel pueden volver a tener la lista escrita a mano.
+  const pdf = html.split('function exportarPdf()')[1].split('\n    }')[0];
+  chk('el PDF arma sus columnas desde la lista',
+      /head: \[COLUMNAS_EXPORT\.map/.test(html),
+      'volvio a tener los encabezados escritos a mano');
+  chk('y sus celdas tambien',
+      /COLUMNAS_EXPORT\.map\(c => celdaPdf\(c, f\)\)/.test(html),
+      'volveria a pedir claves que la tabla no tiene');
+  // Se mira el CODIGO, no los comentarios: los comentarios que explican el
+  // bug mencionan f['Fecha'] a proposito, y con un grep crudo esta prueba
+  // fallaba por su propia documentacion. Ya hubo un caso al reves en este
+  // repo —una prueba que pasaba porque hizo match con un comentario— asi que
+  // vale la pena sacarlos antes de buscar.
+  const sinComentarios = html.split('\n')
+    .filter(l => l.trim().indexOf('//') !== 0)
+    .map(l => l.replace(/\s\/\/.*$/, ''))
+    .join('\n');
+  chk('ya no busca la clave vieja "Fecha"',
+      !/f\['Fecha'\]/.test(sinComentarios), 'esa clave no existe: la columna sale vacia');
+
+  // El Excel: el total y el formato de numero tienen que seguir a la columna
+  // de Valor, no a una letra fija.
+  chk('el Excel ubica el TOTAL por posicion, no por letra fija',
+      /i === COL_VALOR \? total/.test(html), 'el TOTAL caeria en otra columna');
+  // Ojo con como se comprueba esto. Pedir que letra(COL_VALOR) aparezca "en
+  // alguna parte" NO sirve: con dos usos, romper uno deja el otro y la prueba
+  // pasa igual. Comprobado con una mutacion, que pasaba limpia. Se exige que
+  // en el Excel no quede NINGUNA celda ubicada por letra escrita a mano.
+  const excel = sinComentarios.split('function exportarExcel()')[1].split('\n    }')[0];
+  chk('el Excel no ubica ninguna celda por letra fija',
+      /letra\(COL_VALOR\)/.test(excel) && !/ws\['[A-Z]'/.test(excel),
+      'una letra a mano se corre de columna al agregar una columna nueva');
+  chk('los anchos salen de la misma lista',
+      /COLUMNAS_EXPORT\.map\(c => \(\{ wch: c\.ancho \}\)\)/.test(html),
+      'faltarian anchos al agregar una columna');
+  chk('y los titulos de arriba se combinan hasta la ultima columna',
+      /c: COLUMNAS_EXPORT\.length - 1/.test(html), 'el encabezado quedaria corto');
+}
+
 // El caso concreto que se escapó, por si alguien vuelve a mover el bloque.
 console.log('\n=== Control de Viáticos: su propia pestaña, solo para administradores ===');
 {

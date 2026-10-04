@@ -4197,10 +4197,38 @@
       return partes.length ? partes.join('   •   ') : 'Todos los registros';
     }
 
+    // ─── Las columnas del reporte, en UN solo lugar ──────────────────────
+    //
+    // Excel y PDF salen de acá: el orden, los anchos, cuál lleva el total y
+    // cuál se alinea a la derecha. Antes cada formato tenía sus propios
+    // índices escritos a mano, y al agregar las dos fechas quedaron
+    // desalineados sin que nada fallara:
+    //
+    //   • el PDF leía f['Fecha'], una clave que ya no existía → la columna
+    //     salía VACÍA en todas las filas;
+    //   • y las dos fechas ni siquiera llegaban al PDF;
+    //   • el Excel ponía el TOTAL debajo de "Registrado por", y le aplicaba
+    //     el formato de número a esa columna en vez de a Valor.
+    //
+    // Nada de eso daba error. Por eso ahora los dos derivan de esta lista: el
+    // día que se agregue una columna, entra sola en los dos formatos.
+    const COLUMNAS_EXPORT = [
+      // Registrado va primero porque es la que define el orden del listado:
+      // sin ella, quien reciba el archivo no puede reproducir la misma lista.
+      { clave: 'Registrado',      ancho: 17, anchoPdf: 74 },
+      { clave: 'Fecha de pago',   ancho: 13, anchoPdf: 58 },
+      { clave: 'Empresa',         ancho: 16, anchoPdf: 70 },
+      { clave: 'Tipo',            ancho: 16, anchoPdf: 72 },
+      { clave: 'Nombre del pago', ancho: 30 },
+      { clave: 'Proveedor',       ancho: 24 },
+      { clave: 'Registrado por',  ancho: 18, anchoPdf: 72 },
+      { clave: 'Valor',           ancho: 14, anchoPdf: 62, numero: true },
+      { clave: 'Archivo',         ancho: 42, anchoPdf: 38 }
+    ];
+    const COL_VALOR = COLUMNAS_EXPORT.findIndex(c => c.numero);
+
     function filasParaExportar() {
       return ultimosResultados.map(r => ({
-        // La fecha de registro va primero porque es la que define el orden:
-        // sin ella, quien reciba el Excel no puede reproducir el mismo listado.
         'Registrado':      formatoFechaHora(r['FECHA REGISTRO']),
         'Fecha de pago':   r['FECHA DE PAGO'] || '',
         'Empresa':         r['EMPRESA'] || '',
@@ -4235,27 +4263,29 @@
         ['Generado el ' + new Date().toLocaleString('es-CO')]
       ], { origin: 'A1' });
 
+      // Todo lo que sigue se ubica por POSICIÓN dentro de COLUMNAS_EXPORT, no
+      // por letras escritas a mano: con letras fijas, agregar una columna
+      // dejaba el TOTAL debajo de la columna equivocada, en silencio.
+      const letra = n => String.fromCharCode(65 + n);
       const total     = ultimosResultados.reduce((s, r) => s + valorDe(r), 0);
       const filaTotal = datos.length + 5;
+
       XLSX.utils.sheet_add_aoa(ws, [
-        ['', '', '', '', '', 'TOTAL', total, '']
+        COLUMNAS_EXPORT.map((c, i) =>
+          i === COL_VALOR ? total : (i === COL_VALOR - 1 ? 'TOTAL' : ''))
       ], { origin: 'A' + filaTotal });
 
       for (let i = 0; i < datos.length; i++) {
-        const cellRef = 'G' + (5 + i);
+        const cellRef = letra(COL_VALOR) + (5 + i);
         if (ws[cellRef]) ws[cellRef].z = '#,##0';
       }
-      const cellTotal = 'G' + filaTotal;
+      const cellTotal = letra(COL_VALOR) + filaTotal;
       if (ws[cellTotal]) ws[cellTotal].z = '#,##0';
 
-      ws['!cols'] = [
-        { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 26 }, { wch: 24 }, { wch: 18 }, { wch: 14 }, { wch: 42 }
-      ];
-      ws['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
-        { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } },
-        { s: { r: 2, c: 0 }, e: { r: 2, c: 7 } }
-      ];
+      ws['!cols']   = COLUMNAS_EXPORT.map(c => ({ wch: c.ancho }));
+      ws['!merges'] = [0, 1, 2].map(r => ({
+        s: { r: r, c: 0 }, e: { r: r, c: COLUMNAS_EXPORT.length - 1 }
+      }));
 
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Consulta');
@@ -4288,21 +4318,41 @@
       doc.text('Generado el ' + new Date().toLocaleString('es-CO'), 40, 88);
 
       const total = ultimosResultados.reduce((s, r) => s + valorDe(r), 0);
-      const filas = filasParaExportar().map(f => [
-        f['Fecha'], f['Empresa'], f['Tipo'], f['Nombre del pago'], f['Proveedor'], f['Registrado por'],
-        '$' + f['Valor'].toLocaleString('es-CO'), f['Archivo'] === 'Sin archivo' ? '—' : 'Ver'
-      ]);
+
+      // Una celda del PDF. Antes esto era una lista escrita a mano que leía
+      // f['Fecha'] —clave inexistente— y dejaba la columna vacía en TODAS las
+      // filas sin dar error. Ahora recorre COLUMNAS_EXPORT, así que no puede
+      // pedir una clave que la tabla no tenga.
+      const celdaPdf = (c, f) => {
+        if (c.numero) return '$' + Number(f[c.clave] || 0).toLocaleString('es-CO');
+        if (c.clave === 'Archivo') return f[c.clave] === 'Sin archivo' ? '—' : 'Ver';
+        return f[c.clave] == null ? '' : String(f[c.clave]);
+      };
+
+      const filas = filasParaExportar().map(f => COLUMNAS_EXPORT.map(c => celdaPdf(c, f)));
+
+      const estilosCol = {};
+      COLUMNAS_EXPORT.forEach((c, i) => {
+        const e = {};
+        if (c.anchoPdf) e.cellWidth = c.anchoPdf;
+        if (c.numero)   e.halign    = 'right';
+        if (Object.keys(e).length) estilosCol[i] = e;
+      });
 
       doc.autoTable({
-        head: [['Fecha', 'Empresa', 'Tipo', 'Nombre del pago', 'Proveedor', 'Registrado por', 'Valor', 'Archivo']],
+        head: [COLUMNAS_EXPORT.map(c => c.clave)],
         body: filas,
-        foot: [['', '', '', '', '', 'TOTAL', '$' + total.toLocaleString('es-CO'), '']],
+        foot: [COLUMNAS_EXPORT.map((c, i) =>
+          i === COL_VALOR ? '$' + total.toLocaleString('es-CO')
+                          : (i === COL_VALOR - 1 ? 'TOTAL' : ''))],
         startY: 100,
-        styles: { font: 'helvetica', fontSize: 8, cellPadding: 5, textColor: [40, 40, 45] },
-        headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold' },
+        // Con nueve columnas en A4 apaisado hay menos aire que con siete: se
+        // achica la letra y el relleno en vez de dejar que se parta el texto.
+        styles: { font: 'helvetica', fontSize: 7.5, cellPadding: 4, textColor: [40, 40, 45] },
+        headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold', fontSize: 7.5 },
         footStyles: { fillColor: [240, 240, 245], textColor: [30, 30, 32], fontStyle: 'bold' },
         alternateRowStyles: { fillColor: [248, 248, 250] },
-        columnStyles: { 6: { halign: 'right' } },
+        columnStyles: estilosCol,
         margin: { left: 40, right: 40 }
       });
 
