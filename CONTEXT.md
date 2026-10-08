@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-10-08** — 📄 **El reporte por correo pasa a tener formato.** Era un volcado crudo de la hoja, con UUIDs y URLs enteras; ahora son once columnas con encabezado, moneda y total, y el Excel llega con fechas y montos de verdad. Backend `2026-10-08-a`: **hay que desplegar Apps Script** (es de donde salen los reportes) y EasyPanel.
+
 **2026-10-04** — 🐛 **Arreglados los reportes descargados.** El PDF mostraba una columna de fecha **vacía** y no llevaba ninguna de las dos fechas; el Excel ponía el TOTAL en la columna equivocada. Ahora los dos formatos salen de una sola lista de columnas. Solo pantalla: el backend sigue en `2026-10-01-c`.
 
 **2026-10-02** — ✅ **VERSIÓN ESTABLE: `v2.4-cuentas-claras`.** **Compra Materiales tiene fondo propio** y deja de descontar de Viáticos. Control de Viáticos agrupa por **fecha del gasto**, no por fecha de carga — el criterio viejo escondía que el 30/09 se pasó por **$240.400**. Los **traslados se ven en Consultar Pagos**, marcados y filtrables, pero **totalizados aparte**: sumarlos habría inflado el total en $13.650.000 contando dos veces la misma plata. Y **“Dinero Disponible” es ahora su propia pestaña**, la primera. Verificado en producción: Apps Script y EasyPanel en `2026-10-01-c`, web en `v100`, 423 comprobaciones y 28 mutaciones detectadas.
@@ -521,6 +523,15 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-08**: 📄 **El reporte diario y el mensual dejan de ser un volcado de la hoja.** A Nathan le parecía desordenado, y lo era: le pasaba los trece encabezados y las filas crudas al archivo.
+  - **Lo que salía:** el `ID REGISTRO` (un UUID), la **URL entera** del comprobante, el correo de quien cargó, el tipo escrito como lo guarda la máquina (`pago_proveedor`) y los montos sin separadores.
+  - **Ahora:** once columnas elegidas, con título de empresa, encabezado azul fijo, franjas alternadas, anchos propios, moneda formateada, fila de **TOTAL** y el comprobante como un enlace que dice “Ver”.
+  - **El Excel llega usable:** las fechas se escriben como **Date** y los montos como **número**, y el formato se aplica sobre la columna. Si se escribieran ya formateados serían texto: no se podrían ordenar ni sumar. Hay una prueba para cada una de las dos cosas.
+  - Un día **sin pagos ya no manda dos adjuntos vacíos**; el correo solo. Y la hoja temporal se recorta antes de exportar, porque una hoja nueva trae 26 columnas y 1000 filas y el PDF arrastraba todo ese vacío.
+  - Un tipo que no esté en la lista **se deja tal cual**, no se le inventa una etiqueta: preferible que se vea raro a que el reporte afirme algo que no es.
+  - **Verificado contra datos reales** (8/10, 18 registros, $27.074.260): 0 columnas internas, 0 tipos sin etiquetar, 0 valores que no sean número, 0 fechas que no sean fecha.
+  - ⚠️ **Otra prueba floja encontrada por mutación:** comprobaba que `deleteColumns` **existiera**. Envolverla en `if (false)` la deja escrita y sin efecto, y la prueba pasaba igual. Ahora exige la condición real. Es la tercera vez en esta semana que “el texto está presente” resulta no ser lo mismo que “el código hace eso”.
+  - **452 comprobaciones**, 7 mutaciones nuevas, todas detectadas.
 - **2026-10-04**: 🐛 **Los reportes descargados salían sin las fechas, y el PDF con una columna VACÍA.** Lo vio Nathan en un PDF: la columna “Fecha” existía pero no tenía nada en ninguna fila.
   - **Causa:** índices y claves escritos a mano en cada formato. Al agregar columnas quedaron corridos **sin que nada fallara**:
     - el PDF leía `f['Fecha']`, una clave que ya no existía → columna vacía en todas las filas;

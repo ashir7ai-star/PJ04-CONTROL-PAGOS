@@ -130,28 +130,170 @@ function mismoMes_(fecha, ref) {
 }
 
 // Crea un Sheet temporal con las filas filtradas, lo exporta a PDF+XLSX y lo borra
-function generarArchivos_(headers, filas, nombreBase) {
-  const temp = SpreadsheetApp.create(nombreBase);
-  const hoja = temp.getSheets()[0];
-  hoja.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
-  if (filas.length > 0) hoja.getRange(2, 1, filas.length, headers.length).setValues(filas);
+// ─── El reporte que se manda por correo ───────────────────────────────────
+//
+// Hasta el 2026-10-08 esto volcaba la hoja TAL CUAL: los trece encabezados y
+// las filas crudas. Salía el ID REGISTRO (un UUID), la URL entera del
+// comprobante, el correo de quien registró, el tipo escrito como lo guarda la
+// máquina ("pago_proveedor") y los montos sin separadores. Era legible para un
+// programa, no para una persona.
+//
+// Ahora el PDF y el Excel salen de esta lista. Las dos cosas que NO aparecen
+// —el identificador interno y el correo— se dejaron afuera a propósito: no le
+// dicen nada a quien lee el reporte y ocupan el ancho que necesitan las
+// columnas que sí importan.
+const COLUMNAS_REPORTE = [
+  { titulo: 'Registrado',      campo: 'FECHA REGISTRO', formato: 'dd/mm/yyyy hh:mm', ancho: 112 },
+  { titulo: 'Fecha de pago',   campo: 'FECHA DE PAGO',  formato: 'dd/mm/yyyy',       ancho: 88  },
+  { titulo: 'Empresa',         campo: 'EMPRESA',        ancho: 104 },
+  { titulo: 'Tipo',            campo: 'TIPO FACTURA',   ancho: 112, etiqueta: true },
+  { titulo: 'Nombre del pago', campo: 'NOMBRE DE PAGO', ancho: 186 },
+  { titulo: 'Proveedor',       campo: 'PROVEEDOR',      ancho: 158 },
+  { titulo: 'Registró',        campo: 'REGISTRADO POR', ancho: 108 },
+  { titulo: 'Rubro',           campo: 'RUBRO',          ancho: 88, rubro: true },
+  { titulo: 'Notas',           campo: 'NOTAS',          ancho: 150 },
+  { titulo: 'Valor',           campo: 'VALOR FACTURA',  formato: '"$"#,##0', ancho: 92, numero: true },
+  { titulo: 'Comprobante',     campo: 'URL ARCHIVO',    ancho: 82, enlace: true }
+];
+
+// Cómo se llama cada tipo de pago en un documento que lee una persona. Sin
+// esto salía "pago_proveedor" y "compra_materiales", que es como se guardan.
+const ETIQUETAS_TIPO = {
+  pago_proveedor:    'Pago a Proveedor',
+  compra:            'Compra',
+  venta:             'Venta',
+  impuestos:         'Pago Impuestos',
+  viaticos:          'Viáticos',
+  caja_menor:        'Caja Menor',
+  seguridad_social:  'Seguridad Social',
+  nomina:            'Pago Nómina',
+  compra_materiales: 'Compra Materiales',
+  traslado:          'Traslado'
+};
+
+// Un tipo que no esté en la lista se devuelve tal como vino, no se inventa una
+// etiqueta: preferimos que se vea raro a que diga algo que no es.
+function etiquetaDeTipo_(valor) {
+  const k = String(valor || '').trim().toLowerCase();
+  return ETIQUETAS_TIPO[k] || String(valor || '');
+}
+
+function totalDeRegistros_(registros) {
+  return registros.reduce(function (s, r) {
+    return s + (montoANumero_(r['VALOR FACTURA']) || 0);
+  }, 0);
+}
+
+// Las filas del reporte, con los VALORES de verdad: las fechas siguen siendo
+// Date y los montos siguen siendo número. El formato se aplica después, sobre
+// la columna entera. Así el Excel llega usable —se puede ordenar y sumar— en
+// vez de lleno de texto que parece un número.
+function filasDelReporte_(registros) {
+  return registros.map(function (r) {
+    return COLUMNAS_REPORTE.map(function (c) {
+      const v = r[c.campo];
+      if (c.etiqueta) return etiquetaDeTipo_(v);
+      if (c.rubro)    return etiquetaDeRubro_(v);
+      if (c.numero)   return montoANumero_(v) || 0;
+      if (c.enlace) {
+        // Un enlace que dice "Ver" en vez de ciento veinte caracteres de URL.
+        // Se quitan las comillas para que no corten la fórmula.
+        const url = String(v || '').trim().replace(/"/g, '');
+        return url ? '=HYPERLINK("' + url + '";"Ver")' : '';
+      }
+      return v === undefined || v === null ? '' : v;
+    });
+  });
+}
+
+function generarArchivos_(registros, titulo, subtitulo, nombreBase) {
+  const temp  = SpreadsheetApp.create(nombreBase);
+  const hoja  = temp.getSheets()[0];
+  const nCols = COLUMNAS_REPORTE.length;
+  const filas = filasDelReporte_(registros);
+
+  const FILA_ENC = 5;              // 1 a 3 el encabezado, 4 en blanco
+  const FILA_1   = FILA_ENC + 1;
+
+  hoja.getRange(1, 1, 1, nCols).merge().setValue('Millennium Energy Co')
+      .setFontSize(16).setFontWeight('bold').setFontColor('#1e1e20');
+  hoja.getRange(2, 1, 1, nCols).merge().setValue(titulo)
+      .setFontSize(11).setFontColor('#5a5a5f');
+  hoja.getRange(3, 1, 1, nCols).merge().setValue(subtitulo)
+      .setFontSize(9).setFontColor('#78787d');
+
+  hoja.getRange(FILA_ENC, 1, 1, nCols)
+      .setValues([COLUMNAS_REPORTE.map(function (c) { return c.titulo; })])
+      .setBackground('#0071e3').setFontColor('#ffffff').setFontWeight('bold')
+      .setVerticalAlignment('middle');
+
+  let ultima = FILA_1;
+
+  if (filas.length) {
+    const rango = hoja.getRange(FILA_1, 1, filas.length, nCols);
+    rango.setValues(filas).setVerticalAlignment('top').setFontSize(9);
+
+    COLUMNAS_REPORTE.forEach(function (c, i) {
+      const col = hoja.getRange(FILA_1, i + 1, filas.length, 1);
+      if (c.formato) col.setNumberFormat(c.formato);
+      if (c.numero)  col.setHorizontalAlignment('right');
+      if (c.enlace)  col.setHorizontalAlignment('center');
+    });
+
+    // Una franja gris cada dos filas. Con treinta pagos, poder seguir la fila
+    // con la vista es la diferencia entre leer el reporte y adivinarlo.
+    rango.applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, false, false);
+
+    const iValor    = COLUMNAS_REPORTE.length - 2;   // Valor va penúltima
+    const filaTotal = FILA_1 + filas.length;
+    hoja.getRange(filaTotal, 1, 1, nCols).setBackground('#f0f0f5').setFontWeight('bold');
+    hoja.getRange(filaTotal, iValor, 1, 1).setValue('TOTAL').setHorizontalAlignment('right');
+    hoja.getRange(filaTotal, iValor + 1, 1, 1)
+        .setValue(totalDeRegistros_(registros))
+        .setNumberFormat('"$"#,##0').setHorizontalAlignment('right');
+
+    hoja.getRange(FILA_ENC, 1, filas.length + 2, nCols)
+        .setBorder(true, true, true, true, true, true, '#d5d5da', SpreadsheetApp.BorderStyle.SOLID);
+    ultima = filaTotal;
+  } else {
+    // Un reporte vacío tiene que DECIR que está vacío. Una hoja en blanco
+    // parece que el sistema falló.
+    hoja.getRange(FILA_1, 1, 1, nCols).merge()
+        .setValue('No se registraron pagos en este período.')
+        .setHorizontalAlignment('center').setFontColor('#78787d');
+  }
+
+  COLUMNAS_REPORTE.forEach(function (c, i) { hoja.setColumnWidth(i + 1, c.ancho); });
+  hoja.setFrozenRows(FILA_ENC);
+
+  // Una hoja nueva viene con 26 columnas y 1000 filas. Sin recortarlas, el PDF
+  // arrastra todo ese vacío y sale con páginas en blanco al final.
+  const sobranCols = hoja.getMaxColumns() - nCols;
+  if (sobranCols > 0) hoja.deleteColumns(nCols + 1, sobranCols);
+  const sobranFilas = hoja.getMaxRows() - ultima;
+  if (sobranFilas > 0) hoja.deleteRows(ultima + 1, sobranFilas);
+
   SpreadsheetApp.flush();
 
   const tempId = temp.getId();
-  const gid = hoja.getSheetId();
+  const gid    = hoja.getSheetId();
 
+  // gridlines=false porque los bordes ya se dibujaron donde hacen falta; con
+  // las dos cosas el PDF se ve rayado.
   const pdfBlob = UrlFetchApp.fetch(
-    `https://docs.google.com/spreadsheets/d/${tempId}/export?format=pdf&gid=${gid}&size=A4&portrait=false&fitw=true&gridlines=true`,
+    'https://docs.google.com/spreadsheets/d/' + tempId + '/export?format=pdf&gid=' + gid +
+    '&size=A4&portrait=false&fitw=true&gridlines=false&printtitle=false&sheetnames=false' +
+    '&pagenumbers=true&top_margin=0.4&bottom_margin=0.4&left_margin=0.3&right_margin=0.3',
     { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } }
-  ).getBlob().setName(`${nombreBase}.pdf`);
+  ).getBlob().setName(nombreBase + '.pdf');
 
   const xlsxBlob = UrlFetchApp.fetch(
-    `https://docs.google.com/spreadsheets/d/${tempId}/export?format=xlsx`,
+    'https://docs.google.com/spreadsheets/d/' + tempId + '/export?format=xlsx',
     { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } }
-  ).getBlob().setName(`${nombreBase}.xlsx`);
+  ).getBlob().setName(nombreBase + '.xlsx');
 
   DriveApp.getFileById(tempId).setTrashed(true);
-  return { pdfBlob, xlsxBlob };
+  return { pdfBlob: pdfBlob, xlsxBlob: xlsxBlob };
 }
 
 function totalValor_(headers, filas) {
@@ -164,19 +306,31 @@ function totalValor_(headers, filas) {
 function enviarReporteDiario() {
   const hoy = new Date();
   const { headers, rows } = leerDatos_();
-  const filtradas = rows.filter(r => mismoDia_(parseFechaRegistro_(r['FECHA REGISTRO']), hoy));
-  const filas = filtradas.map(r => headers.map(h => r[h]));
+  const registros = rows.filter(r => mismoDia_(parseFechaRegistro_(r['FECHA REGISTRO']), hoy));
 
   const fechaTxt = Utilities.formatDate(hoy, ZONA, 'dd/MM/yyyy');
-  const { pdfBlob, xlsxBlob } = generarArchivos_(headers, filas, `Reporte_Diario_Pagos_${Utilities.formatDate(hoy, ZONA, 'yyyy-MM-dd')}`);
-  const total = totalValor_(headers, filas);
+  const total    = totalDeRegistros_(registros);
+
+  // Un día sin pagos no necesita dos adjuntos vacíos: el correo ya lo dice.
+  if (!registros.length) {
+    MailApp.sendEmail({
+      to: DESTINATARIOS.join(','),
+      subject: `Reporte diario de pagos — ${fechaTxt}`,
+      body: `Hoy (${fechaTxt}) no se registraron pagos nuevos.\n\nCorreo generado automáticamente.`
+    });
+    return;
+  }
+
+  const { pdfBlob, xlsxBlob } = generarArchivos_(
+    registros,
+    'Reporte diario de pagos',
+    `${fechaTxt}  ·  ${registros.length} pago(s)  ·  Total $${total.toLocaleString('es-CO')}`,
+    `Reporte_Diario_Pagos_${Utilities.formatDate(hoy, ZONA, 'yyyy-MM-dd')}`);
 
   MailApp.sendEmail({
     to: DESTINATARIOS.join(','),
     subject: `Reporte diario de pagos — ${fechaTxt}`,
-    body: filas.length > 0
-      ? `Adjunto el reporte de los pagos registrados hoy (${fechaTxt}).\n\nRegistros de hoy: ${filas.length}\nValor total del día: $${total.toLocaleString('es-CO')}\n\nCorreo generado automáticamente.`
-      : `Hoy (${fechaTxt}) no se registraron pagos nuevos.\n\nCorreo generado automáticamente.`,
+    body: `Adjunto el reporte de los pagos registrados hoy (${fechaTxt}).\n\nRegistros de hoy: ${registros.length}\nValor total del día: $${total.toLocaleString('es-CO')}\n\nCorreo generado automáticamente.`,
     attachments: [pdfBlob, xlsxBlob]
   });
 }
@@ -186,17 +340,21 @@ function enviarReporteMensual() {
   const hoy = new Date();
   const refMes = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
   const { headers, rows } = leerDatos_();
-  const filtradas = rows.filter(r => mismoMes_(parseFechaRegistro_(r['FECHA REGISTRO']), refMes));
-  const filas = filtradas.map(r => headers.map(h => r[h]));
+  const registros = rows.filter(r => mismoMes_(parseFechaRegistro_(r['FECHA REGISTRO']), refMes));
 
   const mesTxt = Utilities.formatDate(refMes, ZONA, 'MMMM yyyy');
-  const { pdfBlob, xlsxBlob } = generarArchivos_(headers, filas, `Reporte_Mensual_Pagos_${Utilities.formatDate(refMes, ZONA, 'yyyy-MM')}`);
-  const total = totalValor_(headers, filas);
+  const total  = totalDeRegistros_(registros);
+
+  const { pdfBlob, xlsxBlob } = generarArchivos_(
+    registros,
+    'Reporte mensual de pagos',
+    `${mesTxt}  ·  ${registros.length} pago(s)  ·  Total $${total.toLocaleString('es-CO')}`,
+    `Reporte_Mensual_Pagos_${Utilities.formatDate(refMes, ZONA, 'yyyy-MM')}`);
 
   MailApp.sendEmail({
     to: DESTINATARIOS.join(','),
     subject: `Reporte mensual de pagos — ${mesTxt}`,
-    body: `Adjunto el reporte de todos los pagos registrados durante ${mesTxt}.\n\nTotal de registros del mes: ${filas.length}\nValor total del mes: $${total.toLocaleString('es-CO')}\n\nCorreo generado automáticamente.`,
+    body: `Adjunto el reporte de todos los pagos registrados durante ${mesTxt}.\n\nTotal de registros del mes: ${registros.length}\nValor total del mes: $${total.toLocaleString('es-CO')}\n\nCorreo generado automáticamente.`,
     attachments: [pdfBlob, xlsxBlob]
   });
 }
@@ -1881,7 +2039,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-10-01-c · traslados visibles en consultar pagos';
+const REVISION_BACKEND = '2026-10-08-a · reporte por correo con formato';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [

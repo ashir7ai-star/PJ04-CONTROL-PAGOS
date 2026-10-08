@@ -1011,5 +1011,106 @@ console.log('\n=== Un traslado no es un gasto: no puede sumar al total ===');
       /no suman/.test(html), 'el numero enganaria sin decirlo');
 }
 
+console.log('\n=== El reporte por correo: columnas para una persona, valores para Excel ===');
+{
+  // Hasta el 08/10 esto volcaba la hoja tal cual: trece columnas con el UUID
+  // del registro, la URL entera del comprobante, el correo de quien lo cargo
+  // y "pago_proveedor" escrito como lo guarda la maquina.
+  const e = montar({ 'PAGOS REGISTRADOS': [ENC_PAGOS] }, 'off');
+  const g = e.globales;
+  const COLS = require('vm').runInContext('COLUMNAS_REPORTE', g);
+  const campos = COLS.map(c => c.campo);
+
+  // Lo que NO tiene que estar. Son datos internos: no le dicen nada a quien
+  // lee el reporte y se comen el ancho de las columnas que si importan.
+  ['ID REGISTRO', 'CORREO REGISTRO', 'NOMBRE DEL ARCHIVO'].forEach(c =>
+    chk('el reporte no muestra "' + c + '"', campos.indexOf(c) === -1, campos));
+
+  chk('pero si muestra las dos fechas',
+      campos.indexOf('FECHA REGISTRO') !== -1 && campos.indexOf('FECHA DE PAGO') !== -1, campos);
+
+  const cuando = new Date(2026, 9, 8, 14, 30, 0);
+  const fila = g.filasDelReporte_([{
+    'FECHA REGISTRO': cuando,
+    'FECHA DE PAGO':  new Date(2026, 9, 7),
+    'EMPRESA':        'AMPAC SAS',
+    'TIPO FACTURA':   'compra_materiales',
+    'NOMBRE DE PAGO': 'Materiales',
+    'PROVEEDOR':      'ELECTRI TORNILLOS',
+    'REGISTRADO POR': 'Laura Leyton',
+    'RUBRO':          '',
+    'NOTAS':          'urgente',
+    'VALOR FACTURA':  22000,
+    'URL ARCHIVO':    'https://drive.google.com/file/d/abc/view',
+    'ID REGISTRO':    'no-deberia-salir',
+    'CORREO REGISTRO': 'sst@energy-millennium.com'
+  }])[0];
+
+  chk('una fila trae exactamente una celda por columna', fila.length === COLS.length,
+      [fila.length, COLS.length]);
+
+  const de = t => fila[COLS.findIndex(c => c.titulo === t)];
+
+  chk('el tipo se escribe como lo dice una persona',
+      de('Tipo') === 'Compra Materiales', de('Tipo'));
+
+  // Estas dos son la razon de que el Excel sirva: si las fechas llegan como
+  // texto no se pueden ordenar, y si el monto llega como texto no se puede
+  // sumar. El formato se aplica despues, sobre la columna.
+  chk('la fecha sigue siendo una FECHA, no texto',
+      de('Registrado') instanceof Date, typeof de('Registrado'));
+  chk('y el monto sigue siendo un NUMERO', typeof de('Valor') === 'number', typeof de('Valor'));
+
+  chk('el comprobante es un enlace que dice "Ver"',
+      /^=HYPERLINK\(/.test(String(de('Comprobante'))) && /Ver/.test(String(de('Comprobante'))),
+      de('Comprobante'));
+  chk('y no la URL entera a la vista',
+      String(de('Comprobante')).indexOf('drive.google.com/file/d/abc') !== -1 &&
+      String(de('Comprobante')).length < 90, de('Comprobante'));
+
+  chk('nada del registro interno se cuela en la fila',
+      fila.indexOf('no-deberia-salir') === -1 &&
+      fila.indexOf('sst@energy-millennium.com') === -1, fila);
+
+  // Sin comprobante: celda vacia, no una formula rota.
+  const sinUrl = g.filasDelReporte_([{ 'URL ARCHIVO': '', 'VALOR FACTURA': 100 }])[0];
+  chk('sin comprobante la celda queda vacia',
+      sinUrl[COLS.findIndex(c => c.enlace)] === '', sinUrl);
+
+  // Un rubro se etiqueta; uno vacio no inventa nada.
+  const conRubro = g.filasDelReporte_([{ 'RUBRO': 'hidratacion', 'VALOR FACTURA': 1 }])[0];
+  chk('el rubro se escribe con su nombre',
+      conRubro[COLS.findIndex(c => c.rubro)] === 'Hidratación', conRubro);
+
+  // Un tipo desconocido se deja como vino, no se le inventa una etiqueta: es
+  // preferible que se vea raro a que el reporte afirme algo que no es.
+  chk('un tipo que no esta en la lista se deja tal cual',
+      g.etiquetaDeTipo_('algo_nuevo') === 'algo_nuevo', g.etiquetaDeTipo_('algo_nuevo'));
+
+  // El total sale de los registros, no de la tabla ya formateada.
+  chk('el total suma los montos',
+      g.totalDeRegistros_([{ 'VALOR FACTURA': 1000 }, { 'VALOR FACTURA': '2.500' }]) === 3500,
+      g.totalDeRegistros_([{ 'VALOR FACTURA': 1000 }, { 'VALOR FACTURA': '2.500' }]));
+
+  // Un dia sin pagos no manda dos adjuntos vacios.
+  const fuente = require('fs').readFileSync(RUTA, 'utf8');
+  const diario = fuente.split('function enviarReporteDiario')[1].split('\n}\n')[0];
+  chk('un dia sin pagos no manda adjuntos',
+      /if \(!registros\.length\)/.test(diario) && /return;/.test(diario),
+      'mandaria un PDF y un Excel en blanco');
+
+  // La hoja temporal se recorta antes de exportar.
+  const gen = fuente.split('function generarArchivos_')[1].split('\n}\n')[0];
+  // Ojo: NO alcanza con que la llamada exista. Envolverla en `if (false)` la
+  // deja escrita y sin efecto, y una prueba que solo busca "deleteColumns"
+  // pasa igual — comprobado con una mutacion. Se exige la condicion real.
+  chk('la hoja temporal se recorta antes del PDF',
+      /if \(sobranCols > 0\) hoja\.deleteColumns/.test(gen) &&
+      /if \(sobranFilas > 0\) hoja\.deleteRows/.test(gen),
+      'el PDF saldria con columnas y paginas en blanco');
+  chk('y el PDF no lleva las lineas de cuadricula encima de los bordes',
+      /gridlines=false/.test(gen), 'saldria rayado');
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);
