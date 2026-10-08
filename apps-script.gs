@@ -302,6 +302,104 @@ function totalValor_(headers, filas) {
   return filas.reduce((s, f) => s + (parseFloat(f[idx]) || 0), 0);
 }
 
+// ─── Diagnóstico: por qué no llegó el reporte ─────────────────────────────
+//
+// Se corre A MANO desde el editor (elegir la función arriba y Ejecutar). No
+// toca ningún dato: arma el reporte igual que el envío real y cuenta qué pasó.
+//
+// Existe porque "la ejecución terminó bien pero el correo no llegó" tiene
+// cuatro causas posibles que se ven idénticas desde afuera: no había pagos, la
+// cuota de correos de Google se agotó, el correo salió desde otra cuenta de la
+// que uno está mirando, o se generaron archivos vacíos. Adivinar entre esas
+// cuatro cuesta más que medirlas.
+//
+// El correo de prueba va SOLO a quien ejecuta, nunca a DESTINATARIOS: un
+// diagnóstico no tiene por qué llenarle la bandeja a tres personas.
+function diagnosticarReporte() {
+  const lineas = ['DIAGNOSTICO DEL REPORTE DIARIO', ''];
+
+  // 1) Quién ejecuta. Si no es la cuenta que esperás, el correo salió de otro
+  //    lado y por eso no aparece donde lo estás buscando.
+  let yo = '';
+  try {
+    yo = Session.getEffectiveUser().getEmail();
+    lineas.push('Se ejecuta como:  ' + yo);
+  } catch (err) {
+    lineas.push('No se pudo leer la cuenta que ejecuta: ' + err.message);
+  }
+  lineas.push('Debe llegar a:    ' + DESTINATARIOS.join(', '));
+  lineas.push('');
+
+  // 2) La cuota. Es la causa que NO da error: Google deja de enviar y la
+  //    ejecución termina "bien".
+  let quedan = null;
+  try {
+    quedan = MailApp.getRemainingDailyQuota();
+    lineas.push('Correos que puede enviar hoy: ' + quedan);
+    if (quedan === 0) {
+      lineas.push('   >>> ESTA ES LA CAUSA. Con la cuota en cero, MailApp no envia');
+      lineas.push('       y la ejecucion igual termina sin error. Se repone en 24 h.');
+    } else if (quedan < 10) {
+      lineas.push('   >>> Queda poca cuota. Ojo.');
+    }
+  } catch (err) {
+    lineas.push('No se pudo leer la cuota: ' + err.message);
+  }
+  lineas.push('');
+
+  // 3) Qué hay para reportar hoy.
+  const hoy = new Date();
+  const datos = leerDatos_();
+  const registros = datos.rows.filter(function (r) {
+    return mismoDia_(parseFechaRegistro_(r['FECHA REGISTRO']), hoy);
+  });
+  lineas.push('Fecha de hoy segun el script: ' +
+              Utilities.formatDate(hoy, ZONA, 'dd/MM/yyyy HH:mm') + '  (zona ' + ZONA + ')');
+  lineas.push('Filas leidas en total:        ' + datos.rows.length);
+  lineas.push('Pagos registrados HOY:        ' + registros.length);
+  lineas.push('Total de hoy:                 $' +
+              Math.round(totalDeRegistros_(registros)).toLocaleString('es-CO'));
+  if (!registros.length) {
+    lineas.push('   >>> Sin pagos de hoy el reporte sale SIN adjuntos, solo el texto.');
+  }
+  lineas.push('');
+
+  // 4) Que los archivos se generen de verdad, y cuanto pesan. Un PDF de pocos
+  //    bytes es un PDF vacio.
+  if (registros.length) {
+    try {
+      const archivos = generarArchivos_(
+        registros, 'Reporte diario de pagos (PRUEBA)',
+        Utilities.formatDate(hoy, ZONA, 'dd/MM/yyyy') + ' · ' + registros.length + ' pago(s)',
+        'PRUEBA_Reporte_' + Utilities.formatDate(hoy, ZONA, 'yyyy-MM-dd'));
+      const kb = function (b) { return Math.round(b.getBytes().length / 1024) + ' KB'; };
+      lineas.push('PDF generado:   ' + kb(archivos.pdfBlob));
+      lineas.push('Excel generado: ' + kb(archivos.xlsxBlob));
+
+      // 5) El envio de prueba, solo a quien ejecuta.
+      MailApp.sendEmail({
+        to: yo,
+        subject: 'PRUEBA · Reporte diario de pagos — ' + Utilities.formatDate(hoy, ZONA, 'dd/MM/yyyy'),
+        body: 'Correo de PRUEBA del diagnostico. Si lo recibiste, el envio funciona ' +
+              'y el reporte real tambien debio salir.\n\nPagos de hoy: ' + registros.length,
+        attachments: [archivos.pdfBlob, archivos.xlsxBlob]
+      });
+      lineas.push('');
+      lineas.push('>>> Se envio un correo de PRUEBA a ' + yo);
+      lineas.push('    Si ESE llega y el reporte real no, el problema es el destinatario.');
+      lineas.push('    Si no llega ninguno, es la cuota o la cuenta que ejecuta.');
+    } catch (err) {
+      lineas.push('');
+      lineas.push('>>> FALLO al generar o enviar: ' + err.message);
+      lineas.push('    Esta es la causa. El envio real falla por lo mismo.');
+    }
+  }
+
+  const resumen = lineas.join('\n');
+  Logger.log(resumen);
+  return resumen;
+}
+
 // Trigger: Time-driven → Day timer
 function enviarReporteDiario() {
   const hoy = new Date();
