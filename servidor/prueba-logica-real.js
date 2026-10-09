@@ -1112,5 +1112,76 @@ console.log('\n=== El reporte por correo: columnas para una persona, valores par
       /gridlines=false/.test(gen), 'saldria rayado');
 }
 
+console.log('\n=== UNA sola regla para decir de que dia es un pago ===');
+{
+  // El 08/10 el correo decia 18 pagos y $27.074.260, y la app 15 y
+  // $26.996.260. La diferencia eran tres gastos del 07/10 cargados el 08: el
+  // reporte filtraba por fecha de REGISTRO y la app por fecha de PAGO.
+  //
+  // Es la TERCERA vez que este criterio se desalinea (panel de viaticos el
+  // 28/09, Consultar Pagos el 01/10, el correo el 08/10). Por eso ahora hay
+  // una sola funcion y todos la llaman.
+  const g = montar({ 'PAGOS REGISTRADOS': [ENC_PAGOS] }, 'off').globales;
+
+  const cargadoHoyGastadoAyer = {
+    'FECHA REGISTRO': new Date(2026, 9, 8, 16, 30),
+    'FECHA DE PAGO':  new Date(2026, 9, 7)
+  };
+  const cuando = g.fechaDelGasto_(cargadoHoyGastadoAyer);
+  chk('manda la fecha del GASTO, no la de la carga',
+      cuando.getDate() === 7 && cuando.getMonth() === 9,
+      cuando && cuando.toISOString());
+
+  // Un pago sin fecha de pago no puede desaparecer de todos lados a la vez.
+  const sinFecha = g.fechaDelGasto_({
+    'FECHA REGISTRO': new Date(2026, 9, 8, 9, 0), 'FECHA DE PAGO': ''
+  });
+  chk('sin fecha de pago se cae a la de registro',
+      sinFecha && sinFecha.getDate() === 8, sinFecha && sinFecha.toISOString());
+
+  chk('y sin ninguna de las dos, no inventa un dia',
+      g.fechaDelGasto_({ 'FECHA REGISTRO': '', 'FECHA DE PAGO': '' }) === null,
+      g.fechaDelGasto_({}));
+
+  // Lo que de verdad importa: que los TRES lugares llamen a la misma funcion.
+  // Si alguno vuelve a escribir la regla por su cuenta, se desalinean otra vez
+  // y el sintoma vuelve a ser dos pantallas con totales distintos.
+  const fuente = require('fs').readFileSync(RUTA, 'utf8');
+  const trozo = function (nombre) {
+    return fuente.split('function ' + nombre)[1].split('\n}\n')[0];
+  };
+
+  ['enviarReporteDiario', 'enviarReporteMensual', 'gastoViaticosPorRubro_'].forEach(function (f) {
+    chk(f + ' usa la regla compartida', /fechaDelGasto_\(/.test(trozo(f)),
+        'escribio su propia version del criterio');
+  });
+
+  chk('el reporte diario ya NO filtra por fecha de registro',
+      !/mismoDia_\(parseFechaRegistro_/.test(trozo('enviarReporteDiario')),
+      'volveria a contar distinto que la app');
+  chk('ni el mensual',
+      !/mismoMes_\(parseFechaRegistro_/.test(trozo('enviarReporteMensual')),
+      'volveria a contar distinto que la app');
+
+  // El diagnostico tiene que medir lo MISMO que el envio, o diria que hay 18
+  // pagos cuando el correo manda 15.
+  chk('el diagnostico mide lo mismo que el envio',
+      /fechaDelGasto_\(/.test(trozo('diagnosticarReporte')),
+      'el diagnostico contaria una cosa y el correo otra');
+
+  // Y el caso completo: una tabla con un pago de cada clase.
+  const filas = [
+    { 'FECHA REGISTRO': new Date(2026, 9, 8, 10, 0), 'FECHA DE PAGO': new Date(2026, 9, 8), 'VALOR FACTURA': 100 },
+    { 'FECHA REGISTRO': new Date(2026, 9, 8, 16, 0), 'FECHA DE PAGO': new Date(2026, 9, 7), 'VALOR FACTURA': 50 },
+    { 'FECHA REGISTRO': new Date(2026, 9, 8, 17, 0), 'FECHA DE PAGO': '',                   'VALOR FACTURA': 7 }
+  ];
+  const delDia = filas.filter(function (r) {
+    return g.mismoDia_(g.fechaDelGasto_(r), new Date(2026, 9, 8));
+  });
+  chk('el dia trae el gasto de hoy y el que no tiene fecha, no el de ayer',
+      delDia.length === 2 && g.totalDeRegistros_(delDia) === 107,
+      [delDia.length, g.totalDeRegistros_(delDia)]);
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);

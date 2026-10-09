@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-10-08** — 🎯 **El reporte por correo cuadra con la app.** Contaba por fecha de carga y la app por fecha de gasto: $78.000 de diferencia. Ahora los cuatro lugares usan `fechaDelGasto_`, una sola regla. Backend `2026-10-08-b`: **hay que pegar `apps-script.gs` otra vez** (los reportes salen de ahí).
+
 **2026-10-08** — 📄 **El reporte por correo pasa a tener formato.** Era un volcado crudo de la hoja, con UUIDs y URLs enteras; ahora son once columnas con encabezado, moneda y total, y el Excel llega con fechas y montos de verdad. Backend `2026-10-08-a`: **hay que desplegar Apps Script** (es de donde salen los reportes) y EasyPanel.
 
 **2026-10-04** — 🐛 **Arreglados los reportes descargados.** El PDF mostraba una columna de fecha **vacía** y no llevaba ninguna de las dos fechas; el Excel ponía el TOTAL en la columna equivocada. Ahora los dos formatos salen de una sola lista de columnas. Solo pantalla: el backend sigue en `2026-10-01-c`.
@@ -523,6 +525,15 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-08**: 🎯 **El reporte por correo ya cuadra con la app.** Nathan comparó: el correo decía **18 pagos / $27.074.260** y Consultar Pagos **15 / $26.996.260**.
+  - **La diferencia eran $78.000 exactos**: tres gastos del 07/10 cargados el 08. El reporte filtraba por **fecha de registro** y la app por **fecha de pago**.
+  - **Es la TERCERA vez que este criterio se desalinea** — el panel de viáticos el 28/09, Consultar Pagos el 01/10, el correo ahora — y el síntoma fue siempre el mismo: dos pantallas mostrando el mismo día con totales distintos.
+  - **Por eso ahora hay UNA sola función, `fechaDelGasto_`**, y la llaman el reporte diario, el mensual, el panel de viáticos y el diagnóstico. Hay una prueba que exige que **ninguno escriba su propia versión de la regla**.
+  - Si falta la fecha de pago se usa la de registro: un pago sin fecha no puede desaparecer de todos lados a la vez.
+  - ⚠️ **Lo que esto cuesta, y se eligió a sabiendas:** un pago cargado hoy con fecha de ayer **no sale en el reporte de hoy**, y el de ayer ya se envió. Esos pagos no aparecen en ningún reporte diario. Nathan prefirió que los números cuadren con la app antes que la cobertura; el mensual los recupera salvo en el cambio de mes.
+  - **Verificado contra producción:** el reporte da ahora **15 pagos / $26.996.260**, idéntico a la app.
+  - Se agregó `diagnosticarReporte()`: dice con qué cuenta se ejecuta, **cuánta cuota de correos queda** (la causa que no da error), cuántos pagos encuentra, cuánto pesan los archivos, y manda una prueba solo a quien la corre.
+  - **462 comprobaciones**, 11 mutaciones detectadas.
 - **2026-10-08**: 📄 **El reporte diario y el mensual dejan de ser un volcado de la hoja.** A Nathan le parecía desordenado, y lo era: le pasaba los trece encabezados y las filas crudas al archivo.
   - **Lo que salía:** el `ID REGISTRO` (un UUID), la **URL entera** del comprobante, el correo de quien cargó, el tipo escrito como lo guarda la máquina (`pago_proveedor`) y los montos sin separadores.
   - **Ahora:** once columnas elegidas, con título de empresa, encabezado azul fijo, franjas alternadas, anchos propios, moneda formateada, fila de **TOTAL** y el comprobante como un enlace que dice “Ver”.

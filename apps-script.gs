@@ -119,6 +119,31 @@ function parseFechaRegistro_(val) {
   return new Date(y, m - 1, d);
 }
 
+// EL DÍA AL QUE PERTENECE UN PAGO. Una sola función para todo el sistema.
+//
+// Este criterio ya se desalineó TRES veces — el panel de viáticos, Consultar
+// Pagos y el reporte por correo contaban cosas distintas — y el síntoma fue
+// siempre el mismo: dos pantallas que muestran el mismo día con totales que no
+// coinciden. El 08/10 el correo decía 18 pagos y $27.074.260, y la app 15 y
+// $26.996.260: tres gastos del 07/10 cargados el 08.
+//
+// Manda la FECHA DE PAGO: la plata es del día en que se gastó, no del día en
+// que alguien la cargó. Decisión del usuario, 01/10 y confirmada el 08/10.
+//
+// Si falta la fecha de pago se usa la de registro: un pago sin fecha no puede
+// desaparecer de todos lados a la vez.
+//
+// ⚠️ LO QUE ESTO CUESTA, y es a propósito: un pago cargado hoy con fecha de
+// ayer NO sale en el reporte de hoy, y el de ayer ya se envió. Esos pagos no
+// aparecen en ningún reporte diario. Se eligió que los números cuadren con la
+// app antes que la cobertura: el reporte mensual los recupera, salvo los que
+// caigan justo en el cambio de mes.
+function fechaDelGasto_(registro) {
+  const pago = fechaHoraDeRegistro_(registro['FECHA DE PAGO']);
+  if (pago) return pago;
+  return parseFechaRegistro_(registro['FECHA REGISTRO']);
+}
+
 function mismoDia_(fecha, ref) {
   return !!fecha && fecha.getFullYear() === ref.getFullYear() &&
          fecha.getMonth() === ref.getMonth() && fecha.getDate() === ref.getDate();
@@ -351,7 +376,7 @@ function diagnosticarReporte() {
   const hoy = new Date();
   const datos = leerDatos_();
   const registros = datos.rows.filter(function (r) {
-    return mismoDia_(parseFechaRegistro_(r['FECHA REGISTRO']), hoy);
+    return mismoDia_(fechaDelGasto_(r), hoy);
   });
   lineas.push('Fecha de hoy segun el script: ' +
               Utilities.formatDate(hoy, ZONA, 'dd/MM/yyyy HH:mm') + '  (zona ' + ZONA + ')');
@@ -404,7 +429,7 @@ function diagnosticarReporte() {
 function enviarReporteDiario() {
   const hoy = new Date();
   const { headers, rows } = leerDatos_();
-  const registros = rows.filter(r => mismoDia_(parseFechaRegistro_(r['FECHA REGISTRO']), hoy));
+  const registros = rows.filter(r => mismoDia_(fechaDelGasto_(r), hoy));
 
   const fechaTxt = Utilities.formatDate(hoy, ZONA, 'dd/MM/yyyy');
   const total    = totalDeRegistros_(registros);
@@ -438,7 +463,7 @@ function enviarReporteMensual() {
   const hoy = new Date();
   const refMes = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
   const { headers, rows } = leerDatos_();
-  const registros = rows.filter(r => mismoMes_(parseFechaRegistro_(r['FECHA REGISTRO']), refMes));
+  const registros = rows.filter(r => mismoMes_(fechaDelGasto_(r), refMes));
 
   const mesTxt = Utilities.formatDate(refMes, ZONA, 'MMMM yyyy');
   const total  = totalDeRegistros_(registros);
@@ -2137,7 +2162,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-10-08-a · reporte por correo con formato';
+const REVISION_BACKEND = '2026-10-08-b · el reporte cuadra con la app';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -3433,7 +3458,7 @@ function gastoViaticosPorRubro_(desde, hasta) {
     //
     // Si falta la fecha de pago se usa la de registro: un pago sin fecha no
     // puede desaparecer del panel sin que nadie se entere.
-    const cuando = pago || registro;
+    const cuando = fechaDelGasto_({ 'FECHA DE PAGO': fila[cPago], 'FECHA REGISTRO': fila[cFecha] });
     if (!cuando || cuando.getTime() < d0.getTime() || cuando.getTime() > d1.getTime()) continue;
 
     const valor = montoANumero_(fila[cValor]);
