@@ -482,7 +482,8 @@ console.log('\n=== Historial de movimientos: tiene que CUADRAR con el saldo ==='
 
   const entra = r.movimientos.filter(m => m.tipo === 'entra')[0];
   chk('un traslado que ENTRA suma', entra && entra.monto === 400000, entra);
-  chk('y dice de donde vino', entra && /AMPAC/.test(entra.texto), entra && entra.texto);
+  chk('y dice de donde vino, con el nombre ACTUAL de la empresa',
+      entra && /BLAZAR/.test(entra.texto), entra && entra.texto);
   chk('un pago RESTA', r.movimientos.filter(m => m.tipo === 'pago').every(m => m.monto < 0));
 
   // Permisos: un banco no es para cualquiera.
@@ -949,8 +950,8 @@ console.log('\n=== Los traslados salen en Consultar Pagos, pero NO suman ===');
   // El mapeo: lo que se ve en la tabla tiene que decir algo, no claves
   // internas como "banco_ampac".
   const t = tras[0] || {};
-  chk('la empresa es la cuenta de donde SALE, con su nombre',
-      t['EMPRESA'] === 'AMPAC SAS', t['EMPRESA']);
+  chk('la empresa es la cuenta de donde SALE, con su nombre actual',
+      t['EMPRESA'] === 'BLAZAR ENERGY', t['EMPRESA']);
   chk('el proveedor es la cuenta a donde ENTRA',
       t['PROVEEDOR'] === 'Viáticos', t['PROVEEDOR']);
   chk('el concepto dice a donde fue', /Traslado a Vi/.test(String(t['NOMBRE DE PAGO'])), t['NOMBRE DE PAGO']);
@@ -1181,6 +1182,78 @@ console.log('\n=== UNA sola regla para decir de que dia es un pago ===');
   chk('el dia trae el gasto de hoy y el que no tiene fecha, no el de ayer',
       delDia.length === 2 && g.totalDeRegistros_(delDia) === 107,
       [delDia.length, g.totalDeRegistros_(delDia)]);
+}
+
+console.log('\n=== AMPAC SAS paso a llamarse BLAZAR ENERGY ===');
+{
+  // El 13/10/2026 la empresa cambio de nombre. Decision del usuario: los 389
+  // pagos anteriores se dejan con el nombre con el que se emitieron las
+  // facturas, porque cambiarlos haria que el registro discrepe del papel.
+  //
+  // O sea que el sistema tiene que entender LOS DOS nombres, para siempre.
+  const g = montar({ 'PAGOS REGISTRADOS': [ENC_PAGOS] }, 'off').globales;
+  const bolsa = n => g.cuentaDePago_('pago_proveedor', n);
+
+  chk('el nombre NUEVO va al banco de esa empresa',
+      bolsa('BLAZAR ENERGY') === 'banco_ampac', bolsa('BLAZAR ENERGY'));
+  chk('y el VIEJO tambien, porque son 389 pagos historicos',
+      bolsa('AMPAC SAS') === 'banco_ampac', bolsa('AMPAC SAS'));
+  chk('escrito de cualquier forma', bolsa('Blazar Energy S.A.S.') === 'banco_ampac',
+      bolsa('Blazar Energy S.A.S.'));
+  chk('la otra empresa no se mezcla',
+      bolsa('Millennium Co') === 'banco_millennium', bolsa('Millennium Co'));
+
+  // Esto es lo que pasaria si se reconociera un solo nombre: null, el pago no
+  // descuenta de ningun saldo, y lo unico que lo delata es un contador que
+  // casi nadie mira.
+  chk('un nombre desconocido NO se adivina', bolsa('Empresa Inventada SA') === null,
+      bolsa('Empresa Inventada SA'));
+
+  // La clave interna NO cambia aunque el nombre si. Esta escrita en 18 filas
+  // de SALDOS y 8 de TRASLADOS; migrarla a medias descuadra los saldos.
+  const fuente = require('fs').readFileSync(RUTA, 'utf8');
+  const cuentas = fuente.split('const CUENTAS = {')[1].split('\n};')[0];
+  chk('la clave sigue siendo banco_ampac', /banco_ampac:/.test(cuentas), cuentas.slice(0, 80));
+  chk('pero lo que se MUESTRA es BLAZAR ENERGY',
+      /etiqueta: 'BLAZAR ENERGY'/.test(cuentas), cuentas);
+  chk('y no quedo ninguna etiqueta con el nombre viejo',
+      !/etiqueta: 'AMPAC/.test(cuentas), cuentas);
+}
+
+console.log('\n=== La pantalla: se registra con el nombre nuevo, se busca con los dos ===');
+{
+  const html = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'index.html'), 'utf8');
+
+  // Registrar: solo el nombre nuevo. Si siguiera la opcion vieja, se seguirian
+  // cargando pagos a nombre de una empresa que ya no existe.
+  const nuevoPago = html.split('id="empresa"')[1].split('</select>')[0];
+  chk('en Nuevo Pago solo se ofrece BLAZAR ENERGY',
+      /value="BLAZAR ENERGY"/.test(nuevoPago) && !/value="AMPAC/.test(nuevoPago), nuevoPago);
+
+  const solicitud = html.split('id="empresaSolicitud"')[1].split('</select>')[0];
+  chk('y en la solicitud de aprobacion tambien',
+      /value="BLAZAR ENERGY"/.test(solicitud) && !/value="AMPAC/.test(solicitud), solicitud);
+
+  // Buscar: una sola opcion, que trae las dos epocas. Con dos opciones
+  // separadas habria que saber la fecha del cambio para encontrar algo.
+  const filtro = html.split('id="fEmpresa"')[1].split('</select>')[0];
+  chk('el filtro tiene UNA opcion para esa empresa',
+      (filtro.match(/value="BLAZAR ENERGY"/g) || []).length === 1 &&
+      !/value="AMPAC/.test(filtro), filtro);
+  chk('y avisa que incluye el nombre anterior',
+      /antes AMPAC/.test(filtro), filtro);
+
+  chk('el filtro busca por TODOS los nombres de la empresa',
+      /nombresDe\(empresa\)\.some/.test(html),
+      'escondria 389 pagos y se veria como "no hay resultados"');
+  chk('y la tabla de nombres incluye los dos',
+      /'blazar energy':\s*\['blazar',\s*'ampac'\]/.test(html),
+      'falta alguno de los dos nombres');
+
+  chk('la marca de la pantalla de ingreso esta actualizada',
+      /BLAZAR ENERGY<\/div>/.test(html) && !/AMPAC SAS<\/div>/.test(html),
+      'seguiria diciendo el nombre viejo al entrar');
 }
 
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));

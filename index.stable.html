@@ -2381,7 +2381,7 @@
         <button type="button" id="btnCambiarCuenta">Entrar con otra cuenta</button>
       </div>
 
-      <div class="login-marca">MILLENNIUM ENERGY CO · AMPAC SAS</div>
+      <div class="login-marca">MILLENNIUM ENERGY CO · BLAZAR ENERGY</div>
     </div>
   </div>
 
@@ -2637,7 +2637,7 @@
               <select id="empresa" name="empresa" required>
                 <option value="" disabled selected>Seleccionar</option>
                 <option value="Millennium Co">Millennium Co</option>
-                <option value="AMPAC SAS">AMPAC SAS</option>
+                <option value="BLAZAR ENERGY">BLAZAR ENERGY</option>
               </select>
             </div>
             <div class="field campo-fijo">
@@ -2753,7 +2753,11 @@
           <select id="fEmpresa">
             <option value="">Todas</option>
             <option value="Millennium Co">Millennium Co</option>
-            <option value="AMPAC SAS">AMPAC SAS</option>
+            <!-- Una sola opcion para la empresa que cambio de nombre: trae los
+                 pagos viejos (AMPAC SAS) y los nuevos (BLAZAR ENERGY). Ver
+                 NOMBRES_DE_EMPRESA. Dos opciones separadas obligarian a saber
+                 en que fecha fue el cambio para poder buscar. -->
+            <option value="BLAZAR ENERGY">BLAZAR ENERGY (antes AMPAC SAS)</option>
           </select>
         </div>
         <div class="field" id="fTipoField">
@@ -2982,7 +2986,7 @@
                 <select id="empresaSolicitud" required>
                   <option value="" disabled selected>Seleccionar</option>
                   <option value="Millennium Co">Millennium Co</option>
-                  <option value="AMPAC SAS">AMPAC SAS</option>
+                  <option value="BLAZAR ENERGY">BLAZAR ENERGY</option>
                 </select>
               </div>
               <div class="field">
@@ -4061,6 +4065,26 @@
       return parseFloat(String(r['VALOR FACTURA']).replace(/\./g, '')) || 0;
     }
 
+    // ─── Una empresa, varios nombres ─────────────────────────────────────
+    //
+    // AMPAC SAS pasó a llamarse BLAZAR ENERGY el 13/10/2026. Los 389 pagos
+    // anteriores se dejaron con el nombre con el que se emitieron las facturas
+    // (decisión del usuario): cambiarlos haría que el registro discrepe del
+    // papel que está archivado.
+    //
+    // Pero son la MISMA empresa, así que buscar por ella tiene que traer las
+    // dos épocas. Si no, el filtro escondría 389 pagos y nada avisaría: se
+    // vería como "no hay resultados", que es indistinguible de no tener pagos.
+    //
+    // La clave va en minúsculas porque el filtro ya baja todo a minúsculas.
+    const NOMBRES_DE_EMPRESA = {
+      'blazar energy': ['blazar', 'ampac']
+    };
+
+    function nombresDe(empresa) {
+      return NOMBRES_DE_EMPRESA[String(empresa || '').toLowerCase()] || [empresa];
+    }
+
     function filtrarRows(rows) {
       const empresa  = document.getElementById('fEmpresa').value.toLowerCase();
       const tipo     = document.getElementById('fTipo').value.toLowerCase();
@@ -4075,7 +4099,10 @@
         const rFecha   = parseFecha(r['FECHA DE PAGO']);
 
         if (vistaRestringida === 'gastos' && !TIPOS_GASTOS.some(t => rTipo.includes(t))) return false;
-        if (empresa && !rEmpresa.includes(empresa))  return false;
+        // Filtrar por empresa tiene que traer TODOS sus nombres. Ver
+        // NOMBRES_DE_EMPRESA: quien busca "los pagos de Blazar" no esta
+        // pensando en que dia cambio la razon social.
+        if (empresa && !nombresDe(empresa).some(n => rEmpresa.includes(n))) return false;
         if (tipo    && !rTipo.includes(tipo))         return false;
         if (prov    && !rProv.includes(prov))         return false;
         if (fi && rFecha) { const f = new Date(fi.getFullYear(), fi.getMonth(), fi.getDate()); if (rFecha < f) return false; }

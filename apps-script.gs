@@ -2162,7 +2162,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-10-08-b · el reporte cuadra con la app';
+const REVISION_BACKEND = '2026-10-13-a · AMPAC SAS pasa a ser BLAZAR ENERGY';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -2923,7 +2923,12 @@ const ENCABEZADOS_SALDOS = [
 // dos empresas (decisión del usuario).
 const CUENTAS = {
   banco_millennium: { etiqueta: 'Millennium Co',  detalle: 'Cuenta bancaria', empresa: 'millennium', grupo: 'banco' },
-  banco_ampac:      { etiqueta: 'AMPAC SAS',      detalle: 'Cuenta bancaria', empresa: 'ampac',      grupo: 'banco' },
+  // ⚠️ La CLAVE sigue siendo `banco_ampac` aunque la empresa hoy se llame
+  // BLAZAR ENERGY. No es un descuido: la clave está escrita en 18 filas de
+  // SALDOS y 8 de TRASLADOS. Un nombre se cambia en un lugar; una clave hay
+  // que migrarla en todos, y si queda a medias los saldos dejan de cuadrar.
+  // Es el mismo criterio de CORREO REGISTRO: el nombre cambia, la clave no.
+  banco_ampac:      { etiqueta: 'BLAZAR ENERGY',  detalle: 'Cuenta bancaria', empresa: 'blazar',     grupo: 'banco' },
   caja_menor:       { etiqueta: 'Caja Menor',     detalle: 'Fondo compartido', empresa: null,        grupo: 'fondo' },
   viaticos:         { etiqueta: 'Viáticos',       detalle: 'Fondo compartido', empresa: null,        grupo: 'fondo' },
   // Fondo propio desde el 2026-10-01. Antes los materiales descontaban de
@@ -2982,6 +2987,17 @@ function cuentaDePago_(tipoFactura, empresa) {
   // El resto (proveedor, compra, impuestos, seguridad social, nómina) sale del
   // banco de la empresa que figure en el registro.
   const e = String(empresa || '').toLowerCase();
+  // LOS DOS NOMBRES, y no es temporal.
+  //
+  // AMPAC SAS pasó a llamarse BLAZAR ENERGY el 13/10/2026. Los 389 pagos
+  // anteriores se dejaron con el nombre con el que se emitieron las facturas
+  // (decisión del usuario): cambiarlos haría que el registro discrepe del
+  // papel. Son la misma empresa y la misma cuenta bancaria.
+  //
+  // Si acá se reconociera solo uno, los pagos del otro devolverían null y
+  // dejarían de descontar del banco — sin error, solo sumando al contador de
+  // "sin cuenta" que casi nadie mira.
+  if (e.indexOf('blazar') !== -1)     return 'banco_ampac';
   if (e.indexOf('ampac') !== -1)      return 'banco_ampac';
   if (e.indexOf('millennium') !== -1) return 'banco_millennium';
 

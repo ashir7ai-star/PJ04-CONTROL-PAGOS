@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-10-13** — 🏷️ **AMPAC SAS ahora es BLAZAR ENERGY.** El histórico se deja con el nombre original (389 pagos) y el sistema entiende los dos para siempre; la clave interna no se tocó. Backend `2026-10-13-a`: hay que desplegar Apps Script y EasyPanel.
+
 **2026-10-08** — 🎯 **El reporte por correo cuadra con la app.** Contaba por fecha de carga y la app por fecha de gasto: $78.000 de diferencia. Ahora los cuatro lugares usan `fechaDelGasto_`, una sola regla. Backend `2026-10-08-b`: **hay que pegar `apps-script.gs` otra vez** (los reportes salen de ahí).
 
 **2026-10-08** — 📄 **El reporte por correo pasa a tener formato.** Era un volcado crudo de la hoja, con UUIDs y URLs enteras; ahora son once columnas con encabezado, moneda y total, y el Excel llega con fechas y montos de verdad. Backend `2026-10-08-a`: **hay que desplegar Apps Script** (es de donde salen los reportes) y EasyPanel.
@@ -525,6 +527,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-13**: 🏷️ **AMPAC SAS pasa a llamarse BLAZAR ENERGY.**
+  - **El histórico NO se renombra** (decisión de Nathan): los **389 pagos** anteriores se emitieron con facturas a nombre de AMPAC SAS, y cambiar el registro lo haría discrepar del papel archivado. Se registra con el nombre nuevo de acá en adelante y conviven los dos.
+  - **Por eso `cuentaDePago_` reconoce los DOS nombres, y no es temporal.** Si reconociera solo uno, los pagos del otro devolverían `null`, dejarían de descontar del banco y lo único que los delataría sería el contador de “sin cuenta” que casi nadie mira. Verificado contra producción: **0 pagos huérfanos**.
+  - ⚠️ **La clave interna sigue siendo `banco_ampac`.** Está escrita en **18 filas de SALDOS y 8 de TRASLADOS**: un nombre se cambia en un lugar, una clave hay que migrarla en todos, y a medias descuadra los saldos. Mismo criterio que `CORREO REGISTRO`: el nombre cambia, la clave no.
+  - **En pantalla:** Nuevo Pago y Solicitud ofrecen solo *BLAZAR ENERGY*; el filtro de Consultar Pagos tiene **una sola opción**, “BLAZAR ENERGY (antes AMPAC SAS)”, que trae las dos épocas. Con dos opciones separadas habría que saber la fecha del cambio para encontrar algo, y un filtro que esconde 389 pagos se ve igual que “no hay resultados”.
+  - 🐛 **Hallazgo aparte:** en TRASLADOS la fila 3 tiene el destino escrito `Caja Menor` en vez de la clave `caja_menor`, así que esos **$30.000 salieron del banco y nunca se acreditaron al fondo**. **No afecta el saldo de hoy**: el traslado es del 09/09 y el saldo base de Caja Menor se cargó el 08/10, que ya lo absorbe. Tampoco puede repetirse — `registrarTraslado_` rechaza cualquier destino que no sea una clave válida; esa fila es anterior a esa validación.
+  - **477 comprobaciones**, 15 mutaciones detectadas, incluidas “se olvida el nombre viejo” y “se olvida el nombre nuevo”.
 - **2026-10-08**: 🎯 **El reporte por correo ya cuadra con la app.** Nathan comparó: el correo decía **18 pagos / $27.074.260** y Consultar Pagos **15 / $26.996.260**.
   - **La diferencia eran $78.000 exactos**: tres gastos del 07/10 cargados el 08. El reporte filtraba por **fecha de registro** y la app por **fecha de pago**.
   - **Es la TERCERA vez que este criterio se desalinea** — el panel de viáticos el 28/09, Consultar Pagos el 01/10, el correo ahora — y el síntoma fue siempre el mismo: dos pantallas mostrando el mismo día con totales distintos.
