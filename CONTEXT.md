@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-10-13** — ✅ **VERSIÓN ESTABLE: `v2.5-blazar-energy`.** **AMPAC SAS pasó a llamarse BLAZAR ENERGY** y el sistema entiende los dos nombres para siempre: los 389 pagos históricos conservan el nombre con el que se emitieron las facturas, y la clave interna no se tocó. Además, el **reporte por correo dejó de ser un volcado de la hoja** (once columnas con formato, moneda y total) y ahora **cuadra con la app**: las dos cuentan por fecha del gasto, con una única función `fechaDelGasto_`. Verificado en los tres frentes: Apps Script y EasyPanel en `2026-10-13-a`, web en `v102`, 477 comprobaciones.
+
 **2026-10-13** — 🏷️ **AMPAC SAS ahora es BLAZAR ENERGY.** El histórico se deja con el nombre original (389 pagos) y el sistema entiende los dos para siempre; la clave interna no se tocó. Backend `2026-10-13-a`: hay que desplegar Apps Script y EasyPanel.
 
 **2026-10-08** — 🎯 **El reporte por correo cuadra con la app.** Contaba por fecha de carga y la app por fecha de gasto: $78.000 de diferencia. Ahora los cuatro lugares usan `fechaDelGasto_`, una sola regla. Backend `2026-10-08-b`: **hay que pegar `apps-script.gs` otra vez** (los reportes salen de ahí).
