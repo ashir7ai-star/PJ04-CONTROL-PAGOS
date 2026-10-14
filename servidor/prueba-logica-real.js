@@ -1256,5 +1256,81 @@ console.log('\n=== La pantalla: se registra con el nombre nuevo, se busca con lo
       'seguiria diciendo el nombre viejo al entrar');
 }
 
+console.log('\n=== "Hoy" sigue siendo hoy aunque la app quede abierta ===');
+{
+  // Lo que paso el 14/10/2026: la app estaba abierta desde el dia anterior y
+  // el calendario de Traslados marcaba el 13 como hoy, con el 14 DESHABILITADO.
+  // flatpickr resuelve 'today' una sola vez, al inicializar.
+  //
+  // Lo que no se veia y es peor: Nuevo Pago arranca con la fecha de hoy ya
+  // puesta. El primer pago despues de medianoche se habria guardado con la
+  // fecha de AYER, y esa fecha es la que manda en los saldos, el panel de
+  // viaticos y los reportes.
+  const html = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'index.html'), 'utf8');
+
+  const sinComentarios = html.split('\n')
+    .filter(l => l.trim().indexOf('//') !== 0)
+    .map(l => l.replace(/\s\/\/.*$/, ''))
+    .join('\n');
+
+  chk('el tope del calendario de traslados se recalcula al abrirlo',
+      /onOpen: function \(sel, texto, inst\) \{ inst\.set\('maxDate', new Date\(\)\); \}/.test(sinComentarios),
+      'hoy quedaria deshabilitado si la app lleva un dia abierta');
+
+  chk('existe el refresco de calendarios',
+      /function refrescarCalendarios\(\)/.test(sinComentarios), 'falta la funcion');
+
+  const fn = sinComentarios.split('function refrescarCalendarios()')[1].split('\n    }')[0];
+
+  chk('no hace nada si sigue siendo el mismo dia',
+      /if \(diaISO\(hoy\) === diaDeLosCalendarios\) return;/.test(fn), fn.slice(0, 120));
+  chk('corrige el tope de traslados',
+      /fechaPickerTraslado\.set\('maxDate', hoy\)/.test(fn), fn);
+  chk('revisa los TRES calendarios, no solo el de traslados',
+      /\[fechaPicker, fechaPickerSolicitud, fechaPickerTraslado\]/.test(fn), fn);
+
+  // Esta es la parte delicada: pisar la fecha que la persona eligio a
+  // proposito seria peor que el bug original.
+  chk('solo pisa la fecha si es la que puso el sistema',
+      /if \(elegida && diaISO\(elegida\) === diaDeLosCalendarios\)/.test(fn),
+      'pisaria una fecha elegida a mano');
+  chk('y al reemplazarla no dispara el onChange',
+      /p\.setDate\(hoy, false\)/.test(fn), 'un refresco no es una eleccion del usuario');
+
+  // Sin esto el refresco existe pero nunca corre.
+  chk('se revisa al volver a la pestana del navegador',
+      /visibilityState === 'visible'\) refrescarCalendarios\(\)/.test(sinComentarios),
+      'nadie llamaria al refresco');
+  chk('y al cambiar de seccion dentro de la app',
+      /navTabs\.forEach\(function \(t\) \{ t\.addEventListener\('click', refrescarCalendarios\); \}\)/.test(sinComentarios),
+      'no se refrescaria sin salir del navegador');
+}
+
+console.log('\n=== La logica del refresco, simulando el cambio de dia ===');
+{
+  // Se reimplementa la decision tal como esta en la pantalla, para poder
+  // correrla con fechas inventadas. Lo que se prueba es la REGLA: cuando se
+  // pisa el valor y cuando no.
+  const diaISO = d => {
+    const p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  };
+  const sePisa = (diaCalendarios, elegida, hoy) =>
+    diaISO(hoy) !== diaCalendarios && !!elegida && diaISO(elegida) === diaCalendarios;
+
+  const ayer = new Date(2026, 9, 13);
+  const hoy  = new Date(2026, 9, 14);
+
+  chk('la fecha vieja del sistema se reemplaza por hoy',
+      sePisa('2026-10-13', ayer, hoy) === true);
+  chk('una fecha elegida a mano NO se toca',
+      sePisa('2026-10-13', new Date(2026, 9, 2), hoy) === false);
+  chk('si no cambio el dia, no se toca nada',
+      sePisa('2026-10-14', hoy, hoy) === false);
+  chk('un campo vacio no se rellena solo',
+      sePisa('2026-10-13', null, hoy) === false);
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);

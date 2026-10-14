@@ -6940,7 +6940,58 @@
       maxDate: 'today',
       disableMobile: true,
       allowInput: false,
+      // El tope se recalcula AL ABRIR. Ver refrescarCalendarios: `maxDate:
+      // 'today'` se resuelve una sola vez, al inicializar, y en una PWA que
+      // queda abierta eso dejó el 14/10 deshabilitado por estar la app abierta
+      // desde el 13 — no se podía registrar un traslado hecho ese mismo día.
+      onOpen: function (sel, texto, inst) { inst.set('maxDate', new Date()); }
     });
+
+    // ─── "Hoy" tiene que seguir siendo hoy ───────────────────────────────
+    //
+    // flatpickr resuelve 'today' UNA vez, cuando se inicializa. Esta app es una
+    // PWA que la gente deja abierta, así que "hoy" se congelaba en el día en
+    // que se cargó la página.
+    //
+    // Lo que se vio (14/10/2026): el calendario de Traslados marcaba el 13 como
+    // hoy y deshabilitaba el 14.
+    //
+    // Lo que NO se veía, y es peor: Nuevo Pago arranca con la fecha de hoy ya
+    // puesta. El primer pago después de medianoche se habría guardado con la
+    // fecha de AYER, sin que nadie lo notara, y ese dato es el que manda en los
+    // saldos, el panel de viáticos y los reportes.
+    //
+    // Solo se pisa el valor si sigue siendo el que puso el sistema. Si la
+    // persona eligió una fecha a propósito, no se le toca.
+    const diaISO = function (d) {
+      const p = function (n) { return String(n).padStart(2, '0'); };
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+    };
+    let diaDeLosCalendarios = diaISO(new Date());
+
+    function refrescarCalendarios() {
+      const hoy = new Date();
+      if (diaISO(hoy) === diaDeLosCalendarios) return;   // sigue siendo el mismo día
+
+      // El tope de Traslados: sin esto, hoy queda deshabilitado.
+      fechaPickerTraslado.set('maxDate', hoy);
+
+      [fechaPicker, fechaPickerSolicitud, fechaPickerTraslado].forEach(function (p) {
+        const elegida = p.selectedDates[0];
+        // Se pisa SOLO si lo que hay es el valor viejo que puso el sistema.
+        if (elegida && diaISO(elegida) === diaDeLosCalendarios) p.setDate(hoy, false);
+      });
+
+      diaDeLosCalendarios = diaISO(hoy);
+    }
+
+    // Volver a la pestaña es justo cuando alguien retoma el trabajo del día
+    // siguiente, así que es el momento de revisarlo.
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') refrescarCalendarios();
+    });
+    // Y cada vez que se cambia de sección dentro de la app.
+    navTabs.forEach(function (t) { t.addEventListener('click', refrescarCalendarios); });
 
     document.getElementById('btnTraslado').addEventListener('click', async () => {
       const origen  = document.getElementById('tOrigen').value;

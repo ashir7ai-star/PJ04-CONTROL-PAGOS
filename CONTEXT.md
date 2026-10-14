@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-10-14** — 📅 **Arreglado “hoy” congelado en los calendarios.** Con la app abierta de un día para el otro, Traslados deshabilitaba el día actual y **Nuevo Pago habría guardado el primer pago con la fecha de ayer**. Solo pantalla: el backend sigue en `2026-10-13-a`.
+
 **2026-10-13** — ✅ **VERSIÓN ESTABLE: `v2.5-blazar-energy`.** **AMPAC SAS pasó a llamarse BLAZAR ENERGY** y el sistema entiende los dos nombres para siempre: los 389 pagos históricos conservan el nombre con el que se emitieron las facturas, y la clave interna no se tocó. Además, el **reporte por correo dejó de ser un volcado de la hoja** (once columnas con formato, moneda y total) y ahora **cuadra con la app**: las dos cuentan por fecha del gasto, con una única función `fechaDelGasto_`. Verificado en los tres frentes: Apps Script y EasyPanel en `2026-10-13-a`, web en `v102`, 477 comprobaciones.
 
 **2026-10-13** — 🏷️ **AMPAC SAS ahora es BLAZAR ENERGY.** El histórico se deja con el nombre original (389 pagos) y el sistema entiende los dos para siempre; la clave interna no se tocó. Backend `2026-10-13-a`: hay que desplegar Apps Script y EasyPanel.
@@ -529,6 +531,12 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-14**: 📅 **“Hoy” se quedaba congelado en el día en que se abrió la app.** Nathan lo vio en Traslados: el calendario marcaba el **13 como hoy y deshabilitaba el 14**, así que no se podía registrar un traslado hecho ese mismo día.
+  - **Causa:** `flatpickr` resuelve `'today'` **una sola vez, al inicializar**. Esta app es una PWA que la gente deja abierta, así que “hoy” era el día en que se cargó la página.
+  - ⚠️ **Lo que no se veía, y era peor:** Nuevo Pago y Solicitud arrancan con la fecha de hoy ya puesta. **El primer pago después de medianoche se habría guardado con la fecha de AYER**, sin error ni aviso — y esa fecha es la que manda en los saldos, el panel de viáticos y los reportes. El síntoma visible era el calendario; el daño real estaba en otro lado.
+  - **Arreglo:** el tope de Traslados se recalcula **al abrir** el calendario, y hay un `refrescarCalendarios()` que corre al volver a la pestaña del navegador y al cambiar de sección.
+  - **Solo se pisa el valor si sigue siendo el que puso el sistema.** Pisar una fecha que la persona eligió a propósito sería peor que el error original; hay una prueba para cada uno de los cuatro casos (fecha vieja del sistema, fecha elegida a mano, mismo día, campo vacío).
+  - **490 comprobaciones**, 19 mutaciones detectadas.
 - **2026-10-13**: 🏷️ **AMPAC SAS pasa a llamarse BLAZAR ENERGY.**
   - **El histórico NO se renombra** (decisión de Nathan): los **389 pagos** anteriores se emitieron con facturas a nombre de AMPAC SAS, y cambiar el registro lo haría discrepar del papel archivado. Se registra con el nombre nuevo de acá en adelante y conviven los dos.
   - **Por eso `cuentaDePago_` reconoce los DOS nombres, y no es temporal.** Si reconociera solo uno, los pagos del otro devolverían `null`, dejarían de descontar del banco y lo único que los delataría sería el contador de “sin cuenta” que casi nadie mira. Verificado contra producción: **0 pagos huérfanos**.
