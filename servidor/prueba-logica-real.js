@@ -1332,5 +1332,66 @@ console.log('\n=== La logica del refresco, simulando el cambio de dia ===');
       sePisa('2026-10-13', null, hoy) === false);
 }
 
+console.log('\n=== Filtro por persona, en Consultar Pagos y en Control de Viaticos ===');
+{
+  const html = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'index.html'), 'utf8');
+  const sinComentarios = html.split('\n')
+    .filter(l => l.trim().indexOf('//') !== 0)
+    .map(l => l.replace(/\s\/\/.*$/, ''))
+    .join('\n');
+
+  chk('Consultar Pagos tiene el campo', /id="fRegistradoPor"/.test(html), 'falta el campo');
+  chk('Control de Viaticos tambien', /id="vtQuien"/.test(html), 'falta el campo');
+
+  // Desplegable y NO texto libre. Con texto libre volverian los 11 nombres
+  // para 6 personas que hubo hasta el 30/09: "Nathan", "nathan" y "Nathan De
+  // Lima" serian tres busquedas distintas.
+  const campoPagos = html.split('id="fRegistradoPor"')[1].split('>')[0] +
+                     html.split('id="fRegistradoPor"')[1].split('</select>')[0];
+  chk('en Consultar Pagos es un desplegable, no un campo de texto',
+      html.indexOf('<select id="fRegistradoPor"') !== -1, campoPagos.slice(0, 80));
+  chk('y en Viaticos tambien',
+      html.indexOf('<select id="vtQuien"') !== -1, 'seria texto libre');
+
+  // Las opciones salen de los DATOS, no de la hoja USUARIOS: si salieran de
+  // ahi, elegir a alguien que no registro nada daria cero resultados sin
+  // explicar por que, y faltaria quien ya no tiene cuenta activa.
+  chk('las opciones de Consultar Pagos salen de las filas traidas',
+      /rows\.forEach\(function \(r\) \{\s*const n = String\(r\['REGISTRADO POR'\]/.test(sinComentarios),
+      'saldrian de una lista escrita a mano');
+  chk('y las de Viaticos, del detalle del periodo',
+      /vtDatos && vtDatos\.detalle\)\s*\|\|\s*\[\]\)\.forEach/.test(sinComentarios),
+      'no reflejarian el rango que se esta mirando');
+
+  // Coincidencia exacta: el valor viene de un desplegable, no es una busqueda.
+  chk('Consultar Pagos compara exacto',
+      /String\(r\['REGISTRADO POR'\] \|\| ''\)\.trim\(\) !== quien/.test(sinComentarios),
+      'con "contiene" un nombre arrastraria a otro');
+  chk('y Viaticos tambien',
+      /String\(d\.quien \|\| ''\)\.trim\(\) !== quien/.test(sinComentarios),
+      'con "contiene" un nombre arrastraria a otro');
+
+  // Si la persona elegida no esta en lo que se trajo, el filtro se suelta.
+  // Dejarlo puesto mostraria una lista vacia sin decir por que.
+  chk('el filtro se suelta si esa persona no esta en los datos (pagos)',
+      (sinComentarios.match(/if \(elegido && nombres\.indexOf\(elegido\) === -1\) sel\.value = '';/g) || []).length === 2,
+      'quedaria filtrando por alguien que no aparece');
+
+  chk('Limpiar tambien limpia el filtro nuevo',
+      /getElementById\('fRegistradoPor'\)\.value  = '';/.test(sinComentarios),
+      'quedaria puesto despues de limpiar');
+
+  // Cambiar un filtro no puede costar otra consulta completa al servidor.
+  chk('cambiar el filtro re-filtra lo ya traido, sin pedir de nuevo',
+      /renderResultados\(filtrarRows\(todasLasFilas\)\)/.test(sinComentarios),
+      'cada cambio costaria una consulta de hasta 90 segundos');
+  chk('y el desplegable se rellena con cada consulta',
+      /pintarQuienRegistro\(rows\)/.test(sinComentarios), 'quedaria vacio');
+  chk('el de viaticos tambien, antes de pintar',
+      /vtDatos = r\.presupuesto;\s*\n\s*pintarQuienViaticos\(\);/.test(sinComentarios),
+      'mostraria los nombres del periodo anterior');
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);

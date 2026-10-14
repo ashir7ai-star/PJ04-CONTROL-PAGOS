@@ -2780,6 +2780,14 @@
           <label for="fProveedor">Proveedor</label>
           <input type="text" id="fProveedor" placeholder="Nombre del proveedor" />
         </div>
+        <!-- Desplegable, no texto libre: con texto libre volverían los 11
+             nombres para 6 personas que tuvimos hasta el 30/09. Las opciones
+             salen de los datos que se traen, no de una lista escrita a mano,
+             así que incluye también a quien ya no tiene cuenta activa. -->
+        <div class="field">
+          <label for="fRegistradoPor">Registrado por</label>
+          <select id="fRegistradoPor"><option value="">Todos</option></select>
+        </div>
         <div class="field">
           <label for="fFechaInicio">Fecha desde</label>
           <input type="text" id="fFechaInicio" placeholder="dd/mm/aaaa" readonly />
@@ -3219,6 +3227,13 @@
         <div class="vt-campo">
           <label for="vtRubro">Rubro</label>
           <select id="vtRubro"><option value="">Todos</option></select>
+        </div>
+        <!-- Las opciones salen de los viáticos del período que se está viendo,
+             no de la hoja USUARIOS: si saliera de ahí, elegir a alguien que no
+             gastó ese día daría cero resultados sin explicar por qué. -->
+        <div class="vt-campo">
+          <label for="vtQuien">Registrado por</label>
+          <select id="vtQuien"><option value="">Todos</option></select>
         </div>
         <div class="vt-campo-btns">
           <button type="button" class="btn-sec vt-btn" id="vtRefrescar">Actualizar</button>
@@ -3943,10 +3958,21 @@
 
     // ─── Búsqueda ─────────────────────────────────────────────────
     document.getElementById('btnSearch').addEventListener('click', buscarPagos);
+    // Cambiar un filtro vuelve a filtrar lo que ya se trajo. Antes había que
+    // apretar Buscar otra vez, y cada búsqueda es una consulta completa al
+    // servidor — hasta 90 segundos para mostrar lo mismo recortado.
+    ['fEmpresa', 'fTipo', 'fRegistradoPor'].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', function () {
+        if (todasLasFilas.length) renderResultados(filtrarRows(todasLasFilas));
+      });
+    });
+
     document.getElementById('btnClear').addEventListener('click', () => {
       document.getElementById('fEmpresa').value        = '';
       document.getElementById('fTipo').value           = '';
       document.getElementById('fProveedor').value      = '';
+      document.getElementById('fRegistradoPor').value  = '';
       document.getElementById('fFechaInicio')._flatpickr.clear();
       document.getElementById('fFechaFin')._flatpickr.clear();
       document.getElementById('searchResults').style.display = 'none';
@@ -3969,8 +3995,11 @@
         if (!Array.isArray(rows)) rows = Object.values(rows);
         // Filtrar filas vacías
         rows = rows.filter(r => r['PROVEEDOR'] || r['NOMBRE DE PAGO']);
-        const filtered = filtrarRows(rows);
-        renderResultados(filtered);
+        // Se guarda lo que vino del servidor: así cambiar un filtro vuelve a
+        // filtrar en el navegador, sin pagar otro viaje de 90 segundos.
+        todasLasFilas = rows;
+        pintarQuienRegistro(rows);
+        renderResultados(filtrarRows(rows));
       } catch(err) {
         console.error('buscarPagos error:', err.name, err.message);
         showToast('error', 'Error de conexión', err.message || 'No se pudo obtener los datos del sistema.');
@@ -4085,10 +4114,42 @@
       return NOMBRES_DE_EMPRESA[String(empresa || '').toLowerCase()] || [empresa];
     }
 
+    // Lo ultimo que trajo el servidor, sin filtrar. Permite cambiar un filtro
+    // y ver el resultado al instante, en vez de volver a pedir todo.
+    let todasLasFilas = [];
+
+    // Las opciones de "Registrado por" salen de los DATOS, no de la hoja
+    // USUARIOS: así aparece también quien ya no tiene cuenta activa pero
+    // registró pagos en su momento. Si saliera de USUARIOS, filtrar por esa
+    // persona daría cero resultados sin explicar por qué.
+    function pintarQuienRegistro(rows) {
+      const sel = document.getElementById('fRegistradoPor');
+      if (!sel) return;
+      const elegido = sel.value;
+
+      const nombres = [];
+      rows.forEach(function (r) {
+        const n = String(r['REGISTRADO POR'] || '').trim();
+        if (n && nombres.indexOf(n) === -1) nombres.push(n);
+      });
+      nombres.sort(function (a, b) { return a.localeCompare(b, 'es'); });
+
+      sel.innerHTML = '<option value="">Todos</option>' +
+        nombres.map(function (n) {
+          return '<option value="' + escapeHtml(n) + '"' +
+                 (n === elegido ? ' selected' : '') + '>' + escapeHtml(n) + '</option>';
+        }).join('');
+
+      // Si la persona elegida ya no está en lo que se trajo, el filtro se
+      // suelta en vez de quedar pidiendo algo que no existe.
+      if (elegido && nombres.indexOf(elegido) === -1) sel.value = '';
+    }
+
     function filtrarRows(rows) {
       const empresa  = document.getElementById('fEmpresa').value.toLowerCase();
       const tipo     = document.getElementById('fTipo').value.toLowerCase();
       const prov     = document.getElementById('fProveedor').value.toLowerCase().trim();
+      const quien    = document.getElementById('fRegistradoPor').value;
       const fi       = document.getElementById('fFechaInicio')._flatpickr.selectedDates[0];
       const ff       = document.getElementById('fFechaFin')._flatpickr.selectedDates[0];
 
@@ -4105,6 +4166,9 @@
         if (empresa && !nombresDe(empresa).some(n => rEmpresa.includes(n))) return false;
         if (tipo    && !rTipo.includes(tipo))         return false;
         if (prov    && !rProv.includes(prov))         return false;
+        // Exacta, no "contiene": el valor sale del desplegable, así que
+        // "Laura Leyton" no tiene por qué arrastrar a nadie más.
+        if (quien   && String(r['REGISTRADO POR'] || '').trim() !== quien) return false;
         if (fi && rFecha) { const f = new Date(fi.getFullYear(), fi.getMonth(), fi.getDate()); if (rFecha < f) return false; }
         if (ff && rFecha) { const f = new Date(ff.getFullYear(), ff.getMonth(), ff.getDate()); if (rFecha > f) return false; }
         return true;
@@ -6500,6 +6564,7 @@
         return;
       }
       vtDatos = r.presupuesto;
+      pintarQuienViaticos();
       // El servidor manda el rango que realmente usó: los campos lo reflejan.
       vtPickerDesde.setDate(vtDatos.desde, false);
       vtPickerHasta.setDate(vtDatos.hasta, false);
@@ -6511,12 +6576,40 @@
     function vtDetalleFiltrado() {
       const txt   = document.getElementById('vtBuscar').value.trim().toLowerCase();
       const rubro = document.getElementById('vtRubro').value;
+      const quien = document.getElementById('vtQuien').value;
       return (vtDatos.detalle || []).filter(d => {
         if (rubro === '__sin' && d.rubro) return false;
         if (rubro && rubro !== '__sin' && d.rubro !== rubro) return false;
+        // Exacta, no "contiene": el valor sale del desplegable.
+        if (quien && String(d.quien || '').trim() !== quien) return false;
         if (!txt) return true;
         return [d.nombre, d.proveedor, d.quien].join(' ').toLowerCase().indexOf(txt) !== -1;
       });
+    }
+
+    // Quienes registraron viáticos en el período que se está mirando. Se
+    // reconstruye con cada consulta, porque cambiar el rango cambia la gente.
+    function pintarQuienViaticos() {
+      const sel = document.getElementById('vtQuien');
+      if (!sel) return;
+      const elegido = sel.value;
+
+      const nombres = [];
+      ((vtDatos && vtDatos.detalle) || []).forEach(function (d) {
+        const n = String(d.quien || '').trim();
+        if (n && nombres.indexOf(n) === -1) nombres.push(n);
+      });
+      nombres.sort(function (a, b) { return a.localeCompare(b, 'es'); });
+
+      sel.innerHTML = '<option value="">Todos</option>' +
+        nombres.map(function (n) {
+          return '<option value="' + escapeHtml(n) + '"' +
+                 (n === elegido ? ' selected' : '') + '>' + escapeHtml(n) + '</option>';
+        }).join('');
+
+      // Si quien estaba elegido no registró nada en este período, el filtro se
+      // suelta: dejarlo puesto mostraría una lista vacía sin decir por qué.
+      if (elegido && nombres.indexOf(elegido) === -1) sel.value = '';
     }
 
     function pintarControlViaticos() {
@@ -6649,6 +6742,7 @@
     document.getElementById('vtRefrescar').addEventListener('click', cargarControlViaticos);
     document.getElementById('vtBuscar').addEventListener('input', () => { if (vtDatos) pintarControlViaticos(); });
     document.getElementById('vtRubro').addEventListener('change', () => { if (vtDatos) pintarControlViaticos(); });
+    document.getElementById('vtQuien').addEventListener('change', () => { if (vtDatos) pintarControlViaticos(); });
     document.getElementById('vtEditarPresupuesto').addEventListener('click', () => {
       if (vtDatos) abrirModalPresupuesto(vtDatos);
     });

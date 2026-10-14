@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-10-14** — 🔍 **Filtro por persona en Consultar Pagos y Control de Viáticos**, como desplegable armado desde los datos. Cambiar un filtro ya no cuesta otra consulta al servidor. Solo pantalla: el backend sigue en `2026-10-13-a`.
+
 **2026-10-14** — 📅 **Arreglado “hoy” congelado en los calendarios.** Con la app abierta de un día para el otro, Traslados deshabilitaba el día actual y **Nuevo Pago habría guardado el primer pago con la fecha de ayer**. Solo pantalla: el backend sigue en `2026-10-13-a`.
 
 **2026-10-13** — ✅ **VERSIÓN ESTABLE: `v2.5-blazar-energy`.** **AMPAC SAS pasó a llamarse BLAZAR ENERGY** y el sistema entiende los dos nombres para siempre: los 389 pagos históricos conservan el nombre con el que se emitieron las facturas, y la clave interna no se tocó. Además, el **reporte por correo dejó de ser un volcado de la hoja** (once columnas con formato, moneda y total) y ahora **cuadra con la app**: las dos cuentan por fecha del gasto, con una única función `fechaDelGasto_`. Verificado en los tres frentes: Apps Script y EasyPanel en `2026-10-13-a`, web en `v102`, 477 comprobaciones.
@@ -531,6 +533,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-14**: 🔍 **Filtro “Registrado por” en Consultar Pagos y en Control de Viáticos.**
+  - Es un **desplegable, no texto libre**. Con texto libre volverían los 11 nombres para 6 personas que hubo hasta el 30/09: “Nathan”, “nathan” y “Nathan De Lima” serían tres búsquedas distintas. Este filtro solo es confiable **porque la identidad ya está unificada** — ver `v2.3-identidad-verificada`.
+  - **Las opciones salen de los DATOS, no de la hoja USUARIOS.** Si salieran de USUARIOS, elegir a alguien que no registró nada daría cero resultados sin explicar por qué, y faltaría quien ya no tiene cuenta activa pero sí registró pagos. Medido hoy: **7 personas** en Consultar Pagos, y solo las **2** que gastaron en el período que se mire, en Viáticos.
+  - **Coincidencia exacta**, no “contiene”: el valor sale de un desplegable, así que un nombre no puede arrastrar a otro.
+  - Si la persona elegida no está en lo que se trajo, **el filtro se suelta solo**. Dejarlo puesto mostraría una lista vacía sin decir por qué.
+  - ⚡ **De paso:** cambiar Empresa, Tipo o Registrado por ahora **vuelve a filtrar lo ya traído**, sin otra consulta al servidor. Antes cada cambio costaba apretar Buscar y esperar hasta 90 segundos para ver lo mismo recortado.
+  - **503 comprobaciones**, 23 mutaciones detectadas.
 - **2026-10-14**: 📅 **“Hoy” se quedaba congelado en el día en que se abrió la app.** Nathan lo vio en Traslados: el calendario marcaba el **13 como hoy y deshabilitaba el 14**, así que no se podía registrar un traslado hecho ese mismo día.
   - **Causa:** `flatpickr` resuelve `'today'` **una sola vez, al inicializar**. Esta app es una PWA que la gente deja abierta, así que “hoy” era el día en que se cargó la página.
   - ⚠️ **Lo que no se veía, y era peor:** Nuevo Pago y Solicitud arrancan con la fecha de hoy ya puesta. **El primer pago después de medianoche se habría guardado con la fecha de AYER**, sin error ni aviso — y esa fecha es la que manda en los saldos, el panel de viáticos y los reportes. El síntoma visible era el calendario; el daño real estaba en otro lado.
