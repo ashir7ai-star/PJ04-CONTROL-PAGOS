@@ -217,7 +217,7 @@ function filasDelReporte_(registros) {
   return registros.map(function (r) {
     return COLUMNAS_REPORTE.map(function (c) {
       const v = r[c.campo];
-      if (c.etiqueta) return etiquetaDeTipo_(v);
+      if (c.etiqueta) return v;
       if (c.rubro)    return etiquetaDeRubro_(v);
       if (c.numero)   return montoANumero_(v) || 0;
       if (c.enlace) {
