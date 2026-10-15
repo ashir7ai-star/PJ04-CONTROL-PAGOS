@@ -637,6 +637,68 @@
       margin-bottom: 16px;
     }
 
+    /* ─── Bloqueo de pantalla al registrar un pago ────────────────
+       Tapa TODO mientras el pago viaja, y después muestra el resultado en
+       el medio de la pantalla hasta que la persona lo cierre.
+
+       El aviso vivia en un toast abajo a la derecha. Alguien que apretaba
+       "Enviar Pago" y no lo veia podia creer que ya estaba, irse, o cargar el
+       pago otra vez. El servidor no lo duplica (ID REGISTRO), pero eso no
+       resuelve lo importante: la persona no sabia si su pago habia quedado.
+
+       z-index 11000: por encima de todo lo demás de la app, incluido el
+       login (10000). Un aviso de dinero no puede quedar tapado. */
+    .envio-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 11000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(10, 10, 14, 0.72);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+    .envio-overlay.visible { display: flex; }
+
+    .envio-caja {
+      width: 100%;
+      max-width: 420px;
+      background: var(--surface-1, #fff);
+      border: 1px solid var(--border-subtle);
+      border-radius: 18px;
+      padding: 34px 28px 28px;
+      text-align: center;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, .3);
+    }
+
+    .envio-icono {
+      width: 68px; height: 68px;
+      margin: 0 auto 18px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .envio-icono svg { width: 34px; height: 34px; stroke-width: 2.5; }
+    .envio-icono.ok    { background: rgba(52,199,89,.14);  color: #34c759; }
+    .envio-icono.error { background: rgba(255,59,48,.12);  color: #ff3b30; }
+    .envio-icono.espera {
+      background: rgba(0,113,227,.12);
+      border: 3px solid rgba(0,113,227,.25);
+      border-top-color: #0071e3;
+      animation: envio-girar .9s linear infinite;
+    }
+    @keyframes envio-girar { to { transform: rotate(360deg); } }
+
+    .envio-titulo {
+      font-size: 1.32rem; font-weight: 800; letter-spacing: -.02em;
+      color: var(--text-1); margin: 0 0 8px;
+    }
+    .envio-texto {
+      font-size: .92rem; color: var(--text-2); line-height: 1.5; margin: 0;
+    }
+    .envio-btn { margin-top: 24px; }
+
     /* ─── Campo que no se escribe: lo pone la cuenta ──────────────
        Se ve distinto a propósito: un campo bloqueado que parece editable
        invita a pelearse con él. */
@@ -2341,6 +2403,18 @@
   <!-- Pantalla de acceso. Arranca visible y tapa la app hasta que el servidor
        diga quién entra; así nunca se alcanza a ver contenido de fondo. Si el
        login está apagado en el servidor, se oculta sola al arrancar. -->
+  <!-- Bloqueo de pantalla al registrar un pago. Mientras el pago viaja no se
+       puede tocar nada; cuando termina, el resultado ocupa el centro de la
+       pantalla y hay que cerrarlo a mano. Ver mostrarEnvio(). -->
+  <div class="envio-overlay" id="envioOverlay" role="alertdialog" aria-live="assertive" aria-modal="true">
+    <div class="envio-caja">
+      <div class="envio-icono espera" id="envioIcono"></div>
+      <p class="envio-titulo" id="envioTitulo">Registrando el pago…</p>
+      <p class="envio-texto" id="envioTexto">No cierres ni recargues la página.</p>
+      <button type="button" class="btn-submit envio-btn" id="envioBtn" style="display:none;">Entendido</button>
+    </div>
+  </div>
+
   <div class="login-overlay" id="loginOverlay">
     <div class="login-card">
       <img src="icons/logo.png" alt="Millennium" class="login-logo" />
@@ -5029,12 +5103,20 @@
           // Guardado: el id deja de estar pendiente. El próximo pago genera uno
           // nuevo, así dos pagos iguales el mismo día no se bloquean entre sí.
           idPagoPendiente = null;
-          showToast('success',
+          // El monto y el proveedor van en el aviso: confirma QUÉ quedó
+          // registrado, no solo que algo pasó. Se leen antes de resetForm(),
+          // que vacía el formulario.
+          const montoTxt = '$' + (Number(String(document.getElementById('monto').value)
+                            .replace(/\./g, '')) || 0).toLocaleString('es-CO');
+          const provTxt  = document.getElementById('proveedor').value.trim();
+
+          resetForm();
+          mostrarEnvio('ok',
             result.duplicado ? 'Ese pago ya estaba registrado' : '¡Pago registrado!',
             result.duplicado
               ? 'Se había guardado en el intento anterior. No se duplicó.'
-              : 'Los archivos fueron guardados y los datos registrados correctamente.');
-          resetForm();
+              : montoTxt + (provTxt ? ' a ' + provTxt : '') +
+                '. Quedó guardado con su comprobante.');
           // El saldo lo calcula el servidor a partir de las hojas: no hay un
           // contador local que pueda quedar desincronizado. Y viene ya
           // calculado en esta misma respuesta, así que no hay que volver a pedirlo.
@@ -5048,15 +5130,73 @@
         // servidor pudo grabarlo y perderse solo la respuesta. Por eso el
         // mensaje no afirma que no se registró, e invita a reintentar sin
         // miedo — el id pendiente hace que el reintento no duplique.
-        showToast('error', 'No pudimos confirmar el envío',
+        // También en el centro: es el aviso que MÁS importa que se lea, porque
+        // el pago pudo haberse guardado igual y la respuesta perderse.
+        mostrarEnvio('error', 'No pudimos confirmar el envío',
           mensajeDeError(err) + ' Volvé a darle "Enviar Pago": si ya se había ' +
-          'guardado, el sistema lo reconoce y no lo duplica.');
+          'guardado, el sistema lo reconoce y no lo duplica.',
+          'Volver al formulario');
       } finally {
         setLoading(false);
       }
     });
 
+    // ─── El bloqueo de pantalla al registrar un pago ─────────────────────
+    //
+    // Por qué existe: el aviso vivía en un toast chico, abajo a la derecha.
+    // Alguien que apretaba "Enviar Pago" y no lo veía podía creer que ya
+    // estaba, irse, o cargar el pago de nuevo. El servidor no lo duplica
+    // — `ID REGISTRO` — pero eso no resuelve lo importante: la persona no
+    // sabía si su pago había quedado registrado.
+    //
+    // Mientras el pago viaja NO se puede cerrar: ni con Escape ni haciendo
+    // clic afuera. Es justo el momento en que un clic de más hace daño.
+    const envioOverlay = document.getElementById('envioOverlay');
+    const envioIcono   = document.getElementById('envioIcono');
+    const envioTitulo  = document.getElementById('envioTitulo');
+    const envioTexto   = document.getElementById('envioTexto');
+    const envioBtn     = document.getElementById('envioBtn');
+
+    const ENVIO_ICONOS = {
+      ok:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+      error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="16.5" x2="12" y2="16.5"/></svg>'
+    };
+
+    // estado: 'espera' | 'ok' | 'error'
+    function mostrarEnvio(estado, titulo, texto, textoBoton) {
+      envioIcono.className   = 'envio-icono ' + estado;
+      envioIcono.innerHTML   = ENVIO_ICONOS[estado] || '';
+      envioTitulo.textContent = titulo;
+      envioTexto.textContent  = texto;
+      // Sin botón mientras se envía: no hay nada que decidir todavía, y no
+      // debe haber forma de salir.
+      envioBtn.style.display = (estado === 'espera') ? 'none' : '';
+      if (estado !== 'espera') envioBtn.textContent = textoBoton || 'Entendido';
+      envioOverlay.classList.add('visible');
+      // El fondo no se desplaza mientras hay un bloqueo encima.
+      document.body.style.overflow = 'hidden';
+      if (estado !== 'espera') envioBtn.focus();
+    }
+
+    function cerrarEnvio() {
+      envioOverlay.classList.remove('visible');
+      document.body.style.overflow = '';
+    }
+
+    envioBtn.addEventListener('click', cerrarEnvio);
+    // Escape solo cierra el RESULTADO, nunca el "enviando": ahí no hay nada
+    // que cancelar y cerrarlo daría la impresión de que se detuvo algo.
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && envioOverlay.classList.contains('visible') &&
+          envioBtn.style.display !== 'none') cerrarEnvio();
+    });
+
     function setLoading(on) {
+      // La pantalla se bloquea APENAS se aprieta Enviar, no cuando contesta el
+      // servidor: el hueco entre las dos cosas es justo donde alguien vuelve a
+      // apretar o se va creyendo que ya está.
+      if (on) mostrarEnvio('espera', 'Registrando el pago…',
+                           'Esto puede tardar unos segundos. No cierres ni recargues la página.');
       btnSubmit.disabled     = on;
       spinner.style.display  = on ? 'block' : 'none';
       btnText.textContent    = on ? 'Enviando...' : 'Enviar Pago';

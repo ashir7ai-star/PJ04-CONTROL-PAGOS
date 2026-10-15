@@ -1393,5 +1393,78 @@ console.log('\n=== Filtro por persona, en Consultar Pagos y en Control de Viatic
       'mostraria los nombres del periodo anterior');
 }
 
+console.log('\n=== La pantalla se bloquea mientras el pago viaja ===');
+{
+  // Por que existe: el aviso vivia en un toast chico, abajo a la derecha.
+  // Alguien que apretaba "Enviar Pago" y no lo veia podia creer que ya estaba,
+  // irse, o cargar el pago de nuevo. El servidor no lo duplica (ID REGISTRO),
+  // pero eso no resuelve lo importante: la persona no sabia si su pago habia
+  // quedado registrado.
+  const html = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'index.html'), 'utf8');
+  const sinComentarios = html.split('\n')
+    .filter(l => l.trim().indexOf('//') !== 0)
+    .map(l => l.replace(/\s\/\/.*$/, ''))
+    .join('\n');
+
+  chk('existe el bloqueo de pantalla', /id="envioOverlay"/.test(html), 'falta el elemento');
+  chk('tapa toda la pantalla', /\.envio-overlay \{[\s\S]{0,200}?position: fixed;[\s\S]{0,120}?inset: 0;/.test(html),
+      'no cubriria todo');
+
+  // Por encima de todo, incluido el login (10000). Un aviso de dinero no
+  // puede quedar tapado por otra capa.
+  const capa = (html.split('.envio-overlay {')[1] || '').split('}')[0];
+  const z = (capa.match(/z-index:\s*(\d+)/) || [])[1];
+  chk('queda por encima de cualquier otra capa de la app',
+      Number(z) > 10000, 'z-index ' + z);
+
+  // El momento exacto importa: entre apretar Enviar y la respuesta del
+  // servidor es cuando alguien vuelve a apretar o se va.
+  chk('se bloquea al apretar Enviar, no cuando contesta el servidor',
+      /if \(on\) mostrarEnvio\('espera'/.test(sinComentarios),
+      'quedaria un hueco con la pantalla libre');
+
+  const setL = sinComentarios.split('function setLoading(on)')[1].split('\n    }')[0];
+  chk('y el boton de enviar queda deshabilitado', /btnSubmit\.disabled\s*=\s*on;/.test(setL), setL);
+
+  // Mientras se envia no puede haber forma de salir: no hay nada que
+  // cancelar, y cerrarlo daria la impresion de que se detuvo algo.
+  const mostrar = sinComentarios.split('function mostrarEnvio(')[1].split('\n    }')[0];
+  chk('mientras se envia NO aparece el boton de cerrar',
+      /envioBtn\.style\.display = \(estado === 'espera'\) \? 'none' : '';/.test(mostrar), mostrar);
+  chk('y Escape no cierra el "enviando"',
+      /envioBtn\.style\.display !== 'none'\) cerrarEnvio\(\);/.test(sinComentarios),
+      'se podria cerrar el bloqueo a mitad del envio');
+
+  chk('el fondo no se desplaza mientras hay bloqueo',
+      /document\.body\.style\.overflow = 'hidden';/.test(mostrar), mostrar);
+  chk('y se devuelve al cerrarlo',
+      /document\.body\.style\.overflow = '';/.test(sinComentarios), 'la pagina quedaria trabada');
+
+  // El resultado ocupa el centro y hay que cerrarlo a mano: es lo que
+  // garantiza que se lea.
+  chk('el exito se muestra en el centro, no en un toast',
+      /mostrarEnvio\('ok',/.test(sinComentarios), 'volvio al aviso chico de la esquina');
+  chk('y el error tambien',
+      /mostrarEnvio\('error', 'No pudimos confirmar el envío'/.test(sinComentarios),
+      'el aviso que mas importa quedaria en una esquina');
+  chk('ya no quedan avisos de pago en un toast',
+      !/showToast\('success',[\s\S]{0,60}Pago registrado/.test(sinComentarios),
+      'habria dos avisos a la vez');
+
+  // El aviso dice QUE quedo registrado, no solo que algo paso.
+  chk('la confirmacion incluye el monto',
+      /const montoTxt = '\$'/.test(sinComentarios), 'no se sabria que pago se registro');
+  chk('y el proveedor',
+      /const provTxt  = document\.getElementById\('proveedor'\)\.value\.trim\(\);/.test(sinComentarios),
+      'faltaria a quien se le pago');
+
+  // Se leen ANTES de vaciar el formulario, o saldrian vacios.
+  const exito = sinComentarios.split("if (result.status === 'success')")[1].split('} else {')[0];
+  chk('el monto se lee ANTES de vaciar el formulario',
+      exito.indexOf('const montoTxt') < exito.indexOf('resetForm()'),
+      'el aviso mostraria $0 y sin proveedor');
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);

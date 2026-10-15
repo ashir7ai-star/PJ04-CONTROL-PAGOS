@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-10-15** — 🔒 **Registrar un pago bloquea la pantalla hasta confirmar**, y la confirmación — con monto y proveedor — va en el centro, no en un toast de la esquina. Evita que alguien cargue el mismo pago dos veces por no ver el aviso. Solo pantalla: backend en `2026-10-13-a`.
+
 **2026-10-14** — 🔍 **Filtro por persona en Consultar Pagos y Control de Viáticos**, como desplegable armado desde los datos. Cambiar un filtro ya no cuesta otra consulta al servidor. Solo pantalla: el backend sigue en `2026-10-13-a`.
 
 **2026-10-14** — 📅 **Arreglado “hoy” congelado en los calendarios.** Con la app abierta de un día para el otro, Traslados deshabilitaba el día actual y **Nuevo Pago habría guardado el primer pago con la fecha de ayer**. Solo pantalla: el backend sigue en `2026-10-13-a`.
@@ -533,6 +535,15 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-15**: 🔒 **Al registrar un pago se bloquea toda la pantalla, y la confirmación va en el centro.**
+  - **El problema real:** el aviso vivía en un toast chico abajo a la derecha. Quien apretaba “Enviar Pago” y no lo veía podía creer que ya estaba, irse, o **cargar el pago otra vez**. El servidor nunca lo duplicó — `ID REGISTRO` lo impide — pero eso no resuelve lo importante: **la persona no sabía si su pago había quedado**.
+  - **El bloqueo aparece al apretar Enviar**, no cuando contesta el servidor. Ese hueco de unos segundos era exactamente donde alguien volvía a apretar.
+  - Mientras el pago viaja **no hay forma de salir**: sin botón de cerrar y Escape no funciona. No hay nada que cancelar, y poder cerrarlo daría la impresión de que se detuvo algo.
+  - **La confirmación dice QUÉ quedó registrado** — monto y proveedor — no solo que algo pasó. Se leen **antes** de vaciar el formulario; hay una prueba para ese orden, porque al revés el aviso diría “$0”.
+  - **El error también va en el centro.** Es el aviso que más importa que se lea: el pago pudo haberse guardado igual y perderse solo la respuesta.
+  - `z-index: 11000`, por encima del login (10000): un aviso de dinero no puede quedar tapado.
+  - ⚠️ **Pendiente si se quiere:** Traslados y Solicitud de Aprobación tienen el mismo riesgo y siguen con el toast chico. No se tocaron porque no se pidieron.
+  - **518 comprobaciones**, 28 mutaciones detectadas.
 - **2026-10-14**: 🔍 **Filtro “Registrado por” en Consultar Pagos y en Control de Viáticos.**
   - Es un **desplegable, no texto libre**. Con texto libre volverían los 11 nombres para 6 personas que hubo hasta el 30/09: “Nathan”, “nathan” y “Nathan De Lima” serían tres búsquedas distintas. Este filtro solo es confiable **porque la identidad ya está unificada** — ver `v2.3-identidad-verificada`.
   - **Las opciones salen de los DATOS, no de la hoja USUARIOS.** Si salieran de USUARIOS, elegir a alguien que no registró nada daría cero resultados sin explicar por qué, y faltaría quien ya no tiene cuenta activa pero sí registró pagos. Medido hoy: **7 personas** en Consultar Pagos, y solo las **2** que gastaron en el período que se mire, en Viáticos.
