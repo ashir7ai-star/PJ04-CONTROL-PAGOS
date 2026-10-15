@@ -219,7 +219,7 @@ function filasDelReporte_(registros) {
       const v = r[c.campo];
       if (c.etiqueta) return etiquetaDeTipo_(v);
       if (c.rubro)    return etiquetaDeRubro_(v);
-      if (c.numero)   return '$' + (montoANumero_(v) || 0).toLocaleString('es-CO');
+      if (c.numero)   return montoANumero_(v) || 0;
       if (c.enlace) {
         // Un enlace que dice "Ver" en vez de ciento veinte caracteres de URL.
         // Se quitan las comillas para que no corten la fórmula.
