@@ -23,7 +23,13 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 ```
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
+⚠️ **Las mutaciones NO se corren en segundo plano.** El script de mutaciones modifica `index.html` y `apps-script.gs` en el disco y los restaura al final. El hook de `Stop` de `.claude/settings.local.json` commitea y **pushea** lo que haya en el disco al terminar el turno: si la corrida todavía está en marcha, lo que se publica es un **archivo mutado**. Pasó el 2026-10-15 — el commit `0ea2162` llegó a GitHub Pages sin la línea `onOpen` del calendario de traslados. Hay que correrlas **en primer plano**, o dejar el push para después de que terminen.
+
+Y si llega a pasar: **no alcanza con corregir el archivo**. Hay que **subir también la versión de `CACHE` en `sw.js`**, porque quien ya cargó la versión rota la tiene cacheada bajo ese mismo nombre y el Service Worker es cache-first: se la quedaría para siempre.
+
 ## Última actualización
+**2026-10-15** — 🔀 **El equipo del viático lo elige quien lo registra**, con el suyo preseleccionado, y el reparto de personas por equipo se administra desde Control de Viáticos (**solo administradores**). Invierte la decisión de unas horas antes, a pedido del usuario: los equipos rotan. Backend `2026-10-15-b`: **hay que desplegar Apps Script y EasyPanel**.
+
 **2026-10-15** — 👥 **Control de Viáticos por equipo.** Cada equipo tiene su presupuesto diario, su panel y su aviso por correo; el equipo sale de la persona que registra y queda guardado en la fila. Backend `2026-10-15-a`: **hay que desplegar Apps Script y EasyPanel**, y correr `asignar-equipo-1.js`.
 
 **2026-10-15** — 🔒 **Registrar un pago bloquea la pantalla hasta confirmar**, y la confirmación — con monto y proveedor — va en el centro, no en un toast de la esquina. Evita que alguien cargue el mismo pago dos veces por no ver el aviso. Solo pantalla: backend en `2026-10-13-a`.
@@ -537,6 +543,15 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-15**: 🔀 **El equipo lo elige quien registra; el reparto lo mueve un administrador.** Invierte, el mismo día, la decisión de la entrada de abajo.
+  - **Por qué se dio vuelta.** El usuario avisó que los equipos **rotan**: "no son siempre los mismos". El argumento original sigue en pie —un desplegable más en el celular, en cada almuerzo, es una oportunidad más de equivocarse— pero hay algo peor: el reparto en `USUARIOS` lo mantiene un administrador, así que **puede quedar viejo**. Si alguien pasa al Equipo 2 el lunes y nadie lo actualiza hasta el jueves, tres días de gastos se cargan al equipo equivocado y **nada falla**. El costo del desplegable se paga una vez por pago y **se ve**; el del reparto viejo no se ve hasta que alguien cuadra los números.
+  - **Sigue siendo un solo toque:** el equipo de la persona viene preseleccionado. `equipoDelPago_` resuelve: lo elegido, si no el de la cuenta, y un equipo inventado se ignora.
+  - **Es obligatorio en Viáticos.** Antes, un viático sin equipo se mostraba en el Equipo 1 en el panel pero **el aviso del tope no salía nunca** — las dos pantallas contando distinto, el error que ya se repitió tres veces acá. Ahora el formulario lo exige y `avisarSiCruzaPresupuesto_` usa la **misma** resolución que el panel (`equipoDeLaFila_`).
+  - **El equipo va en la confirmación del centro.** Es el único dato del pago que la persona *eligió* y que después no se ve en ningún lado: si se equivocó, ese es el momento de notarlo.
+  - **Nuevo panel "Quién está en cada equipo"**, al final de Control de Viáticos y **solo para administradores** (pedido textual: "solo los administradores pueden modificar los equipos, nadie mas"). Acción propia `asignar_equipo`, que escribe **una celda** — reusar `guardar_usuario` habría reescrito la fila entera, con riesgo de pisar un permiso. **No reescribe el historial:** lo de ayer se gastó con el equipo de ayer.
+  - **Mirar no es modificar:** ahora cualquiera con Viáticos puede elegir qué equipo mirar, porque puede registrar en cualquiera. Definir presupuestos y mover gente siguen siendo solo de administradores.
+  - 🐛 **Error propio encontrado y corregido:** `arranque_` armaba su **propio** contexto y no copió `equipo` cuando se agregó, así que la app recibía `undefined` y no podía preseleccionar nada. No fallaba ni avisaba. La causa de fondo era tener **dos** armadores de contexto: ahora hay uno (`contextoDeUsuario_`) y una prueba que impide que vuelvan a ser dos.
+  - **579 comprobaciones**, 54 mutaciones (34 → 54; dos de las viejas afirmaban el comportamiento que se acaba de invertir y se reemplazaron).
 - **2026-10-15**: 👥 **Viáticos por EQUIPO, cada uno con su presupuesto diario.** Se formó el Equipo 2 y los dos se controlan por separado.
   - **El equipo sale de la PERSONA, no del formulario.** En Configuración cada usuario tiene su equipo; quien está en campo registra el almuerzo y el equipo se pone solo. Misma decisión que con “Registrado por”: un desplegable más en el celular, en cada gasto, es una oportunidad más de equivocarse — y equivocarse acá no da error, los **dos** presupuestos mienten a la vez.
   - **Se GUARDA en cada fila** (columna `EQUIPO`), no se deduce al leer. Reasignar a alguien de equipo mañana no reescribe su historial.

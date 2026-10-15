@@ -7466,6 +7466,7 @@
       // 'today'` se resuelve una sola vez, al inicializar, y en una PWA que
       // queda abierta eso dejó el 14/10 deshabilitado por estar la app abierta
       // desde el 13 — no se podía registrar un traslado hecho ese mismo día.
+      onOpen: function (sel, texto, inst) { inst.set('maxDate', new Date()); }
     });
 
     // ─── "Hoy" tiene que seguir siendo hoy ───────────────────────────────

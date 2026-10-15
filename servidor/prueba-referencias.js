@@ -317,6 +317,18 @@ console.log('\n=== El equipo se elige al registrar el viatico ===');
   chk('y el selector de tipo la llama',
       /actualizarCamposDeViatico\(\);/.test(codigo), 'el campo no aparecería nunca');
 
+  // Lo que la funcion HACE, no que exista. Dejar el campo en 'none' fijo lo
+  // esconderia para siempre —no habria donde elegir el equipo— y una
+  // comprobacion de "la funcion esta" pasaria igual.
+  const togg = codigo.split('function actualizarCamposDeViatico()')[1].split('\n    }')[0];
+  chk('el campo de equipo se MUESTRA en viaticos, no solo se oculta',
+      /campoEquipo\.style\.display = esViatico \? '' : 'none';/.test(togg) &&
+      /campoRubro\.style\.display = esViatico \? '' : 'none';/.test(togg),
+      'quedaria oculto siempre y no habria donde elegir el equipo');
+  chk('y la lista se arma al mostrarlo',
+      /if \(esViatico\) pintarEquiposDelPago\(\);/.test(togg),
+      'apareceria vacio');
+
   // Sin equipo el gasto no se carga a ningun presupuesto Y el aviso de que el
   // dia se paso del tope no sale. El peor error posible aca es el que no avisa.
   chk('no se puede enviar un viatico sin equipo',
