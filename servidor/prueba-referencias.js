@@ -370,8 +370,23 @@ console.log('\n=== Quien esta en cada equipo: solo administradores ===');
   // Pedido textual del usuario (15/10): "solo los administradores pueden
   // modificar los equipos, nadie mas".
   chk('hay un bloque para administrar el reparto',
-      /id="vtEquiposBloque"/.test(html) && /id="vtEquiposTabla"/.test(html),
+      /id="vtEquiposBloque"/.test(html) && /id="vtReparto"/.test(html),
       'no habria donde mover gente de equipo');
+
+  // Agrupado POR EQUIPO, no una lista plana: dos columnas lado a lado dicen
+  // quien esta donde sin leer fila por fila.
+  chk('el reparto se agrupa por equipo, con "Sin equipo" al final',
+      /\{ clave: '', etiqueta: 'Sin equipo' \}/.test(codigo) &&
+      /class="vt-grupo"/.test(codigo),
+      'volveria a ser una lista plana de nueve personas');
+  chk('cada columna dice cuanta gente tiene',
+      /class="vt-grupo-n"/.test(codigo), 'habria que contar a ojo');
+  // Mover a alguien tiene que MOVERLO de columna, no solo cambiar su
+  // desplegable: si no, el panel muestra dos cosas contradictorias.
+  const guardar = codigo.split("action: 'asignar_equipo',")[1].split('} catch')[0];
+  chk('al moverlo, se repinta con lo que devolvio el servidor',
+      /if \(r\.personas\) pintarEquiposDePersonas\(r\.personas\);/.test(guardar),
+      'la persona quedaria en la columna de antes');
   chk('arranca oculto y solo se muestra si llegan personas',
       /id="vtEquiposBloque" style="display:none;"/.test(html) &&
       /if \(!personas \|\| !personas\.length\) \{ bloque\.style\.display = 'none'; return; \}/.test(codigo),
@@ -399,6 +414,70 @@ console.log('\n=== Quien esta en cada equipo: solo administradores ===');
   chk('y elegir a mano apaga la preseleccion',
       /vtEquipoElegido = true;\s*\n\s*cargarControlViaticos\(\);/.test(codigo),
       'la pantalla le pisaria la eleccion en cada recarga');
+}
+
+console.log('\n=== El panel compara los equipos, no los muestra de a uno ===');
+{
+  // Con dos presupuestos distintos, la primera pregunta es "como va cada uno".
+  // Un desplegable obliga a mirar uno, recordar la cifra, cambiar y comparar
+  // de memoria. Las tarjetas lo responden de un vistazo.
+  chk('hay tarjetas de equipo, una al lado de la otra',
+      /id="vtEquiposCards"/.test(html) && /class="vt-equipos"/.test(html),
+      'habria que elegir un equipo por vez para compararlos');
+  chk('"Todos los equipos" va primero',
+      /clave: '', etiqueta: 'Todos los equipos',/.test(codigo),
+      'no habria forma de ver el total de la empresa');
+  chk('cada tarjeta trae su barra contra el presupuesto',
+      /class="vt-eq-barra"/.test(codigo) && /Math\.min\(100, pct\)/.test(codigo),
+      'una barra de mas de 100% se saldria de la tarjeta');
+  chk('y avisa cuando no hay tope, en vez de mostrar 0%',
+      /\(!hay \? 'sin tope'/.test(codigo),
+      'un equipo sin presupuesto se veria como uno que no gasto');
+
+  // Las tarjetas son el selector. Pero el <select> oculto sigue siendo la
+  // fuente de verdad: dos controles para el mismo dato se desincronizan.
+  chk('las tarjetas son botones que filtran',
+      /data-equipo="/.test(codigo) && /sel\.dispatchEvent\(new Event\('change'\)\)/.test(codigo),
+      'serian decorativas');
+  chk('el select sigue siendo la unica fuente de verdad',
+      /<select id="vtEquipo" hidden>/.test(html),
+      'habria dos controles para el mismo dato');
+
+  // Un total de equipo que cambia al escribir en el buscador no se puede
+  // comparar contra su presupuesto, que es para lo que esta.
+  chk('las tarjetas NO se achican con los filtros de texto',
+      codigo.indexOf('pintarTarjetasDeEquipo(p);') !== -1 &&
+      !/pintarTarjetasDeEquipo\(det/.test(codigo),
+      'el total del equipo cambiaria al buscar');
+  // Y entonces el total de lo filtrado tiene que decirse en la tabla.
+  chk('pero el total de lo filtrado se dice en el detalle',
+      /formatoPesos\(det\.reduce/.test(codigo), 'la cifra filtrada se perderia');
+
+  // Las acciones no son filtros: mezclarlas hace dudar de las dos cosas.
+  const filtros = html.split('<section class="vt-filtros">')[1].split('</section>')[0];
+  chk('los botones salieron de la caja de filtros',
+      filtros.indexOf('vtEditarPresupuesto') === -1 &&
+      html.split('<div class="vt-acciones">')[1].indexOf('vtEditarPresupuesto') !== -1,
+      'un boton que hace algo no es un filtro');
+}
+
+console.log('\n=== Las variables de CSS que se usan EXISTEN ===');
+{
+  // El 15/10 esta hoja usaba --surface-1, --border-subtle y --text-1, que NO
+  // estaban declaradas. Una declaracion con una variable inexistente es
+  // invalida y el navegador la descarta ENTERA: las tarjetas quedaron sin
+  // fondo y los bordes no se dibujaron. No fallaba nada y ninguna prueba lo
+  // veia — solo se veia mal, y asi estuvo hasta que el usuario miro la
+  // pantalla y dijo que parecia desordenada.
+  //
+  // `var(--x, algo)` con respaldo es legitimo aunque --x no exista, asi que
+  // solo se miran los usos SIN respaldo.
+  const estilos = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map(m => m[1]).join('\n');
+  const declaradas = new Set([...estilos.matchAll(/^\s*(--[\w-]+)\s*:/gm)].map(m => m[1]));
+  const usadas = [...estilos.matchAll(/var\(\s*(--[\w-]+)\s*\)/g)].map(m => m[1]);
+  const huerfanas = [...new Set(usadas)].filter(v => !declaradas.has(v));
+  chk('ninguna variable se usa sin declarar (' + declaradas.size + ' declaradas)',
+      huerfanas.length === 0, huerfanas);
 }
 
 console.log('\n=== Los iconos de la lista de archivos existen ===');

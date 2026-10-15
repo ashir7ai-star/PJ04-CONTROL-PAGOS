@@ -666,7 +666,7 @@
       width: 100%;
       max-width: 420px;
       background: var(--surface-1, #fff);
-      border: 1px solid var(--border-subtle);
+      border: 1px solid var(--border);
       border-radius: 18px;
       padding: 34px 28px 28px;
       text-align: center;
@@ -692,7 +692,7 @@
 
     .envio-titulo {
       font-size: 1.32rem; font-weight: 800; letter-spacing: -.02em;
-      color: var(--text-1); margin: 0 0 8px;
+      color: var(--text); margin: 0 0 8px;
     }
     .envio-texto {
       font-size: .92rem; color: var(--text-2); line-height: 1.5; margin: 0;
@@ -708,7 +708,7 @@
       cursor: default;
       font-weight: 600;
     }
-    .campo-fijo input[readonly]:focus { outline: none; border-color: var(--border-subtle); }
+    .campo-fijo input[readonly]:focus { outline: none; border-color: var(--border); }
     .campo-fijo .candado {
       display: block;
       font-size: 0.72rem;
@@ -1646,21 +1646,38 @@
     }
 
     /* ─── Control de Viáticos ────────────────────────────────────────────
-       Filtros arriba, resumen, y dos tablas. Todo lo numérico alineado a la
-       derecha y con cifras de ancho fijo: así las columnas se comparan de un
-       vistazo, que es para lo que existe una tabla. */
+       Tres zonas, en este orden: QUÉ PERÍODO se mira, CÓMO VA CADA EQUIPO, y
+       el detalle del que se eligió.
+
+       Los equipos van arriba y son además el selector. Con dos presupuestos
+       distintos, la primera pregunta es "¿cómo va cada uno?", y eso no se
+       responde con un desplegable que muestra uno por vez: obliga a mirar,
+       recordar, cambiar y comparar de memoria.
+
+       ⚠️ Esta hoja usaba `--surface-1`, `--border-subtle` y `--text-1`, que
+       NO EXISTEN. Una declaración con una variable inexistente es inválida y
+       el navegador la tira entera, así que las tarjetas quedaban sin fondo y
+       los bordes no se dibujaban: el panel se veía como texto suelto. Los
+       nombres reales son `--surface`, `--border` y `--text`. */
+
+    /* Acciones al lado del título, no mezcladas entre los campos: un botón
+       que hace algo no es un filtro, y ponerlos juntos hace dudar de los dos. */
+    .vt-cab { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .vt-cab > div:first-child { min-width: 240px; }
+    .vt-acciones { display: flex; gap: 8px; flex: none; padding-top: 4px; }
+
     .vt-filtros {
-      background: var(--surface-1); border: 1px solid var(--border-subtle);
-      border-radius: 14px; padding: 14px 15px; margin: 0 0 14px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; padding: 14px 15px; margin: 0 0 18px;
     }
     .vt-rangos { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; }
     .vt-chip {
       padding: 6px 13px; font-size: .8rem; font-weight: 600; cursor: pointer;
-      background: var(--surface-2); border: 1px solid var(--border-subtle);
+      background: var(--surface-2); border: 1px solid var(--border);
       border-radius: 99px; color: var(--text-2);
     }
-    .vt-chip:hover  { border-color: var(--border-strong); color: var(--text-1); }
-    .vt-chip.activo { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .vt-chip:hover  { border-color: var(--border-strong); color: var(--text); }
+    .vt-chip.activo { background: var(--primary); border-color: var(--primary); color: #fff; }
     .vt-campos { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
     .vt-campo { display: flex; flex-direction: column; gap: 4px; min-width: 130px; }
     .vt-campo.crece { flex: 1 1 200px; }
@@ -1670,54 +1687,139 @@
     }
     .vt-campo input, .vt-campo select {
       width: 100%; padding: 8px 11px; font-size: .88rem;
-      background: var(--surface-2); border: 1px solid var(--border-subtle);
-      border-radius: 9px; color: var(--text-1);
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 9px; color: var(--text);
     }
-    .vt-campo input:focus, .vt-campo select:focus { outline: none; border-color: #2563eb; }
+    .vt-campo input:focus, .vt-campo select:focus { outline: none; border-color: var(--primary); }
     .vt-campo input[readonly] { cursor: pointer; }
     .vt-campo-btns { display: flex; gap: 8px; }
     .vt-btn { padding: 8px 15px; font-size: .85rem; white-space: nowrap; }
     .vt-periodo { font-size: .82rem; color: var(--text-2); font-weight: 600; margin: 0 0 12px 2px; }
 
-    /* Resumen */
-    .vt-resumen {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 1px;
-      background: var(--border-subtle); border: 1px solid var(--border-subtle);
-      border-radius: 14px; overflow: hidden; margin: 0 0 22px;
-    }
-    .vt-kpi { background: var(--surface-1); padding: 14px 16px; }
-    .vt-kpi-eti { font-size: .71rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); }
-    .vt-kpi-val { font-size: 1.3rem; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin-top: 4px; }
-    .vt-kpi-pie { font-size: .73rem; color: var(--text-muted); margin-top: 2px; }
-    .vt-kpi.bien .vt-kpi-val { color: var(--success, #16a34a); }
-    .vt-kpi.mal  .vt-kpi-val { color: var(--error); }
-    .vt-kpi.apagado .vt-kpi-val { font-size: 1.02rem; font-weight: 600; color: var(--text-muted); }
+    /* ─── Los equipos, lado a lado ───────────────────────────────────────
+       Es la respuesta a "separar bien los equipos": cada uno con su cifra, su
+       tope y su barra, comparables de un vistazo. Y son botones: tocar uno
+       filtra todo lo de abajo. Un selector que además informa.
 
-    /* Bloques y tablas */
-    .vt-bloque { margin: 0 0 24px; }
-    .vt-bloque-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 9px; flex-wrap: wrap; }
-    .vt-h3 { font-size: .8rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); margin: 0; }
+       "Todos" va primero porque es el estado inicial y el que suma el total
+       de la empresa. Su tope es la SUMA de los topes, no el de uno. */
+    .vt-equipos {
+      display: grid; gap: 12px; margin: 0 0 20px;
+      grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+    }
+    .vt-eq {
+      font: inherit; text-align: left; cursor: pointer; width: 100%;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; padding: 15px 16px; color: var(--text);
+      transition: border-color .15s ease, box-shadow .15s ease;
+    }
+    .vt-eq:hover { border-color: var(--border-strong); }
+    /* El borde del seleccionado se refuerza con un anillo en vez de engordar
+       el borde: engordarlo mueve el contenido 1px y la fila entera tiembla. */
+    .vt-eq.sel { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+    .vt-eq-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .vt-eq-nom { font-size: .92rem; font-weight: 700; letter-spacing: -.01em; }
+    .vt-eq-tag {
+      font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+      padding: 3px 8px; border-radius: 99px; white-space: nowrap; flex: none;
+    }
+    .vt-eq-tag.ok    { background: var(--success-light); color: var(--success); }
+    .vt-eq-tag.cerca { background: var(--warning-light); color: var(--warning); }
+    .vt-eq-tag.mal   { background: var(--error-light);   color: var(--error); }
+    .vt-eq-tag.na    { background: var(--surface-3);     color: var(--text-muted); }
+    .vt-eq-val {
+      font-size: 1.5rem; font-weight: 800; letter-spacing: -.03em;
+      font-variant-numeric: tabular-nums; margin: 11px 0 1px;
+    }
+    .vt-eq-de { font-size: .76rem; color: var(--text-muted); }
+    .vt-eq-barra {
+      height: 6px; border-radius: 99px; background: var(--surface-3);
+      overflow: hidden; margin: 11px 0 9px;
+    }
+    .vt-eq-barra span {
+      display: block; height: 100%; border-radius: 99px;
+      background: var(--primary); transition: width .25s ease;
+    }
+    .vt-eq.cerca    .vt-eq-barra span { background: var(--warning); }
+    .vt-eq.excedido .vt-eq-barra span { background: var(--error); }
+    .vt-eq.excedido .vt-eq-val        { color: var(--error); }
+    .vt-eq-pie { display: flex; justify-content: space-between; gap: 8px; font-size: .75rem; color: var(--text-muted); }
+
+    /* ─── Tarjeta: todo bloque de contenido vive en una ──────────────────
+       Antes los títulos eran texto gris suelto sobre el fondo y las tablas
+       traían su propio borde. Resultado: tres niveles visuales distintos
+       para tres cosas del mismo nivel. */
+    .vt-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; overflow: hidden; margin: 0 0 16px;
+    }
+    .vt-card-cab {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap; padding: 13px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .vt-card-tit { font-size: .92rem; font-weight: 700; letter-spacing: -.01em; margin: 0; color: var(--text); }
+    /* La tabla ya está dentro de la tarjeta: su propio borde sería un marco
+       dentro de otro marco. */
+    .vt-card .vt-tabla-wrap { border: 0; border-radius: 0; }
+
+    /* ─── Quién está en cada equipo ──────────────────────────────────────
+       Agrupado POR EQUIPO, no una lista plana con un desplegable por persona.
+       Así el reparto se ve: dos columnas una al lado de la otra dicen quién
+       está dónde sin tener que leer fila por fila. */
+    .vt-reparto { display: grid; gap: 1px; background: var(--border); }
+    @media (min-width: 840px) { .vt-reparto { grid-template-columns: repeat(3, 1fr); } }
+    .vt-grupo { background: var(--surface); padding: 14px 16px; }
+    .vt-grupo-cab {
+      display: flex; align-items: center; gap: 8px; margin: 0 0 4px;
+      font-size: .73rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .05em; color: var(--text-muted);
+    }
+    .vt-grupo-n {
+      background: var(--surface-3); color: var(--text-2); border-radius: 99px;
+      padding: 1px 8px; font-size: .72rem; font-weight: 700; letter-spacing: 0;
+    }
+    .vt-persona {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border);
+    }
+    .vt-persona:last-child { border-bottom: 0; }
+    .vt-persona-nom { font-size: .85rem; font-weight: 600; color: var(--text); }
+    .vt-persona-mail { font-size: .72rem; color: var(--text-muted); word-break: break-word; }
+    .vt-persona select {
+      flex: none; max-width: 125px; padding: 5px 9px; font-size: .8rem;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text);
+    }
+    .vt-persona select:focus { outline: none; border-color: var(--primary); }
+    .vt-persona select:disabled { opacity: .5; }
+    .vt-grupo-vacio { font-size: .8rem; color: var(--text-muted); padding: 10px 0; }
+
+    /* Tablas */
     .vt-nota { font-size: .76rem; color: var(--text-muted); }
-    .vt-tabla-wrap { overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: 12px; }
+    .vt-tabla-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
     .vt-tabla { width: 100%; border-collapse: collapse; font-size: .85rem; }
     .vt-tabla th {
       text-align: left; padding: 10px 13px; font-size: .71rem; font-weight: 700;
       letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted);
-      background: var(--surface-2); border-bottom: 1px solid var(--border-subtle); white-space: nowrap;
+      background: var(--surface-2); border-bottom: 1px solid var(--border); white-space: nowrap;
     }
-    .vt-tabla td { padding: 10px 13px; border-bottom: 1px solid var(--border-subtle); vertical-align: middle; }
+    .vt-tabla td { padding: 10px 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
     .vt-tabla tr:last-child td { border-bottom: 0; }
     .vt-tabla tbody tr:hover td { background: var(--surface-2); }
     .vt-tabla .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .vt-tabla .fuerte { font-weight: 700; }
     .vt-tabla .tenue  { color: var(--text-muted); font-size: .78rem; }
     .vt-tabla tr.total td { background: var(--surface-2); font-weight: 800; border-top: 2px solid var(--border-strong); }
-    .vt-vacio { padding: 26px 16px; text-align: center; color: var(--text-muted); font-size: .86rem; }
+    /* Un vacío sin contenedor se lee como "se rompió". Dentro de la tarjeta,
+       con su icono, se lee como "no hay nada todavía". */
+    .vt-vacio { padding: 34px 16px; text-align: center; color: var(--text-muted); font-size: .86rem; }
+    .vt-vacio-ico { font-size: 1.5rem; opacity: .35; display: block; margin-bottom: 7px; }
 
     /* Barra de uso dentro de la tabla */
     .vt-uso { display: flex; align-items: center; gap: 9px; min-width: 130px; }
     .vt-uso-barra { flex: 1; height: 6px; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
-    .vt-uso-barra span { display: block; height: 100%; border-radius: 99px; background: #2563eb; }
+    .vt-uso-barra span { display: block; height: 100%; border-radius: 99px; background: var(--primary); }
     .vt-uso-pct { font-size: .76rem; font-variant-numeric: tabular-nums; color: var(--text-muted); min-width: 34px; text-align: right; }
     tr.cerca    .vt-uso-barra span { background: #d97706; }
     tr.cerca    .vt-uso-pct        { color: #d97706; font-weight: 700; }
@@ -1746,7 +1848,7 @@
     }
 
     .vt-rubro-eti { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
-    .vt-punto { width: 8px; height: 8px; border-radius: 3px; background: #2563eb; flex: none; }
+    .vt-punto { width: 8px; height: 8px; border-radius: 3px; background: var(--primary); flex: none; }
     tr.cerca    .vt-punto { background: #d97706; }
     tr.excedido .vt-punto { background: var(--error); }
     tr.sin-presu .vt-punto { background: var(--border-strong); }
@@ -1755,6 +1857,11 @@
       .vt-campo { min-width: 120px; }
       .vt-campo-btns { width: 100%; }
       .vt-btn { flex: 1; }
+      /* En el celular las acciones ocupan el ancho: son el objetivo del dedo. */
+      .vt-acciones { width: 100%; padding-top: 0; }
+      .vt-acciones .vt-btn { flex: 1; }
+      .vt-equipos { grid-template-columns: 1fr; }
+      .vt-persona select { max-width: 115px; }
     }
 
     /* ─── Medidor de presupuesto diario de viáticos ──────────────────────
@@ -1762,8 +1869,8 @@
        conducta es verlo ANTES de gastar, no el correo de después. */
     .presu {
       position: relative;
-      background: var(--surface-1);
-      border: 1px solid var(--border-subtle);
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 14px;
       padding: 15px 16px 14px;
       margin: 0 0 14px;
@@ -1776,7 +1883,7 @@
     .presu-total .presu-eti { display: block; font-size: .74rem; font-weight: 600; color: var(--text-muted); letter-spacing: 0; margin-top: 2px; }
     .presu-lista { margin-top: 12px; display: grid; gap: 9px; }
     .presu-rubro-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: .82rem; }
-    .presu-rubro-eti { font-weight: 600; color: var(--text-1); }
+    .presu-rubro-eti { font-weight: 600; color: var(--text); }
     .presu-rubro-val { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
     .presu-de { font-weight: 500; color: var(--text-muted); font-size: .76rem; }
     .presu-rubro .presu-barra { margin: 5px 0 0; height: 6px; }
@@ -1788,8 +1895,8 @@
     .presu-campo label { display: block; font-size: .78rem; font-weight: 600; color: var(--text-2); margin-bottom: 4px; }
     .presu-campo input {
       width: 100%; padding: 9px 11px; font-size: .92rem;
-      background: var(--surface-2); border: 1px solid var(--border-subtle);
-      border-radius: 9px; color: var(--text-1);
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 9px; color: var(--text);
     }
     .presu-campo input:focus { outline: none; border-color: #2563eb; }
     .presu-barra { height: 8px; border-radius: 99px; background: var(--surface-3); overflow: hidden; margin: 11px 0 9px; }
@@ -1803,7 +1910,7 @@
     .presu-editar {
       position: absolute; top: 12px; right: 12px;
       width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
-      background: var(--surface-2); border: 1px solid var(--border-subtle); border-radius: 8px;
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
       color: var(--text-muted); cursor: pointer;
     }
     .presu-editar:hover { background: var(--surface-3); border-color: var(--border); color: var(--text-2); }
@@ -1818,18 +1925,18 @@
     .mov-resumen {
       display: flex; flex-wrap: wrap; gap: 6px 18px;
       padding: 12px 14px; margin: 0 0 14px;
-      background: var(--surface-2); border: 1px solid var(--border-subtle); border-radius: 10px;
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
       font-size: .82rem; color: var(--text-2);
     }
-    .mov-resumen strong { color: var(--text-1); }
+    .mov-resumen strong { color: var(--text); }
     .mov-lista { max-height: 52vh; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
     .mov-fila {
       display: grid; grid-template-columns: 1fr auto auto; gap: 4px 14px;
       align-items: baseline; padding: 10px 2px;
-      border-bottom: 1px solid var(--border-subtle);
+      border-bottom: 1px solid var(--border);
     }
     .mov-fila:last-child { border-bottom: 0; }
-    .mov-texto { font-weight: 600; color: var(--text-1); font-size: .9rem; }
+    .mov-texto { font-weight: 600; color: var(--text); font-size: .9rem; }
     .mov-meta  { grid-column: 1; font-size: .76rem; color: var(--text-muted); }
     .mov-monto { font-variant-numeric: tabular-nums; font-weight: 700; font-size: .9rem; white-space: nowrap; }
     .mov-monto.entra { color: var(--success, #16a34a); }
@@ -3287,9 +3394,15 @@
        Tres bloques, en orden de lectura: filtros, resumen, y el desglose.
        Solo administradores. -->
   <main id="viewViaticos" style="display:none;">
-    <div class="page-header">
-      <p class="page-title">Control de Viáticos</p>
-      <p class="page-subtitle">Seguimiento del gasto por rubro. Los pagos se agrupan por <strong>fecha del gasto</strong>, no por cuándo se cargaron.</p>
+    <div class="page-header vt-cab">
+      <div>
+        <p class="page-title">Control de Viáticos</p>
+        <p class="page-subtitle">Los pagos se agrupan por <strong>fecha del gasto</strong>, no por cuándo se cargaron.</p>
+      </div>
+      <div class="vt-acciones">
+        <button type="button" class="btn-sec vt-btn" id="vtRefrescar">Actualizar</button>
+        <button type="button" class="btn-pri vt-btn" id="vtEditarPresupuesto">Presupuestos</button>
+      </div>
     </div>
 
     <!-- Filtros. Cada control con su etiqueta: un campo sin nombre no se sabe
@@ -3314,14 +3427,6 @@
           <label for="vtBuscar">Buscar</label>
           <input type="text" id="vtBuscar" placeholder="Concepto, proveedor o persona…" autocomplete="off" />
         </div>
-        <!-- Va primero porque decide todo lo demás: los totales, el
-             presupuesto y el detalle son de UN equipo. Solo lo ven los
-             administradores; quien pertenece a un equipo ve el suyo y el
-             servidor no le manda los otros. -->
-        <div class="vt-campo" id="vtEquipoCampo" style="display:none;">
-          <label for="vtEquipo">Equipo</label>
-          <select id="vtEquipo"><option value="">Todos los equipos</option></select>
-        </div>
         <div class="vt-campo">
           <label for="vtRubro">Rubro</label>
           <select id="vtRubro"><option value="">Todos</option></select>
@@ -3333,31 +3438,32 @@
           <label for="vtQuien">Registrado por</label>
           <select id="vtQuien"><option value="">Todos</option></select>
         </div>
-        <div class="vt-campo-btns">
-          <button type="button" class="btn-sec vt-btn" id="vtRefrescar">Actualizar</button>
-          <button type="button" class="btn-pri vt-btn" id="vtEditarPresupuesto">Presupuestos</button>
-        </div>
       </div>
+      <!-- El equipo YA NO es un campo del formulario: es una tarjeta, arriba.
+           Pero el <select> sigue acá, oculto, como única fuente de verdad —
+           las tarjetas escriben en él y disparan 'change'. Dos controles para
+           el mismo dato es exactamente como se desincronizan. -->
+      <select id="vtEquipo" hidden><option value="">Todos los equipos</option></select>
     </section>
+
+    <!-- Cómo va cada equipo. Son botones: tocar uno filtra todo lo de abajo. -->
+    <section class="vt-equipos" id="vtEquiposCards"></section>
 
     <p class="vt-periodo" id="vtPeriodo"></p>
 
-    <!-- Resumen -->
-    <div class="vt-resumen" id="vtResumen"></div>
-
     <!-- Desglose por rubro -->
-    <section class="vt-bloque">
-      <div class="vt-bloque-cab">
-        <h3 class="vt-h3">Gasto por rubro</h3>
+    <section class="vt-card">
+      <div class="vt-card-cab">
+        <h3 class="vt-card-tit">Gasto por rubro</h3>
         <span class="vt-nota" id="vtRubrosNota"></span>
       </div>
       <div class="vt-tabla-wrap"><table class="vt-tabla" id="vtRubros"></table></div>
     </section>
 
     <!-- Detalle -->
-    <section class="vt-bloque">
-      <div class="vt-bloque-cab">
-        <h3 class="vt-h3">Detalle de pagos</h3>
+    <section class="vt-card">
+      <div class="vt-card-cab">
+        <h3 class="vt-card-tit">Detalle de pagos</h3>
         <span class="vt-nota" id="vtDetalleNota"></span>
       </div>
       <div class="vt-tabla-wrap"><table class="vt-tabla" id="vtDetalle"></table></div>
@@ -3370,12 +3476,12 @@
 
          Va al final a propósito: se usa cada tanto, y arriba empujaría hacia
          abajo los números del día, que son lo que se viene a mirar. -->
-    <section class="vt-bloque" id="vtEquiposBloque" style="display:none;">
-      <div class="vt-bloque-cab">
-        <h3 class="vt-h3">Quién está en cada equipo</h3>
+    <section class="vt-card" id="vtEquiposBloque" style="display:none;">
+      <div class="vt-card-cab">
+        <h3 class="vt-card-tit">Quién está en cada equipo</h3>
         <span class="vt-nota">Define qué equipo viene preseleccionado al registrar. No reescribe lo ya registrado.</span>
       </div>
-      <div class="vt-tabla-wrap"><table class="vt-tabla" id="vtEquiposTabla"></table></div>
+      <div class="vt-reparto" id="vtReparto"></div>
     </section>
   </main>
 
@@ -6822,7 +6928,7 @@
       const rub = document.getElementById('vtRubros');
       rub.innerHTML = '<tbody><tr><td class="vt-vacio">Cargando…</td></tr></tbody>';
       document.getElementById('vtDetalle').innerHTML = '';
-      document.getElementById('vtResumen').innerHTML = '';
+      document.getElementById('vtEquiposCards').innerHTML = '';
 
       // La primera vez se arranca en el equipo de la persona: es el que viene
       // a mirar. Sale de la sesión, que ya lo trajo el arranque.
@@ -6880,6 +6986,73 @@
       });
     }
 
+    // ─── Cómo va cada equipo, lado a lado ────────────────────────────────
+    //
+    // Reemplaza al desplegable Y al resumen de arriba, que eran dos cosas
+    // separadas para una sola pregunta: "¿cómo va cada equipo?". Con un
+    // desplegable había que mirar uno, recordar la cifra, cambiar y comparar
+    // de memoria.
+    //
+    // ⚠️ Las tarjetas muestran SIEMPRE el período completo, sin los filtros de
+    // texto/rubro/persona. Un total de equipo que cambiara al escribir en el
+    // buscador no se podría comparar contra su presupuesto, que es para lo que
+    // está. Lo filtrado se ve en las tablas de abajo, que lo dicen.
+    function pintarTarjetasDeEquipo(p) {
+      const caja = document.getElementById('vtEquiposCards');
+      if (!caja || !p) return;
+
+      const elegido = document.getElementById('vtEquipo').value || '';
+
+      // "Todos" primero: es el estado inicial y el único que da el total de la
+      // empresa. Su tope es la SUMA de los topes — comparar el gasto de dos
+      // equipos contra el de uno daría rojo siempre.
+      const tarjetas = [{
+        clave: '', etiqueta: 'Todos los equipos',
+        gastado: p.totalGastado, sugerido: p.totalSugerido, pagos: p.pagos
+      }].concat((p.porEquipo || []).map(function (e) {
+        return { clave: e.clave, etiqueta: e.etiqueta, gastado: e.gastado,
+                 sugerido: e.sugerido, pagos: e.pagos };
+      }));
+
+      caja.innerHTML = tarjetas.map(function (t) {
+        const hay = t.sugerido > 0;
+        const pct = hay ? Math.round((t.gastado / t.sugerido) * 100) : 0;
+        const dif = t.sugerido - t.gastado;
+        const estado = !hay ? 'na' : (pct > 100 ? 'mal' : (pct >= 85 ? 'cerca' : 'ok'));
+        const clases = ['vt-eq'];
+        if (t.clave === elegido) clases.push('sel');
+        if (estado === 'mal')   clases.push('excedido');
+        if (estado === 'cerca') clases.push('cerca');
+
+        return '<button type="button" class="' + clases.join(' ') + '" data-equipo="' +
+            escapeHtml(t.clave) + '" aria-pressed="' + (t.clave === elegido) + '">' +
+          '<div class="vt-eq-cab">' +
+            '<span class="vt-eq-nom">' + escapeHtml(t.etiqueta) + '</span>' +
+            '<span class="vt-eq-tag ' + estado + '">' +
+              (!hay ? 'sin tope' : (pct > 100 ? 'excedido' : pct + '%')) + '</span>' +
+          '</div>' +
+          '<div class="vt-eq-val">' + formatoPesos(t.gastado) + '</div>' +
+          '<div class="vt-eq-de">' + (hay ? 'de ' + formatoPesos(t.sugerido) : 'sin presupuesto definido') + '</div>' +
+          '<div class="vt-eq-barra"><span style="width:' + Math.min(100, pct) + '%"></span></div>' +
+          '<div class="vt-eq-pie">' +
+            '<span>' + t.pagos + ' pago(s)</span>' +
+            '<span>' + (hay ? (dif < 0 ? formatoPesos(-dif) + ' de más' : formatoPesos(dif) + ' libre') : '—') + '</span>' +
+          '</div>' +
+        '</button>';
+      }).join('');
+
+      caja.querySelectorAll('.vt-eq').forEach(function (b) {
+        b.addEventListener('click', function () {
+          const sel = document.getElementById('vtEquipo');
+          if (sel.value === b.dataset.equipo) return;   // ya está elegido
+          sel.value = b.dataset.equipo;
+          // El <select> oculto sigue siendo la fuente de verdad: se dispara su
+          // 'change' en vez de llamar directo, así hay UN solo camino.
+          sel.dispatchEvent(new Event('change'));
+        });
+      });
+    }
+
     // El selector de equipos. La lista viene del SERVIDOR, que es el dueño de
     // la lista cerrada: una copia escrita acá se desalinearía el día que se
     // agregue un tercer equipo.
@@ -6888,11 +7061,12 @@
     // ofrece cambiar: el servidor le devuelve el suyo igual, y un selector que
     // no hace nada confunde más de lo que ayuda.
     function pintarEquiposViaticos(puedeElegir) {
-      const campo = document.getElementById('vtEquipoCampo');
-      const sel   = document.getElementById('vtEquipo');
-      if (!campo || !sel) return;
+      const sel = document.getElementById('vtEquipo');
+      if (!sel) return;
 
-      campo.style.display = puedeElegir ? '' : 'none';
+      // Quien no puede elegir queda en "todos": el servidor le devuelve lo que
+      // le corresponde igual. Las tarjetas se siguen viendo — son información,
+      // no un permiso.
       if (!puedeElegir) { sel.value = ''; return; }
 
       const elegido = sel.value;
@@ -6918,7 +7092,7 @@
     // viajan al navegador de quien no los puede cambiar.
     function pintarEquiposDePersonas(personas) {
       const bloque = document.getElementById('vtEquiposBloque');
-      const tabla  = document.getElementById('vtEquiposTabla');
+      const tabla  = document.getElementById('vtReparto');
       if (!bloque || !tabla) return;
 
       if (!personas || !personas.length) { bloque.style.display = 'none'; return; }
@@ -6934,15 +7108,30 @@
           }).join('');
       };
 
-      tabla.innerHTML =
-        '<thead><tr><th>Persona</th><th>Equipo</th></tr></thead><tbody>' +
-        personas.map(function (p) {
-          return '<tr><td>' + escapeHtml(p.nombre) +
-                 (p.rol === 'admin' ? ' <span class="vt-nota">· admin</span>' : '') +
-                 '<br><span class="vt-nota">' + escapeHtml(p.correo) + '</span></td>' +
-                 '<td><select data-correo="' + escapeHtml(p.correo) + '">' +
-                 opciones(p.equipo) + '</select></td></tr>';
-        }).join('') + '</tbody>';
+      // Una columna por equipo, mas "Sin equipo". El reparto se VE: dos
+      // columnas lado a lado dicen quien esta donde sin leer fila por fila,
+      // que es lo que no se podia con una lista plana de nueve personas.
+      const grupos = (sesion.equipos || []).map(function (e) {
+        return { clave: e.clave, etiqueta: e.etiqueta };
+      }).concat([{ clave: '', etiqueta: 'Sin equipo' }]);
+
+      tabla.innerHTML = grupos.map(function (g) {
+        const suyas = personas.filter(function (p) { return (p.equipo || '') === g.clave; });
+        return '<div class="vt-grupo">' +
+          '<p class="vt-grupo-cab">' + escapeHtml(g.etiqueta) +
+            '<span class="vt-grupo-n">' + suyas.length + '</span></p>' +
+          (suyas.length
+            ? suyas.map(function (p) {
+                return '<div class="vt-persona">' +
+                  '<div><div class="vt-persona-nom">' + escapeHtml(p.nombre) +
+                    (p.rol === 'admin' ? ' <span class="vt-nota">· admin</span>' : '') + '</div>' +
+                  '<div class="vt-persona-mail">' + escapeHtml(p.correo) + '</div></div>' +
+                  '<select data-correo="' + escapeHtml(p.correo) + '">' +
+                  opciones(p.equipo) + '</select></div>';
+              }).join('')
+            : '<p class="vt-grupo-vacio">Nadie todavía.</p>') +
+        '</div>';
+      }).join('');
 
       tabla.querySelectorAll('select[data-correo]').forEach(function (sel) {
         // Lo que estaba guardado, para poder volver atrás si la escritura
@@ -6968,6 +7157,10 @@
               sel.dataset.antes = sel.value;
               showToast('success', 'Equipo actualizado',
                         'Es el que le va a venir preseleccionado de ahora en más.');
+              // Repintar con lo que devolvió el SERVIDOR: la persona tiene que
+              // moverse de columna. Dejarla en la de antes con otro valor en
+              // el desplegable mostraría dos cosas contradictorias a la vez.
+              if (r.personas) pintarEquiposDePersonas(r.personas);
             }
           } catch (err) {
             sel.value = antes;
@@ -7012,43 +7205,12 @@
 
       const det = vtDetalleFiltrado();
       const filtrando = det.length !== (p.detalle || []).length;
-      // Cuando hay filtro, los totales son los de lo filtrado: mostrar el total
-      // del período junto a una lista recortada sería engañoso.
-      const total = filtrando ? det.reduce((a, d) => a + d.valor, 0) : p.totalGastado;
-      const pagos = det.length;
 
-      // ─── Resumen ───
-      const dif = p.totalSugerido - total;
-      const hayPresu = p.totalSugerido > 0;
-      document.getElementById('vtResumen').innerHTML =
-        '<div class="vt-kpi">' +
-          '<div class="vt-kpi-eti">Registrado</div>' +
-          '<div class="vt-kpi-val">' + formatoPesos(total) + '</div>' +
-          '<div class="vt-kpi-pie">' + pagos + ' pago(s)' + (filtrando ? ' · filtrado' : '') + '</div>' +
-        '</div>' +
-        (hayPresu
-          ? '<div class="vt-kpi">' +
-              '<div class="vt-kpi-eti">Presupuesto</div>' +
-              '<div class="vt-kpi-val">' + formatoPesos(p.totalSugerido) + '</div>' +
-              '<div class="vt-kpi-pie">' + (p.dias > 1 ? formatoPesos(p.montoDiario) + ' × ' + p.dias + ' días' : 'por día') + '</div>' +
-            '</div>' +
-            '<div class="vt-kpi ' + (dif < 0 ? 'mal' : 'bien') + '">' +
-              '<div class="vt-kpi-eti">' + (dif < 0 ? 'Por encima' : 'Disponible') + '</div>' +
-              '<div class="vt-kpi-val">' + formatoPesos(Math.abs(dif)) + '</div>' +
-              '<div class="vt-kpi-pie">' + (dif < 0 ? 'del presupuesto' : 'sin usar') + '</div>' +
-            '</div>'
-          : '<div class="vt-kpi apagado">' +
-              '<div class="vt-kpi-eti">Presupuesto</div>' +
-              '<div class="vt-kpi-val">Sin definir</div>' +
-              '<div class="vt-kpi-pie">tocá “Presupuestos”</div>' +
-            '</div>') +
-        (p.sinRubro > 0
-          ? '<div class="vt-kpi apagado">' +
-              '<div class="vt-kpi-eti">Sin rubro</div>' +
-              '<div class="vt-kpi-val">' + formatoPesos(p.sinRubro) + '</div>' +
-              '<div class="vt-kpi-pie">pagos sin clasificar</div>' +
-            '</div>'
-          : '');
+      // Las cifras por equipo van en las tarjetas de arriba, SIN los filtros
+      // de texto/rubro/persona: un total que cambia al escribir en el buscador
+      // no se puede comparar contra un presupuesto. Lo filtrado se ve en las
+      // tablas, que lo dicen.
+      pintarTarjetasDeEquipo(p);
 
       // ─── Tabla por rubro ───
       //
@@ -7089,11 +7251,20 @@
             '<td class="num">' + (p.totalSugerido > 0
               ? 'de ' + formatoPesos(p.totalSugerido)
               : '') + '</td></tr></tbody>'
-        : '<tbody><tr><td class="vt-vacio">No se registraron viáticos en este período.</td></tr></tbody>';
+        : '<tbody><tr><td class="vt-vacio"><span class="vt-vacio-ico">○</span>' +
+          'No se registraron viáticos en este período.</td></tr></tbody>';
 
       // ─── Tabla de detalle ───
+      // Con un filtro puesto, el total de la lista NO es el del período. Antes
+      // vivía en el resumen de arriba; ahora que las tarjetas son del período
+      // completo, tiene que decirse acá o la cifra se pierde.
       document.getElementById('vtDetalleNota').textContent =
-        det.length ? det.length + ' pago(s)' + (filtrando ? ' de ' + p.detalle.length : '') : '';
+        det.length
+          ? (filtrando
+              ? det.length + ' de ' + p.detalle.length + ' pago(s) · ' +
+                formatoPesos(det.reduce(function (a, d) { return a + d.valor; }, 0)) + ' filtrado'
+              : det.length + ' pago(s) · ' + formatoPesos(p.totalGastado))
+          : '';
 
       const etiquetaDe = {};
       (p.rubros || []).forEach(r => { etiquetaDe[r.clave] = r.etiqueta; });

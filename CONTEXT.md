@@ -28,6 +28,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 Y si llega a pasar: **no alcanza con corregir el archivo**. Hay que **subir también la versión de `CACHE` en `sw.js`**, porque quien ya cargó la versión rota la tiene cacheada bajo ese mismo nombre y el Service Worker es cache-first: se la quedaría para siempre.
 
 ## Última actualización
+**2026-10-16** — 🎨 **Control de Viáticos rediseñado.** Los equipos se comparan lado a lado en tarjetas que además filtran, el reparto de personas se agrupa por equipo, y todo vive en contenedores con jerarquía. 🐛 La causa de fondo de que se viera “desordenado” era un **bug**: la hoja usaba tres variables de CSS inexistentes, así que las tarjetas y los bordes nunca se dibujaron. Solo pantalla: backend sigue en `2026-10-15-b`.
+
 **2026-10-15** — 🔀 **El equipo del viático lo elige quien lo registra**, con el suyo preseleccionado, y el reparto de personas por equipo se administra desde Control de Viáticos (**solo administradores**). Invierte la decisión de unas horas antes, a pedido del usuario: los equipos rotan. Backend `2026-10-15-b`: **hay que desplegar Apps Script y EasyPanel**.
 
 **2026-10-15** — 👥 **Control de Viáticos por equipo.** Cada equipo tiene su presupuesto diario, su panel y su aviso por correo; el equipo sale de la persona que registra y queda guardado en la fila. Backend `2026-10-15-a`: **hay que desplegar Apps Script y EasyPanel**, y correr `asignar-equipo-1.js`.
@@ -543,6 +545,16 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-16**: 🎨 **Control de Viáticos: rediseño completo del panel.**
+  - 🐛 **La causa de fondo era un bug, no una decisión de diseño.** La hoja usaba `var(--surface-1)`, `var(--border-subtle)` y `var(--text-1)` — **ninguna de las tres existe**; los nombres reales son `--surface`, `--border` y `--text`. Una declaración con una variable inexistente es **inválida y el navegador la descarta entera**, así que las tarjetas quedaban sin fondo y los bordes no se dibujaban: 25 usos, y el panel se veía como texto suelto flotando. Afectaba también al modal de movimientos y al medidor de presupuesto. **Ninguna prueba lo veía** porque no fallaba nada — solo se veía mal.
+  - **Prueba nueva que lo impide:** toda `var(--x)` **sin respaldo** tiene que estar declarada. Verificada reintroduciendo el defecto.
+  - **Los equipos ahora se comparan, no se eligen de a uno.** Tarjetas lado a lado (Todos · Equipo 1 · Equipo 2), cada una con su gasto, su tope, su barra y cuánto le queda. Con un desplegable había que mirar uno, recordar la cifra, cambiar y comparar **de memoria** — y comparar los dos equipos es justo para lo que se dividieron.
+  - **Las tarjetas SON el selector.** El `<select>` sigue existiendo oculto como única fuente de verdad: las tarjetas escriben en él y disparan su `change`. Dos controles para el mismo dato es exactamente como se desincronizan.
+  - ⚠️ **Las tarjetas ignoran los filtros de texto/rubro/persona**, a propósito: un total que cambia al escribir en el buscador no se puede comparar contra un presupuesto. El total de lo filtrado se dice en el encabezado del detalle, que es donde se mira la lista recortada.
+  - **El reparto de personas se agrupa por equipo** — tres columnas (Equipo 1, Equipo 2, Sin equipo) en vez de una lista plana de nueve filas. Mover a alguien lo **cambia de columna**, repintando con lo que devolvió el servidor.
+  - **Las acciones salieron de la caja de filtros** al encabezado: un botón que hace algo no es un filtro, y juntos hacen dudar de los dos. Los estados vacíos ahora viven dentro de su tarjeta — un vacío sin contenedor se lee como “se rompió”.
+  - **Un solo azul.** El panel usaba `#2563eb` (azul de Tailwind) junto a `--primary` (`#0071e3`, el del resto de la app). Dos azules en la misma pantalla se notan.
+  - **592 comprobaciones**, 62 mutaciones.
 - **2026-10-15**: 🔀 **El equipo lo elige quien registra; el reparto lo mueve un administrador.** Invierte, el mismo día, la decisión de la entrada de abajo.
   - **Por qué se dio vuelta.** El usuario avisó que los equipos **rotan**: "no son siempre los mismos". El argumento original sigue en pie —un desplegable más en el celular, en cada almuerzo, es una oportunidad más de equivocarse— pero hay algo peor: el reparto en `USUARIOS` lo mantiene un administrador, así que **puede quedar viejo**. Si alguien pasa al Equipo 2 el lunes y nadie lo actualiza hasta el jueves, tres días de gastos se cargan al equipo equivocado y **nada falla**. El costo del desplegable se paga una vez por pago y **se ve**; el del reparto viejo no se ve hasta que alguien cuadra los números.
   - **Sigue siendo un solo toque:** el equipo de la persona viene preseleccionado. `equipoDelPago_` resuelve: lo elegido, si no el de la cuenta, y un equipo inventado se ignora.
