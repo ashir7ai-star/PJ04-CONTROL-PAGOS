@@ -2711,7 +2711,7 @@
               <select id="empresa" name="empresa" required>
                 <option value="" disabled selected>Seleccionar</option>
                 <option value="Millennium Co">Millennium Co</option>
-                <option value="BLAZAR ENERGY">BLAZAR ENERGY</option>
+                <option value="AMPAC SAS">AMPAC SAS</option>
               </select>
             </div>
             <div class="field campo-fijo">
@@ -3241,6 +3241,12 @@
             </select>
           </div>
           <div class="field">
+            <label for="mUsuarioEquipo">Equipo de instalación</label>
+            <select id="mUsuarioEquipo"><option value="">Sin equipo</option></select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
             <label for="mUsuarioEstado">Estado</label>
             <select id="mUsuarioEstado">
               <option value="activo">Activo</option>
@@ -3297,6 +3303,14 @@
         <div class="vt-campo crece">
           <label for="vtBuscar">Buscar</label>
           <input type="text" id="vtBuscar" placeholder="Concepto, proveedor o persona…" autocomplete="off" />
+        </div>
+        <!-- Va primero porque decide todo lo demás: los totales, el
+             presupuesto y el detalle son de UN equipo. Solo lo ven los
+             administradores; quien pertenece a un equipo ve el suyo y el
+             servidor no le manda los otros. -->
+        <div class="vt-campo" id="vtEquipoCampo" style="display:none;">
+          <label for="vtEquipo">Equipo</label>
+          <select id="vtEquipo"><option value="">Todos los equipos</option></select>
         </div>
         <div class="vt-campo">
           <label for="vtRubro">Rubro</label>
@@ -3450,6 +3464,10 @@
       <p class="modal-sub" id="mPresuSub"></p>
 
       <div class="field-group">
+        <div class="field">
+          <label for="mPresuEquipo">Equipo <span class="req">*</span></label>
+          <select id="mPresuEquipo"></select>
+        </div>
         <div class="field">
           <label for="mPresuMonto">Monto por día <span class="req">*</span></label>
           <input type="text" id="mPresuMonto" placeholder="$ 0" autocomplete="off" inputmode="numeric" />
@@ -6206,7 +6224,9 @@
         }
 
         pintarEstadoAcceso(r.modo);
-
+        // La lista cerrada de equipos vive en el servidor. Se guarda acá para
+        // armar el desplegable del modal sin volver a pedirla.
+        equiposConocidos = r.equipos || [];
         pintarUsuarios(r.usuarios || []);
       } catch (err) {
         showToast('error', 'No se pudo traer la lista de usuarios', mensajeDeError(err));
@@ -6316,6 +6336,9 @@
       });
     }
 
+    // Los equipos que conoce el servidor. Se llena al listar usuarios.
+    let equiposConocidos = [];
+
     function pintarSeccionesPicker(seleccionadas) {
       const cont = document.getElementById('mUsuarioSecciones');
       const sel  = String(seleccionadas || '').toLowerCase();
@@ -6338,9 +6361,19 @@
       document.getElementById('mUsuarioTelefono').value = u ? (u.telefono || '') : '';
       document.getElementById('mUsuarioRol').value      = u ? u.rol : 'usuario';
       document.getElementById('mUsuarioEstado').value   = u ? u.estado : 'activo';
+      // La lista de equipos viene del servidor, que es el dueño de la lista
+      // cerrada. "Sin equipo" es válido: no todo el mundo está en uno.
+      const selEquipo = document.getElementById('mUsuarioEquipo');
+      selEquipo.innerHTML = '<option value="">Sin equipo</option>' +
+        (equiposConocidos || []).map(function (e) {
+          return '<option value="' + escapeHtml(e.clave) + '">' + escapeHtml(e.etiqueta) + '</option>';
+        }).join('');
+      selEquipo.value = (u && u.equipo) || '';
+
       pintarSeccionesPicker(u ? u.secciones : 'todas');
       document.getElementById('mUsuarioAvisoAdmin').textContent =
-        'Un administrador ve todas las secciones sin importar lo que se marque acá.';
+        'Un administrador ve todas las secciones sin importar lo que se marque acá. ' +
+        'El equipo decide a qué presupuesto de viáticos van los gastos que registre.';
       modalUsuario.style.display = 'flex';
     }
 
@@ -6385,7 +6418,8 @@
           telefono:  document.getElementById('mUsuarioTelefono').value.trim(),
           rol:       document.getElementById('mUsuarioRol').value,
           estado:    document.getElementById('mUsuarioEstado').value,
-          secciones: secciones
+          secciones: secciones,
+          equipo:    document.getElementById('mUsuarioEquipo').value
         }, 45000);
 
         if (r.status === 'success') {
@@ -6693,7 +6727,10 @@
         r = await postAppsScript({
           action: 'consultar_presupuesto',
           desde:  vtDesdeInput.value || vtISO(new Date()),
-          hasta:  vtHastaInput.value || vtISO(new Date())
+          hasta:  vtHastaInput.value || vtISO(new Date()),
+          // Si no es administrador el servidor lo ignora y le devuelve el
+          // suyo: la pantalla no decide quién ve qué.
+          equipo: document.getElementById('vtEquipo').value
         }, 60000);
       } catch (err) {
         rub.innerHTML = '<tbody><tr><td class="vt-vacio">' + escapeHtml(mensajeDeError(err)) + '</td></tr></tbody>';
@@ -6704,6 +6741,7 @@
         return;
       }
       vtDatos = r.presupuesto;
+      pintarEquiposViaticos(r.puedeElegirEquipo);
       pintarQuienViaticos();
       // El servidor manda el rango que realmente usó: los campos lo reflejan.
       vtPickerDesde.setDate(vtDatos.desde, false);
@@ -6725,6 +6763,31 @@
         if (!txt) return true;
         return [d.nombre, d.proveedor, d.quien].join(' ').toLowerCase().indexOf(txt) !== -1;
       });
+    }
+
+    // El selector de equipos. La lista viene del SERVIDOR, que es el dueño de
+    // la lista cerrada: una copia escrita acá se desalinearía el día que se
+    // agregue un tercer equipo.
+    //
+    // Solo se muestra a quien puede elegir. A alguien de un equipo no se le
+    // ofrece cambiar: el servidor le devuelve el suyo igual, y un selector que
+    // no hace nada confunde más de lo que ayuda.
+    function pintarEquiposViaticos(puedeElegir) {
+      const campo = document.getElementById('vtEquipoCampo');
+      const sel   = document.getElementById('vtEquipo');
+      if (!campo || !sel) return;
+
+      campo.style.display = puedeElegir ? '' : 'none';
+      if (!puedeElegir) { sel.value = ''; return; }
+
+      const elegido = sel.value;
+      sel.innerHTML = '<option value="">Todos los equipos</option>' +
+        ((vtDatos && vtDatos.equipos) || []).map(function (e) {
+          return '<option value="' + escapeHtml(e.clave) + '"' +
+                 (e.clave === elegido ? ' selected' : '') + '>' +
+                 escapeHtml(e.etiqueta) + '</option>';
+        }).join('');
+      sel.value = elegido;
     }
 
     // Quienes registraron viáticos en el período que se está mirando. Se
@@ -6755,7 +6818,8 @@
     function pintarControlViaticos() {
       const p = vtDatos;
       if (!p) return;
-      document.getElementById('vtPeriodo').textContent = p.titulo;
+      document.getElementById('vtPeriodo').textContent =
+        (p.equipoTexto ? p.equipoTexto + '  ·  ' : '') + p.titulo;
 
       const det = vtDetalleFiltrado();
       const filtrando = det.length !== (p.detalle || []).length;
@@ -6883,6 +6947,10 @@
     document.getElementById('vtBuscar').addEventListener('input', () => { if (vtDatos) pintarControlViaticos(); });
     document.getElementById('vtRubro').addEventListener('change', () => { if (vtDatos) pintarControlViaticos(); });
     document.getElementById('vtQuien').addEventListener('change', () => { if (vtDatos) pintarControlViaticos(); });
+    // El equipo SÍ vuelve a consultar: cambia el presupuesto y los totales, y
+    // eso lo calcula el servidor. Los otros filtros se aplican acá sobre lo
+    // que ya llegó.
+    document.getElementById('vtEquipo').addEventListener('change', cargarControlViaticos);
     document.getElementById('vtEditarPresupuesto').addEventListener('click', () => {
       if (vtDatos) abrirModalPresupuesto(vtDatos);
     });
@@ -6894,16 +6962,36 @@
     const modalPresu = document.getElementById('modalPresupuesto');
 
     function abrirModalPresupuesto(p) {
-      const hay = p && p.montoDiario > 0;
-      document.getElementById('mPresuMonto').value = hay ? Number(p.montoDiario).toLocaleString('es-CO') : '';
-      document.getElementById('mPresuNota').value  = '';
-      document.getElementById('mPresuSub').textContent = hay
-        ? 'Vigente: ' + formatoPesos(p.montoDiario) + ' por día' +
-          (p.puestoPor ? ' · lo puso ' + p.puestoPor : '') +
-          (p.desdeCuando ? ' el ' + p.desdeCuando : '')
-        : 'Todavía no hay un presupuesto definido.';
+      const selEq = document.getElementById('mPresuEquipo');
+      selEq.innerHTML = ((p && p.equipos) || []).map(function (e) {
+        return '<option value="' + escapeHtml(e.clave) + '">' + escapeHtml(e.etiqueta) + '</option>';
+      }).join('');
+      // Arranca en el equipo que se está mirando. Si se está viendo "Todos",
+      // queda el primero: no hay forma de adivinar cuál se quiso cambiar, y
+      // elegir uno al azar sería cargarle el tope al equipo equivocado.
+      if (p && p.equipo) selEq.value = p.equipo;
+
+      // El monto que se muestra es el del equipo elegido en el desplegable,
+      // no el del período: en la vista "Todos" el total es una suma y
+      // ofrecerlo como monto a editar haría que se guarde multiplicado.
+      pintarMontoDelEquipo(p);
+      selEq.onchange = function () { pintarMontoDelEquipo(p); };
+
+      document.getElementById('mPresuNota').value = '';
       modalPresu.style.display = 'flex';
       setTimeout(() => document.getElementById('mPresuMonto').focus(), 60);
+    }
+
+    function pintarMontoDelEquipo(p) {
+      const clave = document.getElementById('mPresuEquipo').value;
+      const eq = (((p && p.porEquipo) || []).filter(function (e) { return e.clave === clave; })[0]) || null;
+      const hay = eq && eq.montoDiario > 0;
+      document.getElementById('mPresuMonto').value =
+        hay ? Number(eq.montoDiario).toLocaleString('es-CO') : '';
+      document.getElementById('mPresuSub').textContent = hay
+        ? eq.etiqueta + ' — vigente: ' + formatoPesos(eq.montoDiario) + ' por día'
+        : (eq ? eq.etiqueta + ' — todavía no tiene presupuesto definido.'
+              : 'Todavía no hay un presupuesto definido.');
     }
     function cerrarModalPresupuesto() { modalPresu.style.display = 'none'; }
 
@@ -6920,9 +7008,11 @@
       const btn = document.getElementById('mPresuGuardar');
       btn.disabled = true;
       try {
+        const equipoElegido = document.getElementById('mPresuEquipo').value;
         const r = await postAppsScript({
           action: 'ajustar_presupuesto',
           monto:  crudo,
+          equipo: equipoElegido,
           nota:   document.getElementById('mPresuNota').value.trim()
         }, 60000);
         if (r.status !== 'success') {
@@ -6930,7 +7020,12 @@
           return;
         }
         cerrarModalPresupuesto();
-        showToast('success', 'Presupuesto actualizado', 'Desde ahora el panel usa este monto.');
+        // El aviso nombra el equipo: con dos topes distintos, "se actualizó"
+        // a secas deja la duda de cuál se cambió.
+        const etiqEquipo = (document.getElementById('mPresuEquipo')
+          .selectedOptions[0] || {}).textContent || '';
+        showToast('success', 'Presupuesto actualizado',
+                  etiqEquipo + ': desde ahora el panel usa este monto.');
         // Se vuelve a pedir en vez de pintar lo que devolvió el guardado: la
         // respuesta trae HOY, y el panel puede estar mirando otro período.
         cargarControlViaticos();

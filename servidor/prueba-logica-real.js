@@ -37,7 +37,7 @@ const RUTA = path.join(__dirname, '..', 'apps-script.gs');
 function montar(foto, modoLogin, conDrive) {
   // La foto pasa por la MISMA conversion que en produccion.
   const e = crearEntorno(convertirFoto(foto, 'America/Bogota'), { sinDrive: !conDrive });
-  let codigo = fs.readFileSync(RUTA, 'utf8');
+  let codigo = fs.readFileSync(RUTA, 'utf8').replace(/\r\n/g, '\n');
 
   const patron = /^const MODO_LOGIN = '[a-z]+';$/m;
   if (!patron.test(codigo)) throw new Error('No se pudo fijar MODO_LOGIN.');
@@ -174,7 +174,7 @@ console.log('\n=== Cada fondo lo ve quien tiene su seccion ===');
   // seguía con Viaticos y Caja Menor nada mas, y no habia forma de mandarle
   // plata. Nada avisaba.
   const html = require('fs').readFileSync(
-    require('path').join(__dirname, '..', 'index.html'), 'utf8');
+    require('path').join(__dirname, '..', 'index.html'), 'utf8').replace(/\r\n/g, '\n');
   const selOrigen  = html.split('id="tOrigen"')[1].split('</select>')[0];
   const selDestino = html.split('id="tDestino"')[1].split('</select>')[0];
   chk('el selector de origen no trae cuentas escritas a mano',
@@ -273,7 +273,7 @@ console.log('\n=== UrlFetchApp: sin esto NADIE puede entrar ===');
 
   // Y lo que de verdad importa: que la logica REAL rechace un token invalido
   // en vez de explotar.
-  const codigo = require('fs').readFileSync(RUTA, 'utf8')
+  const codigo = require('fs').readFileSync(RUTA, 'utf8').replace(/\r\n/g, '\n')
     .replace(/^const MODO_LOGIN = '[a-z]+';$/m, "const MODO_LOGIN = 'estricto';");
   require('vm').createContext(e.globales);
   require('vm').runInContext(codigo, e.globales);
@@ -632,8 +632,16 @@ console.log('\n=== Presupuesto diario unico, y rubros por participacion ===');
       e.globales.ajustarPresupuesto_({ monto: '0' }).status === 'error');
   chk('un monto vacio se rechaza',
       e.globales.ajustarPresupuesto_({ monto: '' }).status === 'error');
-  const ok = e.globales.ajustarPresupuesto_({ monto: '700000' });
-  chk('un monto valido se guarda',
+  // El equipo es obligatorio desde el 15/10: un presupuesto sin dueno no se
+  // puede comparar contra nada, y caer en un valor por defecto seria cargarle
+  // el tope al equipo equivocado sin avisar.
+  const sinEquipo = e.globales.ajustarPresupuesto_({ monto: '700000' });
+  chk('un presupuesto SIN equipo se rechaza', sinEquipo.status === 'error', sinEquipo);
+  chk('y un equipo que no existe tampoco vale',
+      e.globales.ajustarPresupuesto_({ monto: '700000', equipo: 'equipo_9' }).status === 'error');
+
+  const ok = e.globales.ajustarPresupuesto_({ monto: '700000', equipo: 'equipo_1' });
+  chk('un monto valido se guarda, con su equipo',
       ok.status === 'success' && ok.presupuesto.montoDiario === 700000, ok.presupuesto);
 
   // Permisos.
@@ -679,7 +687,7 @@ console.log('\n=== Presupuesto diario unico, y rubros por participacion ===');
   chk('quien NO tiene la seccion Viaticos no lo puede mirar',
       /SIN_PERMISO_VIATICOS/.test(String(vedado)), vedado);
   chk('y el mensaje dice el motivo real, no uno prestado',
-      /Viáticos/.test(String(require('fs').readFileSync(RUTA, 'utf8')
+      /Viáticos/.test(String(require('fs').readFileSync(RUTA, 'utf8').replace(/\r\n/g, '\n')
         .split('SIN_PERMISO_VIATICOS:')[1] || '').slice(0, 80)),
       'sin mensaje propio, el usuario ve un codigo en ingles');
 
@@ -713,7 +721,7 @@ console.log('\n=== Presupuesto diario unico, y rubros por participacion ===');
 
 console.log('\n=== El rubro se guarda solo si es de la lista ===');
 {
-  const fuente = require('fs').readFileSync(RUTA, 'utf8');
+  const fuente = require('fs').readFileSync(RUTA, 'utf8').replace(/\r\n/g, '\n');
 
   chk('RUBRO es columna de TODAS las hojas de pago',
       /'ID REGISTRO',\s*\n[\s\S]{0,400}?'RUBRO'/.test(fuente),
@@ -875,7 +883,7 @@ console.log('\n=== Quien registra sale de la SESION, no del navegador ===');
   // escribio. Los reportes mapean cada hoja con los encabezados de la primera
   // y una columna faltante produce celdas `undefined` que rompen el PDF sin
   // avisar. Ya paso con ID REGISTRO y con RUBRO.
-  const fuente = require('fs').readFileSync(RUTA, 'utf8');
+  const fuente = require('fs').readFileSync(RUTA, 'utf8').replace(/\r\n/g, '\n');
   const enc = fuente.split('const ENCABEZADOS_PAGOS = [')[1].split('];')[0];
   chk('CORREO REGISTRO es columna de todas las hojas de pago',
       /'CORREO REGISTRO'/.test(enc), enc);
@@ -891,7 +899,7 @@ console.log('\n=== Quien registra sale de la SESION, no del navegador ===');
 console.log('\n=== El formulario no deja escribir ese campo ===');
 {
   const html = require('fs').readFileSync(
-    require('path').join(__dirname, '..', 'index.html'), 'utf8');
+    require('path').join(__dirname, '..', 'index.html'), 'utf8').replace(/\r\n/g, '\n');
   const campo = html.split('id="registradoPor"')[1].slice(0, 260);
 
   chk('el campo es de solo lectura', /readonly/.test(campo), campo.slice(0, 90));
@@ -989,7 +997,7 @@ console.log('\n=== Los traslados salen en Consultar Pagos, pero NO suman ===');
 console.log('\n=== Un traslado no es un gasto: no puede sumar al total ===');
 {
   const html = require('fs').readFileSync(
-    require('path').join(__dirname, '..', 'index.html'), 'utf8');
+    require('path').join(__dirname, '..', 'index.html'), 'utf8').replace(/\r\n/g, '\n');
 
   // tipoInfo cae en "Venta" por defecto, asi que el caso del traslado tiene
   // que estar ANTES de ese fallback o un traslado se etiquetaria como venta.
@@ -1094,7 +1102,7 @@ console.log('\n=== El reporte por correo: columnas para una persona, valores par
       g.totalDeRegistros_([{ 'VALOR FACTURA': 1000 }, { 'VALOR FACTURA': '2.500' }]));
 
   // Un dia sin pagos no manda dos adjuntos vacios.
-  const fuente = require('fs').readFileSync(RUTA, 'utf8');
+  const fuente = require('fs').readFileSync(RUTA, 'utf8').replace(/\r\n/g, '\n');
   const diario = fuente.split('function enviarReporteDiario')[1].split('\n}\n')[0];
   chk('un dia sin pagos no manda adjuntos',
       /if \(!registros\.length\)/.test(diario) && /return;/.test(diario),
@@ -1147,7 +1155,7 @@ console.log('\n=== UNA sola regla para decir de que dia es un pago ===');
   // Lo que de verdad importa: que los TRES lugares llamen a la misma funcion.
   // Si alguno vuelve a escribir la regla por su cuenta, se desalinean otra vez
   // y el sintoma vuelve a ser dos pantallas con totales distintos.
-  const fuente = require('fs').readFileSync(RUTA, 'utf8');
+  const fuente = require('fs').readFileSync(RUTA, 'utf8').replace(/\r\n/g, '\n');
   const trozo = function (nombre) {
     return fuente.split('function ' + nombre)[1].split('\n}\n')[0];
   };
@@ -1211,7 +1219,7 @@ console.log('\n=== AMPAC SAS paso a llamarse BLAZAR ENERGY ===');
 
   // La clave interna NO cambia aunque el nombre si. Esta escrita en 18 filas
   // de SALDOS y 8 de TRASLADOS; migrarla a medias descuadra los saldos.
-  const fuente = require('fs').readFileSync(RUTA, 'utf8');
+  const fuente = require('fs').readFileSync(RUTA, 'utf8').replace(/\r\n/g, '\n');
   const cuentas = fuente.split('const CUENTAS = {')[1].split('\n};')[0];
   chk('la clave sigue siendo banco_ampac', /banco_ampac:/.test(cuentas), cuentas.slice(0, 80));
   chk('pero lo que se MUESTRA es BLAZAR ENERGY',
@@ -1223,7 +1231,7 @@ console.log('\n=== AMPAC SAS paso a llamarse BLAZAR ENERGY ===');
 console.log('\n=== La pantalla: se registra con el nombre nuevo, se busca con los dos ===');
 {
   const html = require('fs').readFileSync(
-    require('path').join(__dirname, '..', 'index.html'), 'utf8');
+    require('path').join(__dirname, '..', 'index.html'), 'utf8').replace(/\r\n/g, '\n');
 
   // Registrar: solo el nombre nuevo. Si siguiera la opcion vieja, se seguirian
   // cargando pagos a nombre de una empresa que ya no existe.
@@ -1267,7 +1275,7 @@ console.log('\n=== "Hoy" sigue siendo hoy aunque la app quede abierta ===');
   // fecha de AYER, y esa fecha es la que manda en los saldos, el panel de
   // viaticos y los reportes.
   const html = require('fs').readFileSync(
-    require('path').join(__dirname, '..', 'index.html'), 'utf8');
+    require('path').join(__dirname, '..', 'index.html'), 'utf8').replace(/\r\n/g, '\n');
 
   const sinComentarios = html.split('\n')
     .filter(l => l.trim().indexOf('//') !== 0)
@@ -1335,7 +1343,7 @@ console.log('\n=== La logica del refresco, simulando el cambio de dia ===');
 console.log('\n=== Filtro por persona, en Consultar Pagos y en Control de Viaticos ===');
 {
   const html = require('fs').readFileSync(
-    require('path').join(__dirname, '..', 'index.html'), 'utf8');
+    require('path').join(__dirname, '..', 'index.html'), 'utf8').replace(/\r\n/g, '\n');
   const sinComentarios = html.split('\n')
     .filter(l => l.trim().indexOf('//') !== 0)
     .map(l => l.replace(/\s\/\/.*$/, ''))
@@ -1388,9 +1396,15 @@ console.log('\n=== Filtro por persona, en Consultar Pagos y en Control de Viatic
       'cada cambio costaria una consulta de hasta 90 segundos');
   chk('y el desplegable se rellena con cada consulta',
       /pintarQuienRegistro\(rows\)/.test(sinComentarios), 'quedaria vacio');
-  chk('el de viaticos tambien, antes de pintar',
-      /vtDatos = r\.presupuesto;\s*\n\s*pintarQuienViaticos\(\);/.test(sinComentarios),
-      'mostraria los nombres del periodo anterior');
+  // Por ORDEN, no por adyacencia: entre esas dos lineas entro despues el
+  // selector de equipos, y exigirlas pegadas hacia fallar la prueba por un
+  // cambio que no tenia nada de malo.
+  const iDatos  = sinComentarios.indexOf('vtDatos = r.presupuesto;');
+  const iQuien  = sinComentarios.indexOf('pintarQuienViaticos();', iDatos);
+  const iPintar = sinComentarios.indexOf('pintarControlViaticos();', iDatos);
+  chk('el de viaticos se rellena al consultar, antes de pintar',
+      iDatos !== -1 && iQuien > iDatos && iPintar > iQuien,
+      [iDatos, iQuien, iPintar]);
 }
 
 console.log('\n=== La pantalla se bloquea mientras el pago viaja ===');
@@ -1401,7 +1415,7 @@ console.log('\n=== La pantalla se bloquea mientras el pago viaja ===');
   // pero eso no resuelve lo importante: la persona no sabia si su pago habia
   // quedado registrado.
   const html = require('fs').readFileSync(
-    require('path').join(__dirname, '..', 'index.html'), 'utf8');
+    require('path').join(__dirname, '..', 'index.html'), 'utf8').replace(/\r\n/g, '\n');
   const sinComentarios = html.split('\n')
     .filter(l => l.trim().indexOf('//') !== 0)
     .map(l => l.replace(/\s\/\/.*$/, ''))
@@ -1464,6 +1478,128 @@ console.log('\n=== La pantalla se bloquea mientras el pago viaja ===');
   chk('el monto se lee ANTES de vaciar el formulario',
       exito.indexOf('const montoTxt') < exito.indexOf('resetForm()'),
       'el aviso mostraria $0 y sin proveedor');
+}
+
+console.log('\n=== Viaticos por equipo, cada uno con su presupuesto ===');
+{
+  // El 15/10/2026 se formo el Equipo 2. Cada equipo controla sus viaticos por
+  // separado: sumarlos seria perder justo lo que se quiere ver.
+  //
+  // El equipo NO se elige al registrar: sale de la persona y se GUARDA en la
+  // fila. Guardarlo es lo que permite reasignar a alguien manana sin
+  // reescribir su historial.
+  const ENC = ENC_PAGOS.concat(['RUBRO', 'CORREO REGISTRO', 'EQUIPO']);
+  const dia = (d, h) => new Date(2026, 9, d, h || 12, 0, 0);
+  // (diaPago, valor, rubro, equipo, quien)
+  const vi = (d, valor, rubro, equipo, quien) =>
+    [dia(d, 10), 'BLAZAR ENERGY', 'viaticos', quien || 'Laura Leyton', 'X', 'Prov',
+     dia(d), valor, '', '', 'id-' + d + '-' + valor, rubro || 'almuerzo', '', equipo === undefined ? 'equipo_1' : equipo];
+
+  const foto = {
+    'PAGOS REGISTRADOS': [ENC],
+    'Viaticos': [ENC,
+      vi(15, 100000, 'almuerzo', 'equipo_1'),
+      vi(15,  50000, 'cena',     'equipo_1'),
+      vi(15, 300000, 'almuerzo', 'equipo_2', 'Didier Vivas'),
+      // Un viatico VIEJO, de antes de la division: sin equipo guardado.
+      vi(15,  70000, 'desayuno', '')],
+    'Compra Materiales': [ENC], 'Caja Menor': [ENC],
+    'SALDOS':    [['FECHA', 'CUENTA', 'SALDO BASE', 'CONCEPTO', 'REGISTRADO POR']],
+    'TRASLADOS': [['FECHA', 'ORIGEN', 'DESTINO', 'MONTO', 'REGISTRADO POR', 'NOTA',
+                   'URL COMPROBANTE', 'FECHA REGISTRO', 'REALIZADO POR']],
+    'PRESUPUESTO': [['FECHA', 'MONTO DIARIO', 'REGISTRADO POR', 'NOTA', 'EQUIPO'],
+                    [dia(1, 8), 200000, 'Nathan', 'equipo 1', 'equipo_1'],
+                    [dia(1, 8), 500000, 'Nathan', 'equipo 2', 'equipo_2']],
+    'USUARIOS': [['CORREO', 'NOMBRE', 'TELEFONO', 'ROL', 'SECCIONES', 'ESTADO',
+                  'FECHA REGISTRO', 'ULTIMO ACCESO', 'EQUIPO'],
+                 ['nathan@ylevigroup.com', 'Nathan', '300', 'admin', 'todas', 'activo', '', '', ''],
+                 ['laura@energy-millennium.com', 'Laura Leyton', '300', 'usuario', 'viaticos', 'activo', '', '', 'equipo_1'],
+                 ['didier@energy-millennium.com', 'Didier Vivas', '300', 'usuario', 'viaticos', 'activo', '', '', 'equipo_2']],
+    'SESIONES': [['HASH', 'CORREO', 'CREADA', 'ULTIMO USO', 'VENCE']],
+    'SOLICITUDES DE APROBACION': [['ID SOLICITUD']]
+  };
+
+  const e = montar(foto, 'off');
+  const g = e.globales;
+  const HOY = dia(15);
+
+  // ─── Cada equipo cuenta lo suyo ───
+  const uno = g.estadoPresupuesto_(HOY, HOY, 'equipo_1');
+  const dos = g.estadoPresupuesto_(HOY, HOY, 'equipo_2');
+
+  // El viatico sin equipo cuenta como Equipo 1: era el unico que existia
+  // antes de la division. 100.000 + 50.000 + 70.000.
+  chk('el Equipo 1 suma lo suyo, y lo anterior a la division',
+      uno.totalGastado === 220000, uno.totalGastado);
+  chk('el Equipo 2 suma solo lo suyo', dos.totalGastado === 300000, dos.totalGastado);
+
+  chk('cada equipo usa SU presupuesto', uno.montoDiario === 200000 && dos.montoDiario === 500000,
+      [uno.montoDiario, dos.montoDiario]);
+  chk('el Equipo 1 se paso de su tope', uno.totalSugerido - uno.totalGastado < 0,
+      uno.totalSugerido - uno.totalGastado);
+  chk('y el Equipo 2 no', dos.totalSugerido - dos.totalGastado > 0,
+      dos.totalSugerido - dos.totalGastado);
+
+  // Lo que este cambio vino a evitar.
+  chk('un equipo NO ve los gastos del otro',
+      (uno.detalle || []).every(d => d.equipo !== 'equipo_2'), uno.detalle);
+
+  // ─── La vista "todos" ───
+  const todos = g.estadoPresupuesto_(HOY, HOY, '');
+  chk('todos los equipos suman el gasto completo',
+      todos.totalGastado === 520000, todos.totalGastado);
+  // Comparar el gasto de dos equipos contra el tope de uno daria rojo siempre.
+  chk('y el tope es la SUMA de los topes, no el de uno',
+      todos.totalSugerido === 700000, todos.totalSugerido);
+  chk('el desglose dice cuanto gasto cada equipo',
+      todos.porEquipo.length === 2 &&
+      todos.porEquipo[0].gastado === 220000 && todos.porEquipo[1].gastado === 300000,
+      todos.porEquipo);
+
+  // ─── Quien ve que equipo ───
+  const gE = montar(foto, 'estricto');
+  require('vm').runInContext(
+    'verificarIdToken_ = function (t) { return t ? { correo: String(t), nombre: String(t) } : null; };' +
+    'subirArchivosASeccion_ = function () { return \'\'; };',
+    gE.globales);
+
+  const comoLaura = gE.globales.consultarPresupuesto_({ idToken: 'laura@energy-millennium.com' });
+  chk('alguien de un equipo ve EL SUYO',
+      comoLaura.presupuesto.equipo === 'equipo_1', comoLaura.presupuesto.equipo);
+  chk('y no puede pedir el del otro equipo',
+      gE.globales.consultarPresupuesto_({ idToken: 'laura@energy-millennium.com', equipo: 'equipo_2' })
+        .presupuesto.equipo === 'equipo_1',
+      'podria mirar el presupuesto ajeno pidiendolo a mano');
+  chk('no se le ofrece el selector', comoLaura.puedeElegirEquipo === false, comoLaura.puedeElegirEquipo);
+
+  const comoAdmin = gE.globales.consultarPresupuesto_({ idToken: 'nathan@ylevigroup.com', equipo: 'equipo_2' });
+  chk('un administrador SI puede elegir cualquiera',
+      comoAdmin.presupuesto.equipo === 'equipo_2' && comoAdmin.puedeElegirEquipo === true,
+      comoAdmin.presupuesto.equipo);
+
+  // ─── El equipo se guarda, no se deduce ───
+  const fuente = require('fs').readFileSync(RUTA, 'utf8').replace(/\r\n/g, '\n');
+  chk('EQUIPO es columna de todas las hojas de pago',
+      /'EQUIPO'\s*\n\];/.test(fuente.split('const ENCABEZADOS_PAGOS = [')[1].split('];')[0] + "'EQUIPO'\n];"),
+      'faltaria en alguna hoja y el PDF saldria con celdas undefined');
+
+  const reg = fuente.split('function registrarPago_')[1].split('\n}\n')[0];
+  chk('al registrar, el equipo sale de la SESION',
+      /'EQUIPO':\s*seccion === 'viaticos' \? \(ctx\.equipo \|\| ''\)/.test(reg),
+      'se preguntaria en el formulario, que es donde se equivoca la gente');
+  chk('y no se acepta lo que mande el navegador',
+      !/body\.equipo/.test(reg), 'cualquiera podria cargarle el gasto a otro equipo');
+
+  // El aviso por correo tiene que decir de que equipo habla.
+  const av = fuente.split('function avisarSiCruzaPresupuesto_')[1].split('\n}\n')[0];
+  chk('el aviso por correo es de UN equipo',
+      /presupuestoDiarioVigente_\(eq\)/.test(av) && /gastoViaticosPorRubro_\(dia, dia, eq\)/.test(av),
+      'compararia contra el tope equivocado');
+  chk('y el asunto dice cual',
+      /etiquetaDeEquipo_\(eq\) \+ ' · viáticos del '/.test(av),
+      'llegaria un aviso sin decir de que equipo');
+  chk('sin equipo no se avisa, en vez de avisarle al que no es',
+      /if \(!equipoValido_\(eq\)\) return;/.test(av), av.slice(0, 200));
 }
 
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));

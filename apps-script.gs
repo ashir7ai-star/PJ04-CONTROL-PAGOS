@@ -537,6 +537,35 @@ function rubroValido_(clave) {
   return !!etiquetaDeRubro_(clave);
 }
 
+// ─── Equipos de instalación ──────────────────────────────────────────────
+//
+// Cada equipo controla sus viáticos por separado, con su propio presupuesto
+// diario. Sumarlos sería perder justo lo que se quiere ver.
+//
+// ⚠️ Lista CERRADA, por la misma razón que los rubros: con texto libre,
+// "Equipo 2" y "equipo 2" serían dos equipos distintos y cualquier total
+// mentiría. Agregar un tercero es una línea acá.
+//
+// El equipo de un viático NO se elige al registrarlo: sale de la persona
+// (columna EQUIPO en USUARIOS) y se GUARDA en la fila. Guardarlo es lo que
+// permite reasignar a alguien de equipo mañana sin reescribir su historial.
+const EQUIPOS = [
+  { clave: 'equipo_1', etiqueta: 'Equipo 1' },
+  { clave: 'equipo_2', etiqueta: 'Equipo 2' }
+];
+
+function etiquetaDeEquipo_(clave) {
+  const c = String(clave || '').trim().toLowerCase();
+  for (let i = 0; i < EQUIPOS.length; i++) {
+    if (EQUIPOS[i].clave === c) return EQUIPOS[i].etiqueta;
+  }
+  return '';
+}
+
+function equipoValido_(clave) {
+  return !!etiquetaDeEquipo_(clave);
+}
+
 // Hojas que NO son de pagos (no entran en consultas ni reportes).
 // Es función y no constante a propósito: NOMBRE_HOJA_SOLICITUDES se declara más
 // abajo (bloque B), y un `const` aquí arriba lo leería antes de inicializarse
@@ -715,7 +744,17 @@ function registrarPago_(body) {
     // guarda vacío en vez de inventarlo: un dato mal clasificado es peor que
     // uno sin clasificar.
     'RUBRO':          seccion === 'viaticos' && rubroValido_(body.rubro)
-                        ? String(body.rubro).trim().toLowerCase() : ''
+                        ? String(body.rubro).trim().toLowerCase() : '',
+    // EL EQUIPO NO SE PREGUNTA: sale de quién registra.
+    //
+    // Es la misma decisión que con "Registrado por". Un desplegable más en el
+    // celular, en cada almuerzo, es una oportunidad más de equivocarse — y
+    // equivocarse acá no da error: el gasto se va al equipo que no es y los
+    // dos presupuestos mienten a la vez.
+    //
+    // Se GUARDA en la fila, no se deduce al leer. Así, reasignar a alguien de
+    // equipo mañana no reescribe lo que ya registró.
+    'EQUIPO':         seccion === 'viaticos' ? (ctx.equipo || '') : ''
   });
 
   // Un pago cambia el saldo: lo calculado que hubiera guardado ya no vale.
@@ -725,7 +764,7 @@ function registrarPago_(body) {
   // de escribir la fila y dentro de su propio try: un aviso que falle no puede
   // voltear un pago que ya quedó registrado.
   if (seccion === 'viaticos') {
-    avisarSiCruzaPresupuesto_(body.monto, fechaDeTextoISO_(body.fecha_pago));
+    avisarSiCruzaPresupuesto_(body.monto, fechaDeTextoISO_(body.fecha_pago), ctx.equipo);
   }
 
   // Los saldos nuevos viajan con la confirmación del pago: el navegador los
@@ -759,7 +798,12 @@ const ENCABEZADOS_PAGOS = [
   // Quien registró, pero como identidad Única. El NOMBRE no sirve de clave:
   // hay dos cuentas "Joseph De Lima" (una por dominio) y los nombres cambian.
   // El correo sale de la sesión y el navegador no lo puede elegir.
-  'CORREO REGISTRO'
+  'CORREO REGISTRO',
+  // A qué equipo pertenece el gasto. Solo lo usa Viáticos, pero la columna
+  // existe en todas las hojas por lo mismo que RUBRO: los reportes mapean cada
+  // hoja con los encabezados de la principal, y una columna que falte en una
+  // hoja produce celdas `undefined` que rompen el PDF sin avisar.
+  'EQUIPO'
 ];
 
 const COLUMNAS_CON_HORA = ['FECHA REGISTRO', 'FECHA SOLICITUD', 'FECHA DECISION', 'ULTIMO ACCESO'];
@@ -2162,12 +2206,15 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-10-13-a · AMPAC SAS pasa a ser BLAZAR ENERGY';
+const REVISION_BACKEND = '2026-10-15-a · viaticos por equipo, con presupuesto propio';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
   'CORREO', 'NOMBRE', 'TELEFONO', 'ROL', 'SECCIONES', 'ESTADO',
-  'FECHA REGISTRO', 'ULTIMO ACCESO'
+  'FECHA REGISTRO', 'ULTIMO ACCESO',
+  // De qué equipo de instalación es esta persona. De acá sale el equipo de
+  // cada viático que registre: no se le pregunta en el formulario.
+  'EQUIPO'
 ];
 
 // ─── Hoja USUARIOS ────────────────────────────────────────────────────────
@@ -2480,6 +2527,10 @@ function contextoDe_(body) {
     rol:         String(usuario['ROL'] || 'usuario').toLowerCase(),
     secciones:   seccionesDeUsuario_(usuario),
     estado:      estado,
+    // El equipo de esta persona. De acá sale el de cada viático que registre.
+    // Vacío si todavía no se le asignó uno: no se adivina.
+    equipo:      equipoValido_(usuario['EQUIPO'])
+                   ? String(usuario['EQUIPO']).trim().toLowerCase() : '',
     modo:        MODO_LOGIN
   };
 }
@@ -2682,6 +2733,8 @@ function arranque_(body) {
     foto:      perfilGoogle ? perfilGoogle.foto : '',
     rol:       ctx.rol,
     secciones: ctx.secciones,
+    equipo:      ctx.equipo,
+    equipoTexto: ctx.equipo ? etiquetaDeEquipo_(ctx.equipo) : '',
     // Enlace directo a la hoja de cálculo, SOLO para administradores. Se manda
     // desde el servidor en vez de escribirlo en el index.html porque ese
     // archivo es público: ahí la dirección quedaría a la vista de cualquiera.
@@ -2760,6 +2813,9 @@ function listarUsuarios_(body) {
     status: 'success',
     modo: MODO_LOGIN,
     secciones: Object.keys(SECCIONES).map(k => ({ clave: k, hoja: SECCIONES[k].hoja || 'principal' })),
+    // Para que Configuración arme el desplegable con la misma lista cerrada
+    // que usa el servidor, y no con una copia escrita a mano.
+    equipos: EQUIPOS.map(e => ({ clave: e.clave, etiqueta: e.etiqueta })),
     usuarios: usuariosTodos_().map(u => ({
       correo:    String(u['CORREO']),
       nombre:    String(u['NOMBRE'] || ''),
@@ -2767,6 +2823,8 @@ function listarUsuarios_(body) {
       rol:       String(u['ROL'] || 'usuario').toLowerCase(),
       secciones: String(u['SECCIONES'] || ''),
       estado:    String(u['ESTADO'] || '').toLowerCase(),
+      equipo:    equipoValido_(u['EQUIPO'])
+                   ? String(u['EQUIPO']).trim().toLowerCase() : '',
       // Formateadas, no en crudo. `String(unaFecha)` produce
       // "Thu Sep 17 2026 18:22:18 GMT-0500 (hora estandar de Colombia)", que
       // es lo que se le mostraba al usuario en Configuracion. Ademas ese texto
@@ -2809,7 +2867,16 @@ function guardarUsuario_(body) {
     return { status: 'error', message: 'No se puede: quedaría el sistema sin ningún administrador activo.' };
   }
 
+  // El equipo de instalación. Vacío es válido: no todo el mundo pertenece a
+  // uno (los administradores, por ejemplo). Un valor que no esté en la lista
+  // se guarda VACÍO en vez de inventarlo — un dato mal clasificado es peor que
+  // uno sin clasificar, y acá decide a qué presupuesto van los viáticos.
+  const equipoPedido = String(body.equipo || '').trim().toLowerCase();
+  const equipo = equipoValido_(equipoPedido) ? equipoPedido : '';
+
   const hoja      = hojaUsuarios_();
+  // La hoja USUARIOS se creó antes de que existiera la columna EQUIPO.
+  asegurarColumnas_(hoja, ENCABEZADOS_USUARIOS);
   const existente = usuarioPorCorreo_(correo);
   const fila      = [
     correo,
@@ -2817,7 +2884,8 @@ function guardarUsuario_(body) {
     String(body.telefono || (existente ? existente['TELEFONO'] : '')),
     rol, pedidas, estado,
     existente ? existente['FECHA REGISTRO'] : new Date(),
-    existente ? existente['ULTIMO ACCESO'] : ''
+    existente ? existente['ULTIMO ACCESO'] : '',
+    equipo
   ];
 
   if (existente) escribirRango_(hoja, existente._fila, 1, [fila]);
@@ -3362,7 +3430,10 @@ function consultarMovimientos_(body) {
 // yendo de lo previsto. Pedido explícito del usuario: "no quiero que haga
 // matemáticas con lo que registran, únicamente que se pueda visualizar".
 const NOMBRE_HOJA_PRESUPUESTO = 'PRESUPUESTO';
-const ENCABEZADOS_PRESUPUESTO = ['FECHA', 'MONTO DIARIO', 'REGISTRADO POR', 'NOTA'];
+const ENCABEZADOS_PRESUPUESTO = ['FECHA', 'MONTO DIARIO', 'REGISTRADO POR', 'NOTA',
+  // Cada equipo tiene su propio tope diario. Una fila por cambio y por equipo;
+  // vale la última de cada uno.
+  'EQUIPO'];
 
 function hojaPresupuesto_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -3388,21 +3459,35 @@ function hojaPresupuesto_() {
 //
 // Igual que los saldos base, cada cambio se agrega como fila nueva y queda el
 // historial de quién puso qué y cuándo.
-function presupuestoDiarioVigente_() {
+// El presupuesto diario vigente DE UN EQUIPO: la última fila cargada para él.
+//
+// Las filas sin equipo son las anteriores a la división (13/10/2026) y valen
+// para el Equipo 1: era el único que existía. Sin esa regla, el Equipo 1 se
+// quedaba de golpe sin presupuesto y el panel diría "sin definir" sobre datos
+// que sí tenían tope.
+function presupuestoDiarioVigente_(equipo) {
   const valores = valoresDeHoja_(hojaPresupuesto_());
   if (valores.length < 2) return null;
 
   const enc    = valores[0];
-  const cFecha = enc.indexOf('FECHA');
-  const cMonto = enc.indexOf('MONTO DIARIO');
-  const cQuien = enc.indexOf('REGISTRADO POR');
-  const cNota  = enc.indexOf('NOTA');
+  const cFecha  = enc.indexOf('FECHA');
+  const cMonto  = enc.indexOf('MONTO DIARIO');
+  const cQuien  = enc.indexOf('REGISTRADO POR');
+  const cNota   = enc.indexOf('NOTA');
+  const cEquipo = enc.indexOf('EQUIPO');
   if (cMonto === -1) return null;
+
+  const buscado = String(equipo || '').trim().toLowerCase();
 
   let mejor = null;
   for (let i = 1; i < valores.length; i++) {
     const fila = valores[i];
     if (!fila.some(function (v) { return v !== ''; })) continue;
+
+    const deLaFila = cEquipo === -1 ? '' : String(fila[cEquipo] || '').trim().toLowerCase();
+    // Una fila sin equipo cuenta para el Equipo 1, por lo explicado arriba.
+    const equipoFila = deLaFila || 'equipo_1';
+    if (buscado && equipoFila !== buscado) continue;
 
     const monto = montoANumero_(fila[cMonto]);
     if (!isFinite(monto)) continue;
@@ -3411,13 +3496,28 @@ function presupuestoDiarioVigente_() {
     if (mejor && mejor.fecha && fecha && fecha.getTime() < mejor.fecha.getTime()) continue;
 
     mejor = {
-      fecha: fecha,
-      monto: monto,
-      quien: cQuien === -1 ? '' : String(fila[cQuien] || ''),
-      nota:  cNota  === -1 ? '' : String(fila[cNota]  || '')
+      fecha:  fecha,
+      monto:  monto,
+      quien:  cQuien === -1 ? '' : String(fila[cQuien] || ''),
+      nota:   cNota  === -1 ? '' : String(fila[cNota]  || ''),
+      equipo: equipoFila
     };
   }
   return mejor;
+}
+
+// El tope de TODOS los equipos juntos: la suma de los diarios vigentes.
+//
+// Es lo correcto para la vista "Todos": comparar el gasto de los dos equipos
+// contra el tope de uno solo daría rojo siempre y no significaría nada. Es la
+// misma razón por la que un rango de varios días multiplica el diario.
+function presupuestoDiarioDeTodos_() {
+  let total = 0, cuantos = 0;
+  EQUIPOS.forEach(function (e) {
+    const v = presupuestoDiarioVigente_(e.clave);
+    if (v && v.monto > 0) { total += v.monto; cuantos++; }
+  });
+  return cuantos ? { monto: total, equipos: cuantos } : null;
 }
 
 // Lo registrado en viáticos en un día, abierto por rubro.
@@ -3434,7 +3534,16 @@ function presupuestoDiarioVigente_() {
 // registrando". Esto mide el registro, no la contabilidad del gasto.
 // Un rango de días, no uno solo: "revisar la semana" es una pregunta tan
 // normal como "qué pasó hoy". Con desde === hasta funciona igual que antes.
-function gastoViaticosPorRubro_(desde, hasta) {
+// `equipo` vacío = todos los equipos. Los viáticos anteriores a la división
+// (13/10/2026) no tienen equipo guardado y cuentan como Equipo 1: era el único
+// que existía. Se resuelve acá, en un solo lugar, para que el panel, el aviso
+// por correo y el detalle no puedan contar cosas distintas.
+function equipoDeLaFila_(valor) {
+  const e = String(valor || '').trim().toLowerCase();
+  return equipoValido_(e) ? e : 'equipo_1';
+}
+
+function gastoViaticosPorRubro_(desde, hasta, equipo) {
   const d0 = inicioDelDia_(desde || new Date());
   const d1 = finDelDia_(hasta || desde || new Date());
 
@@ -3454,6 +3563,8 @@ function gastoViaticosPorRubro_(desde, hasta) {
   const cQuien  = enc.indexOf('REGISTRADO POR');
   const cUrl    = enc.indexOf('URL ARCHIVO');
   const cPago   = enc.indexOf('FECHA DE PAGO');
+  const cEquipo = enc.indexOf('EQUIPO');
+  const soloEquipo = String(equipo || '').trim().toLowerCase();
 
   for (let i = 1; i < valores.length; i++) {
     const fila = valores[i];
@@ -3476,6 +3587,11 @@ function gastoViaticosPorRubro_(desde, hasta) {
     // puede desaparecer del panel sin que nadie se entere.
     const cuando = fechaDelGasto_({ 'FECHA DE PAGO': fila[cPago], 'FECHA REGISTRO': fila[cFecha] });
     if (!cuando || cuando.getTime() < d0.getTime() || cuando.getTime() > d1.getTime()) continue;
+
+    // El equipo decide ANTES que nada: mezclar dos equipos en un total es
+    // justo lo que este cambio vino a evitar.
+    const equipoFila = equipoDeLaFila_(cEquipo === -1 ? '' : fila[cEquipo]);
+    if (soloEquipo && equipoFila !== soloEquipo) continue;
 
     const valor = montoANumero_(fila[cValor]);
     const rubro = cRubro === -1 ? '' : String(fila[cRubro] || '').trim().toLowerCase();
@@ -3500,7 +3616,9 @@ function gastoViaticosPorRubro_(desde, hasta) {
       registrado: registro ? Utilities.formatDate(registro, ZONA_HORARIA, 'dd/MM/yyyy') : '',
       // Un pago sin fecha de pago se cuenta igual, pero se avisa: esta parado
       // en la fecha de carga, que puede no ser la que corresponde.
-      sinFechaPago: !pago
+      sinFechaPago: !pago,
+      equipo:       equipoFila,
+      equipoTexto:  etiquetaDeEquipo_(equipoFila)
     });
 
     if (!rubroValido_(rubro)) { salida.sinRubro += valor; continue; }
@@ -3526,13 +3644,17 @@ function diasDelRango_(desde, hasta) {
   return Math.max(1, Math.round(ms / 86400000));
 }
 
-function estadoPresupuesto_(desde, hasta) {
+// `equipo` vacío = todos los equipos juntos.
+function estadoPresupuesto_(desde, hasta, equipo) {
   const d0 = inicioDelDia_(desde || new Date());
   const d1 = finDelDia_(hasta || desde || new Date());
   const dias = diasDelRango_(d0, d1);
+  const eq = String(equipo || '').trim().toLowerCase();
 
-  const vigente = presupuestoDiarioVigente_();
-  const gasto   = gastoViaticosPorRubro_(d0, d1);
+  // Con un equipo elegido, su tope. Sin equipo, la SUMA de los topes: comparar
+  // el gasto de dos equipos contra el tope de uno daría rojo siempre.
+  const vigente = eq ? presupuestoDiarioVigente_(eq) : presupuestoDiarioDeTodos_();
+  const gasto   = gastoViaticosPorRubro_(d0, d1, eq);
 
   // El presupuesto es DIARIO. Para un rango de varios días se multiplica:
   // comparar el gasto de una semana contra el tope de un día no significaría
@@ -3557,7 +3679,29 @@ function estadoPresupuesto_(desde, hasta) {
   const iso = function (d) { return Utilities.formatDate(d, ZONA_HORARIA, 'yyyy-MM-dd'); };
   const ddmm = function (d) { return Utilities.formatDate(d, ZONA_HORARIA, 'dd/MM/yyyy'); };
 
+  // Cuánto gastó cada equipo en el período. Sirve para la vista "Todos": sin
+  // esto habría un total y ninguna forma de ver cómo se reparte.
+  const porEquipo = EQUIPOS.map(function (e) {
+    const g = gastoViaticosPorRubro_(d0, d1, e.clave);
+    const v = presupuestoDiarioVigente_(e.clave);
+    const tope = (v ? v.monto : 0) * dias;
+    return {
+      clave:      e.clave,
+      etiqueta:   e.etiqueta,
+      gastado:    g.total,
+      pagos:      g.pagos,
+      sugerido:   tope,
+      montoDiario: v ? v.monto : 0,
+      excedido:   tope > 0 && g.total > tope,
+      disponible: tope - g.total
+    };
+  });
+
   return {
+    equipo:        eq,
+    equipoTexto:   eq ? etiquetaDeEquipo_(eq) : 'Todos los equipos',
+    equipos:       EQUIPOS.map(function (e) { return { clave: e.clave, etiqueta: e.etiqueta }; }),
+    porEquipo:     porEquipo,
     desde:         iso(d0),
     hasta:         iso(d1),
     desdeTexto:    ddmm(d0),
@@ -3594,9 +3738,28 @@ function consultarPresupuesto_(body) {
   // como "qué pasó hoy". Si no viene nada, es hoy.
   const desde = body && body.desde ? fechaDeTextoISO_(body.desde) : null;
   const hasta = body && body.hasta ? fechaDeTextoISO_(body.hasta) : null;
+
+  // QUIÉN VE QUÉ EQUIPO.
+  //
+  // Un administrador elige cualquiera, o todos. Alguien de un equipo ve EL
+  // SUYO y nada más: mostrarle el presupuesto de otro equipo no le sirve de
+  // nada y enturbia el número que sí le importa.
+  //
+  // Esto afina la decisión del 30/09 ("ve lo mismo que un admin"), que valía
+  // cuando el presupuesto era UNO para todos. Con un tope por equipo, "lo
+  // mismo" pasó a ser ruido.
+  const pedido = String((body && body.equipo) || '').trim().toLowerCase();
+  const esAdministrador = MODO_LOGIN === 'off' || esAdmin_(ctx);
+  const equipo = esAdministrador
+    ? (equipoValido_(pedido) ? pedido : '')
+    : (ctx.equipo || '');
+
   return {
     status: 'success',
-    presupuesto: estadoPresupuesto_(desde || hasta || new Date(), hasta || desde || new Date())
+    // Para que la pantalla sepa si puede ofrecer el selector de equipos.
+    puedeElegirEquipo: esAdministrador,
+    presupuesto: estadoPresupuesto_(desde || hasta || new Date(),
+                                    hasta || desde || new Date(), equipo)
   };
 }
 
@@ -3618,14 +3781,23 @@ function ajustarPresupuesto_(body) {
     return { status: 'error', message: 'El presupuesto diario tiene que ser mayor que cero.' };
   }
 
+  // El equipo es obligatorio: un presupuesto sin dueño no se puede comparar
+  // contra nada. Se exige a propósito en vez de caer en un valor por defecto,
+  // que sería cargarle el tope al equipo equivocado sin avisar.
+  const equipo = String(body.equipo || '').trim().toLowerCase();
+  if (!equipoValido_(equipo)) {
+    return { status: 'error', message: 'Elegí a qué equipo le ponés este presupuesto.' };
+  }
+
   agregarFilaPorEncabezados_(hojaPresupuesto_(), {
     'FECHA':          new Date(),
     'MONTO DIARIO':   monto,
     'REGISTRADO POR': ctx.nombre || ctx.correo || '',
-    'NOTA':           String(body.nota || '')
+    'NOTA':           String(body.nota || ''),
+    'EQUIPO':         equipo
   });
 
-  return { status: 'success', presupuesto: estadoPresupuesto_(new Date()) };
+  return { status: 'success', presupuesto: estadoPresupuesto_(new Date(), new Date(), equipo) };
 }
 
 // ─── Aviso cuando el día pasa el presupuesto ──────────────────────────────
@@ -3636,9 +3808,16 @@ function ajustarPresupuesto_(body) {
 //
 // Un correo por cada pago posterior sería ruido, y el ruido se deja de leer:
 // ya pasó con los errores de /salud, dos días sin que nadie los mirara.
-function avisarSiCruzaPresupuesto_(montoDelPago, fechaDelGasto) {
+// `equipo` es el de quien registró. El aviso es SIEMPRE de un equipo: con dos
+// topes distintos, un correo que no diga de cuál habla no sirve para actuar.
+function avisarSiCruzaPresupuesto_(montoDelPago, fechaDelGasto, equipo) {
   try {
-    const vigente = presupuestoDiarioVigente_();
+    const eq = String(equipo || '').trim().toLowerCase();
+    // Sin equipo no hay con qué comparar. Callarse es correcto: inventar un
+    // equipo sería avisarle al que no es.
+    if (!equipoValido_(eq)) return;
+
+    const vigente = presupuestoDiarioVigente_(eq);
     if (!vigente || !(vigente.monto > 0)) return;
 
     // El mismo criterio que el panel: el día en que se GASTÓ.
@@ -3648,7 +3827,7 @@ function avisarSiCruzaPresupuesto_(montoDelPago, fechaDelGasto) {
     // día que no tiene nada que ver con ese gasto.
     const dia = (fechaDelGasto instanceof Date && !isNaN(fechaDelGasto.getTime()))
       ? fechaDelGasto : new Date();
-    const despues = gastoViaticosPorRubro_(dia, dia).total;   // ya incluye el pago recién escrito
+    const despues = gastoViaticosPorRubro_(dia, dia, eq).total;   // ya incluye el pago recién escrito
     const antes   = despues - montoANumero_(montoDelPago);
 
     if (!(antes <= vigente.monto && despues > vigente.monto)) return;
@@ -3658,9 +3837,11 @@ function avisarSiCruzaPresupuesto_(montoDelPago, fechaDelGasto) {
 
     MailApp.sendEmail({
       to: AVISO_PRESUPUESTO.join(','),
-      subject: 'Viáticos del ' + dTxt + ': se pasó el presupuesto diario',
+      subject: etiquetaDeEquipo_(eq) + ' · viáticos del ' + dTxt +
+               ': se pasó el presupuesto diario',
       body:
-        'El gasto de viáticos del ' + dTxt + ' superó el presupuesto diario.\n\n' +
+        'El gasto de viáticos del ' + etiquetaDeEquipo_(eq) + ' el ' + dTxt +
+        ' superó su presupuesto diario.\n\n' +
         'Presupuesto: ' + pesos(vigente.monto) + '\n' +
         'Gastado:     ' + pesos(despues) + '\n' +
         'Excedido en: ' + pesos(despues - vigente.monto) + '\n\n' +
