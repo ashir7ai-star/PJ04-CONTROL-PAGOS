@@ -24,6 +24,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 **Verificar siempre que una prueba nueva pueda FALLAR**, reintroduciendo el defecto a propósito. Ya hubo dos casos de pruebas que pasaban sin comprobar nada real (la de saldos bancarios y la de tipos de pago), y una prueba que no puede fallar da confianza sin respaldarla.
 
 ## Última actualización
+**2026-10-15** — 👥 **Control de Viáticos por equipo.** Cada equipo tiene su presupuesto diario, su panel y su aviso por correo; el equipo sale de la persona que registra y queda guardado en la fila. Backend `2026-10-15-a`: **hay que desplegar Apps Script y EasyPanel**, y correr `asignar-equipo-1.js`.
+
 **2026-10-15** — 🔒 **Registrar un pago bloquea la pantalla hasta confirmar**, y la confirmación — con monto y proveedor — va en el centro, no en un toast de la esquina. Evita que alguien cargue el mismo pago dos veces por no ver el aviso. Solo pantalla: backend en `2026-10-13-a`.
 
 **2026-10-14** — 🔍 **Filtro por persona en Consultar Pagos y Control de Viáticos**, como desplegable armado desde los datos. Cambiar un filtro ya no cuesta otra consulta al servidor. Solo pantalla: el backend sigue en `2026-10-13-a`.
@@ -535,6 +537,18 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-15**: 👥 **Viáticos por EQUIPO, cada uno con su presupuesto diario.** Se formó el Equipo 2 y los dos se controlan por separado.
+  - **El equipo sale de la PERSONA, no del formulario.** En Configuración cada usuario tiene su equipo; quien está en campo registra el almuerzo y el equipo se pone solo. Misma decisión que con “Registrado por”: un desplegable más en el celular, en cada gasto, es una oportunidad más de equivocarse — y equivocarse acá no da error, los **dos** presupuestos mienten a la vez.
+  - **Se GUARDA en cada fila** (columna `EQUIPO`), no se deduce al leer. Reasignar a alguien de equipo mañana no reescribe su historial.
+  - **Los 280 viáticos anteriores son del Equipo 1** (decisión del usuario): era el único que existía. `equipoDeLaFila_` lo resuelve en un solo lugar, así que el panel, el aviso y el detalle no pueden contar distinto.
+  - **Quién ve qué:** un admin elige cualquier equipo o “Todos”; alguien de un equipo ve **el suyo**, y pedir otro a mano no sirve — el servidor le devuelve el suyo igual. Afina la decisión del 30/09, que valía cuando el presupuesto era uno solo.
+  - **La vista “Todos” suma los topes**, no usa el de uno: comparar el gasto de dos equipos contra el tope de uno daría rojo siempre. Misma razón por la que un rango multiplica el diario.
+  - **El aviso por correo es de un equipo y lo dice en el asunto.** Con dos topes distintos, un correo que no diga de cuál habla no sirve para actuar. Sin equipo no se avisa, en vez de avisarle al que no es.
+  - `servidor/asignar-equipo-1.js` crea la columna en las 7 hojas y marca los 280 (287 celdas, con respaldo previo).
+  - ⚠️ **Hallazgo en las PRUEBAS, no en el código:** aislaban cada función cortando por `'
+}
+'`, pero los archivos usan CRLF, así que **ese corte nunca funcionó**: en vez de 5.000 caracteres miraban **157.000**, casi el archivo entero. Las comprobaciones de “existe” pasaban igual; las de **“NO existe” eran mucho más débiles de lo que parecían**. Corregido en las 16 que lo usaban — ahora normalizan los saltos de línea al leer.
+  - **539 comprobaciones**, 33 mutaciones.
 - **2026-10-15**: 🔒 **Al registrar un pago se bloquea toda la pantalla, y la confirmación va en el centro.**
   - **El problema real:** el aviso vivía en un toast chico abajo a la derecha. Quien apretaba “Enviar Pago” y no lo veía podía creer que ya estaba, irse, o **cargar el pago otra vez**. El servidor nunca lo duplicó — `ID REGISTRO` lo impide — pero eso no resuelve lo importante: **la persona no sabía si su pago había quedado**.
   - **El bloqueo aparece al apretar Enviar**, no cuando contesta el servidor. Ese hueco de unos segundos era exactamente donde alguien volvía a apretar.
