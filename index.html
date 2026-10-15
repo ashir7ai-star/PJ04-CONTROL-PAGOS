@@ -2732,6 +2732,16 @@
             </select>
           </div>
 
+          <!-- Solo aparece en Viáticos. Viene con el equipo de la persona ya
+               puesto, así el caso normal sigue siendo un solo toque; se puede
+               cambiar porque los equipos rotan y quien está registrando sabe
+               con quién estuvo hoy mejor que el reparto, que lo actualiza un
+               administrador y puede estar atrasado. -->
+          <div class="field" id="campoEquipo" style="display:none;">
+            <label for="equipoViatico">Equipo <span class="req">*</span></label>
+            <select id="equipoViatico" name="equipo"></select>
+          </div>
+
           <div class="field-row">
             <div class="field">
               <label for="nombrePago">Nombre del pago <span class="req">*</span></label>
@@ -3352,6 +3362,21 @@
       </div>
       <div class="vt-tabla-wrap"><table class="vt-tabla" id="vtDetalle"></table></div>
     </section>
+
+    <!-- Quién está en cada equipo. SOLO administradores: el reparto lo cambian
+         ellos y nadie más (pedido del usuario, 15/10). El servidor lo vuelve a
+         comprobar en asignar_equipo, así que esconder la tabla acá es una
+         comodidad, no la barrera.
+
+         Va al final a propósito: se usa cada tanto, y arriba empujaría hacia
+         abajo los números del día, que son lo que se viene a mirar. -->
+    <section class="vt-bloque" id="vtEquiposBloque" style="display:none;">
+      <div class="vt-bloque-cab">
+        <h3 class="vt-h3">Quién está en cada equipo</h3>
+        <span class="vt-nota">Define qué equipo viene preseleccionado al registrar. No reescribe lo ya registrado.</span>
+      </div>
+      <div class="vt-tabla-wrap"><table class="vt-tabla" id="vtEquiposTabla"></table></div>
+    </section>
   </main>
 
   <main id="viewTraslados" style="display:none;">
@@ -3677,7 +3702,16 @@
       rol:       'admin',
       revision:  '',       // versión del backend, para detectar desfases
       urlHoja:   '',       // hoja de cálculo; el servidor solo la manda a admins
-      secciones: ['pagos', 'viaticos', 'caja_menor', 'impuestos', 'seguridad_social', 'nomina', 'compra_materiales']
+      secciones: ['pagos', 'viaticos', 'caja_menor', 'impuestos', 'seguridad_social', 'nomina', 'compra_materiales'],
+      // Equipo de instalación de esta persona. Es el que viene PRESELECCIONADO
+      // al registrar un viático; no es el que manda. Quien registra puede
+      // elegir otro, porque los equipos rotan y este dato lo mantiene un
+      // administrador: puede quedar viejo, y quien está en campo no.
+      equipo:    '',
+      // La lista CERRADA de equipos, que manda el servidor en el arranque.
+      // Tenerla acá escrita a mano se desalinearía el día que se agregue un
+      // tercer equipo: el servidor conocería tres y la pantalla ofrecería dos.
+      equipos:   []
     };
 
     // Apps Script no responde bien al preflight CORS, así que se envía como
@@ -4812,7 +4846,7 @@
           btns.forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
           hidden.value = btn.dataset.value;
-          if (typeof actualizarCampoRubro === 'function') actualizarCampoRubro();
+          if (typeof actualizarCamposDeViatico === 'function') actualizarCamposDeViatico();
         });
       });
       return { btns, hidden };
@@ -4848,11 +4882,40 @@
     selectRubro.innerHTML = '<option value="" disabled selected>Seleccionar</option>' +
       RUBROS_VIATICOS.map(r => '<option value="' + r[0] + '">' + escapeHtml(r[1]) + '</option>').join('');
 
-    // El rubro solo tiene sentido en Viáticos. Se muestra y se exige ahí.
-    function actualizarCampoRubro() {
+    // ─── Equipo del viático ───────────────────────────────────────────────
+    //
+    // La lista la manda el SERVIDOR en el arranque: es el dueño de la lista
+    // cerrada, y una copia escrita acá ofrecería dos equipos el día que él
+    // conozca tres.
+    const campoEquipo  = document.getElementById('campoEquipo');
+    const selectEquipo = document.getElementById('equipoViatico');
+
+    function pintarEquiposDelPago() {
+      if (!selectEquipo) return;
+      // Lo que ya haya elegido manda sobre el valor por omisión: repintar no
+      // puede deshacerle la elección a quien está a mitad de un registro.
+      const elegido = selectEquipo.value || sesion.equipo || '';
+      selectEquipo.innerHTML =
+        '<option value="" disabled' + (elegido ? '' : ' selected') + '>Seleccionar</option>' +
+        (sesion.equipos || []).map(function (e) {
+          return '<option value="' + escapeHtml(e.clave) + '"' +
+                 (e.clave === elegido ? ' selected' : '') + '>' +
+                 escapeHtml(e.etiqueta) + '</option>';
+        }).join('');
+      if (elegido) selectEquipo.value = elegido;
+    }
+
+    // El rubro y el equipo solo tienen sentido en Viáticos. Se muestran y se
+    // exigen ahí. Van juntos porque se prenden y se apagan con lo mismo:
+    // separarlos es cómo uno de los dos se queda visible en una sección donde
+    // no significa nada.
+    function actualizarCamposDeViatico() {
       const esViatico = String(tipoHidden.value || '').toLowerCase() === 'viaticos';
       campoRubro.style.display = esViatico ? '' : 'none';
       if (!esViatico) selectRubro.selectedIndex = 0;
+
+      campoEquipo.style.display = esViatico ? '' : 'none';
+      if (esViatico) pintarEquiposDelPago();
     }
 
     // ─── Formateador de valor ──────────────────────────────────────
@@ -5083,6 +5146,15 @@
         return;
       }
 
+      // El equipo es obligatorio en Viáticos. Sin él el gasto no se puede
+      // cargar a ningún presupuesto, y el aviso de que el día se pasó del tope
+      // nunca saldría: el peor error posible acá es el que no avisa.
+      if (String(tipoHidden.value || '').toLowerCase() === 'viaticos' && !selectEquipo.value) {
+        showToast('error', 'Falta el equipo', 'Elegí a qué equipo le corresponde este gasto.');
+        selectEquipo.focus();
+        return;
+      }
+
       if (uploadNuevoPago.getFiles().length === 0) {
         showToast('error', 'Archivo requerido', 'Debes adjuntar al menos un documento del pago.');
         return;
@@ -5113,6 +5185,7 @@
           monto:          document.getElementById('monto').value.replace(/\./g, ''),
           notas:          document.getElementById('notas').value.trim(),
           rubro:          selectRubro.value,
+          equipo:         selectEquipo.value,
           fecha_envio:    idPagoPendiente,
           archivos:       archivos
         });
@@ -5127,6 +5200,13 @@
           const montoTxt = '$' + (Number(String(document.getElementById('monto').value)
                             .replace(/\./g, '')) || 0).toLocaleString('es-CO');
           const provTxt  = document.getElementById('proveedor').value.trim();
+          // A qué equipo quedó cargado. Va en la confirmación porque es el
+          // único dato del pago que la persona ELIGIÓ y que no se ve en ningún
+          // lado después: si se equivocó, este es el momento de notarlo.
+          const equipoTxt = (sesion.equipos || [])
+            .filter(function (e) { return e.clave === selectEquipo.value; })
+            .map(function (e) { return e.etiqueta; })[0] || '';
+          const esViatico = String(tipoHidden.value || '').toLowerCase() === 'viaticos';
 
           resetForm();
           mostrarEnvio('ok',
@@ -5134,6 +5214,7 @@
             result.duplicado
               ? 'Se había guardado en el intento anterior. No se duplicó.'
               : montoTxt + (provTxt ? ' a ' + provTxt : '') +
+                (esViatico && equipoTxt ? ' · ' + equipoTxt : '') +
                 '. Quedó guardado con su comprobante.');
           // El saldo lo calcula el servidor a partir de las hojas: no hay un
           // contador local que pueda quedar desincronizado. Y viene ya
@@ -5228,6 +5309,11 @@
       tipoHidden.value = '';
       selectRubro.selectedIndex = 0;
       campoRubro.style.display = 'none';
+      // Vuelve al equipo de la persona, no a vacío: el próximo pago arranca
+      // otra vez en un solo toque.
+      selectEquipo.value = '';
+      pintarEquiposDelPago();
+      campoEquipo.style.display = 'none';
       tipoBtns.forEach(b => b.classList.remove('active'));
       uploadNuevoPago.reset();
       fechaPicker.setDate('today');
@@ -5640,6 +5726,10 @@
           rol:       sesion.rol,
           secciones: sesion.secciones,
           modo:      sesion.modo,
+          // Se guardan para que una recarga pueda preseleccionar el equipo sin
+          // esperar al servidor. El reparto real lo manda él en el arranque.
+          equipo:    sesion.equipo,
+          equipos:   sesion.equipos,
           vence:     vencimientoDeToken(sesion.idToken)
         }));
       } catch (err) { /* modo incógnito o almacenamiento lleno: no es crítico */ }
@@ -5689,8 +5779,12 @@
       sesion.rol       = datos.rol       || 'usuario';
       sesion.secciones = datos.secciones || [];
       sesion.urlHoja   = datos.urlHoja   || '';
+      sesion.equipo    = datos.equipo    || '';
       pintarSesionEnHeader();
       aplicarPermisos();
+      // El formulario tiene que reflejar el equipo nuevo: si un admin movió a
+      // esta persona de equipo, lo que venga preseleccionado ya es el correcto.
+      if (typeof pintarEquiposDelPago === 'function') pintarEquiposDelPago();
     }
 
     function mostrarLogin(tipo, mensaje) {
@@ -5789,6 +5883,7 @@
         if (!r || r.status !== 'success') return;
 
         if (r.revision) sesion.revision = r.revision;
+        if (r.equipos)  sesion.equipos  = r.equipos;
         if (r.modo && r.modo !== sesion.modo) {
           guardarModoRecordado(r.modo);
           sesion.modo = r.modo;
@@ -5986,6 +6081,7 @@
 
       if (datos.modo) { sesion.modo = datos.modo; guardarModoRecordado(datos.modo); }
       if (datos.revision) sesion.revision = datos.revision;
+      if (datos.equipos)  sesion.equipos  = datos.equipos;
 
       if (datos.sesion) {
         if (datos.sesionToken) sesion.sesionToken = datos.sesionToken;
@@ -6095,6 +6191,7 @@
       sesion.foto      = '';
       sesion.rol       = 'usuario';
       sesion.secciones = [];
+      sesion.equipo    = '';
       // Cerrar sesión tiene que borrar de verdad lo guardado: si no, la próxima
       // recarga volvería a entrar sola con la misma cuenta.
       correoRecordado = '';
@@ -6716,11 +6813,24 @@
     document.querySelectorAll('#vtRangos .vt-chip').forEach(chip =>
       chip.addEventListener('click', () => aplicarRango(chip.dataset.rango)));
 
+    // Mientras esté en false, la pantalla elige por omisión el equipo de la
+    // persona. En cuanto elige algo, no se le vuelve a cambiar: si puso
+    // "Todos los equipos" a propósito, tiene que quedarse ahí.
+    let vtEquipoElegido = false;
+
     async function cargarControlViaticos() {
       const rub = document.getElementById('vtRubros');
       rub.innerHTML = '<tbody><tr><td class="vt-vacio">Cargando…</td></tr></tbody>';
       document.getElementById('vtDetalle').innerHTML = '';
       document.getElementById('vtResumen').innerHTML = '';
+
+      // La primera vez se arranca en el equipo de la persona: es el que viene
+      // a mirar. Sale de la sesión, que ya lo trajo el arranque.
+      if (!vtEquipoElegido && sesion.equipo) {
+        pintarEquiposViaticos(true);
+        document.getElementById('vtEquipo').value = sesion.equipo;
+        vtEquipoElegido = true;
+      }
 
       let r;
       try {
@@ -6728,8 +6838,10 @@
           action: 'consultar_presupuesto',
           desde:  vtDesdeInput.value || vtISO(new Date()),
           hasta:  vtHastaInput.value || vtISO(new Date()),
-          // Si no es administrador el servidor lo ignora y le devuelve el
-          // suyo: la pantalla no decide quién ve qué.
+          // Vacío = todos los equipos. Cualquiera con Viáticos puede elegir:
+          // si acaba de cargar un gasto a otro equipo, tiene que poder
+          // revisarlo. Definir el presupuesto y mover gente sigue siendo solo
+          // de administradores, y eso lo comprueba el servidor.
           equipo: document.getElementById('vtEquipo').value
         }, 60000);
       } catch (err) {
@@ -6743,6 +6855,9 @@
       vtDatos = r.presupuesto;
       pintarEquiposViaticos(r.puedeElegirEquipo);
       pintarQuienViaticos();
+      // Viene vacía si quien pregunta no es administrador, y entonces el
+      // bloque no se muestra.
+      pintarEquiposDePersonas(r.personas);
       // El servidor manda el rango que realmente usó: los campos lo reflejan.
       vtPickerDesde.setDate(vtDatos.desde, false);
       vtPickerHasta.setDate(vtDatos.hasta, false);
@@ -6781,13 +6896,87 @@
       if (!puedeElegir) { sel.value = ''; return; }
 
       const elegido = sel.value;
+      // De la sesión primero: llega en el arranque, así el selector se puede
+      // armar ANTES de la primera consulta y preseleccionar el equipo de la
+      // persona sin pagar una petición de más.
+      const lista = (sesion.equipos && sesion.equipos.length)
+        ? sesion.equipos
+        : ((vtDatos && vtDatos.equipos) || []);
       sel.innerHTML = '<option value="">Todos los equipos</option>' +
-        ((vtDatos && vtDatos.equipos) || []).map(function (e) {
+        lista.map(function (e) {
           return '<option value="' + escapeHtml(e.clave) + '"' +
                  (e.clave === elegido ? ' selected' : '') + '>' +
                  escapeHtml(e.etiqueta) + '</option>';
         }).join('');
       sel.value = elegido;
+    }
+
+    // ─── Quién está en cada equipo (solo administradores) ────────────────
+    //
+    // La lista llega dentro de consultar_presupuesto y viene VACÍA si quien
+    // pregunta no es administrador: así los correos de todo el equipo no
+    // viajan al navegador de quien no los puede cambiar.
+    function pintarEquiposDePersonas(personas) {
+      const bloque = document.getElementById('vtEquiposBloque');
+      const tabla  = document.getElementById('vtEquiposTabla');
+      if (!bloque || !tabla) return;
+
+      if (!personas || !personas.length) { bloque.style.display = 'none'; return; }
+      bloque.style.display = '';
+
+      const opciones = function (clave) {
+        // "Sin equipo" es una opción válida: no todo el mundo pertenece a uno.
+        return '<option value="">Sin equipo</option>' +
+          (sesion.equipos || []).map(function (e) {
+            return '<option value="' + escapeHtml(e.clave) + '"' +
+                   (e.clave === clave ? ' selected' : '') + '>' +
+                   escapeHtml(e.etiqueta) + '</option>';
+          }).join('');
+      };
+
+      tabla.innerHTML =
+        '<thead><tr><th>Persona</th><th>Equipo</th></tr></thead><tbody>' +
+        personas.map(function (p) {
+          return '<tr><td>' + escapeHtml(p.nombre) +
+                 (p.rol === 'admin' ? ' <span class="vt-nota">· admin</span>' : '') +
+                 '<br><span class="vt-nota">' + escapeHtml(p.correo) + '</span></td>' +
+                 '<td><select data-correo="' + escapeHtml(p.correo) + '">' +
+                 opciones(p.equipo) + '</select></td></tr>';
+        }).join('') + '</tbody>';
+
+      tabla.querySelectorAll('select[data-correo]').forEach(function (sel) {
+        // Lo que estaba guardado, para poder volver atrás si la escritura
+        // falla. Dejar en pantalla un valor que no se guardó es peor que no
+        // haber dejado cambiarlo: el administrador se iría creyendo que sí.
+        sel.dataset.antes = sel.value;
+        sel.addEventListener('change', async function () {
+          const antes = sel.dataset.antes || '';
+          sel.disabled = true;
+          try {
+            const r = await postAppsScript({
+              action: 'asignar_equipo',
+              correo: sel.dataset.correo,
+              equipo: sel.value
+            }, 60000);
+            if (!r || r.status !== 'success') {
+              sel.value = antes;
+              showToast('error', 'No se pudo cambiar', (r && r.message) || 'Intentá de nuevo.');
+            } else {
+              // Lo que el servidor dice que GUARDÓ, no lo que se eligió: si
+              // hubiera normalizado el valor, la pantalla lo refleja.
+              sel.value = r.equipo || '';
+              sel.dataset.antes = sel.value;
+              showToast('success', 'Equipo actualizado',
+                        'Es el que le va a venir preseleccionado de ahora en más.');
+            }
+          } catch (err) {
+            sel.value = antes;
+            showToast('error', 'No se pudo cambiar', mensajeDeError(err));
+          } finally {
+            sel.disabled = false;
+          }
+        });
+      });
     }
 
     // Quienes registraron viáticos en el período que se está mirando. Se
@@ -6950,7 +7139,11 @@
     // El equipo SÍ vuelve a consultar: cambia el presupuesto y los totales, y
     // eso lo calcula el servidor. Los otros filtros se aplican acá sobre lo
     // que ya llegó.
-    document.getElementById('vtEquipo').addEventListener('change', cargarControlViaticos);
+    document.getElementById('vtEquipo').addEventListener('change', function () {
+      // Desde acá manda la persona: incluso si eligió "Todos los equipos".
+      vtEquipoElegido = true;
+      cargarControlViaticos();
+    });
     document.getElementById('vtEditarPresupuesto').addEventListener('click', () => {
       if (vtDatos) abrirModalPresupuesto(vtDatos);
     });
@@ -7273,7 +7466,6 @@
       // 'today'` se resuelve una sola vez, al inicializar, y en una PWA que
       // queda abierta eso dejó el 14/10 deshabilitado por estar la app abierta
       // desde el 13 — no se podía registrar un traslado hecho ese mismo día.
-      onOpen: function (sel, texto, inst) { inst.set('maxDate', new Date()); }
     });
 
     // ─── "Hoy" tiene que seguir siendo hoy ───────────────────────────────

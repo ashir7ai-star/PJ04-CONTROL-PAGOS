@@ -293,6 +293,102 @@ console.log('\n=== Control de Viáticos: su propia pestaña, solo para administr
 }
 
 
+console.log('\n=== El equipo se elige al registrar el viatico ===');
+{
+  // Cambio del 15/10 y en contra de como estaba: antes el equipo salia solo de
+  // la persona. Los equipos ROTAN y el reparto lo mantiene un administrador,
+  // asi que puede quedar viejo; quien esta registrando no.
+  chk('hay un campo de equipo en el formulario',
+      /id="campoEquipo"/.test(html) && /id="equipoViatico"/.test(html),
+      'no habria donde elegirlo');
+  chk('arranca oculto, como el rubro',
+      /id="campoEquipo" style="display:none;"/.test(html),
+      'se veria en secciones donde no significa nada');
+  chk('es obligatorio en la pantalla',
+      /<label for="equipoViatico">Equipo <span class="req">\*<\/span>/.test(html),
+      'no se veria que hace falta');
+
+  // Rubro y equipo se prenden y se apagan JUNTOS. Separarlos es como uno de los
+  // dos se queda visible en una seccion donde no corresponde.
+  chk('rubro y equipo se muestran con la misma funcion',
+      /function actualizarCamposDeViatico\(\)/.test(codigo) &&
+      !/function actualizarCampoRubro\(\)/.test(codigo),
+      'quedarian dos interruptores para la misma cosa');
+  chk('y el selector de tipo la llama',
+      /actualizarCamposDeViatico\(\);/.test(codigo), 'el campo no aparecería nunca');
+
+  // Sin equipo el gasto no se carga a ningun presupuesto Y el aviso de que el
+  // dia se paso del tope no sale. El peor error posible aca es el que no avisa.
+  chk('no se puede enviar un viatico sin equipo',
+      /'viaticos' && !selectEquipo\.value/.test(codigo),
+      'se registraria sin equipo y el aviso del tope no saldria');
+  chk('el equipo viaja en el pago',
+      /equipo:\s*selectEquipo\.value,/.test(codigo), 'el servidor no lo recibiria');
+
+  // El equipo de la persona viene puesto: el caso normal es un solo toque.
+  chk('viene preseleccionado el equipo de la cuenta',
+      /selectEquipo\.value \|\| sesion\.equipo/.test(codigo),
+      'habria que elegirlo a mano en cada almuerzo');
+  chk('la lista sale del servidor, no de una copia escrita a mano',
+      /\(sesion\.equipos \|\| \[\]\)\.map/.test(codigo),
+      'ofreceria dos equipos el dia que el servidor conozca tres');
+  chk('el arranque la trae',
+      /if \(r\.equipos\)\s+sesion\.equipos\s+= r\.equipos;/.test(codigo) &&
+      /if \(datos\.equipos\)\s+sesion\.equipos\s+= datos\.equipos;/.test(codigo),
+      'el desplegable quedaria vacio por los dos caminos de arranque');
+  chk('y el equipo de la persona tambien',
+      /sesion\.equipo\s+= datos\.equipo\s+\|\| '';/.test(codigo),
+      'no habria con que preseleccionar');
+
+  // Es el unico dato del pago que la persona ELIGIO y que no se ve despues en
+  // ningun lado: si se equivoco, la confirmacion es el momento de notarlo.
+  chk('la confirmacion dice a que equipo quedo cargado',
+      /esViatico && equipoTxt \? ' · ' \+ equipoTxt : ''/.test(codigo),
+      'un equipo equivocado no se notaria hasta cuadrar los numeros');
+
+  // Despues de registrar vuelve al equipo de la persona, no a vacio.
+  const reset = codigo.split('function resetForm()')[1].split('\n    }')[0];
+  chk('despues de enviar vuelve a quedar preseleccionado',
+      /pintarEquiposDelPago\(\);/.test(reset),
+      'el segundo pago del dia pediria elegir otra vez');
+}
+
+console.log('\n=== Quien esta en cada equipo: solo administradores ===');
+{
+  // Pedido textual del usuario (15/10): "solo los administradores pueden
+  // modificar los equipos, nadie mas".
+  chk('hay un bloque para administrar el reparto',
+      /id="vtEquiposBloque"/.test(html) && /id="vtEquiposTabla"/.test(html),
+      'no habria donde mover gente de equipo');
+  chk('arranca oculto y solo se muestra si llegan personas',
+      /id="vtEquiposBloque" style="display:none;"/.test(html) &&
+      /if \(!personas \|\| !personas\.length\) \{ bloque\.style\.display = 'none'; return; \}/.test(codigo),
+      'un usuario comun veria la tabla vacia');
+  chk('vive en Control de Viaticos, que es donde estan los presupuestos',
+      html.split('<main id="viewViaticos"')[1].split('</main>')[0].indexOf('vtEquiposBloque') !== -1,
+      'quedaria en otra pantalla');
+  chk('cambiar el equipo llama al servidor',
+      /action: 'asignar_equipo',/.test(codigo), 'el cambio no se guardaria');
+
+  // Dejar en pantalla un valor que no se guardo es peor que no haber dejado
+  // cambiarlo: el administrador se iria creyendo que si.
+  chk('si la escritura falla, el selector vuelve a como estaba',
+      (codigo.match(/sel\.value = antes;/g) || []).length === 2,
+      'mostraria un equipo que no quedo guardado');
+  chk('y si sale bien, muestra lo que el servidor dice que guardo',
+      /sel\.value = r\.equipo \|\| '';/.test(codigo),
+      'mostraria lo elegido, no lo guardado');
+
+  // La primera carga arranca en el equipo de la persona, pero una vez que
+  // elige no se le vuelve a cambiar: "Todos los equipos" es una eleccion.
+  chk('la primera carga arranca en el equipo de la persona',
+      /if \(!vtEquipoElegido && sesion\.equipo\)/.test(codigo),
+      'arrancaria en Todos y habria que elegir siempre');
+  chk('y elegir a mano apaga la preseleccion',
+      /vtEquipoElegido = true;\s*\n\s*cargarControlViaticos\(\);/.test(codigo),
+      'la pantalla le pisaria la eleccion en cada recarga');
+}
+
 console.log('\n=== Los iconos de la lista de archivos existen ===');
 ['svgFile', 'svgImage', 'svgTrash'].forEach(n => {
   const usos = (codigo.match(new RegExp('\\b' + n + '\\b', 'g')) || []).length;

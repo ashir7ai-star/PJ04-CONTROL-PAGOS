@@ -546,9 +546,11 @@ function rubroValido_(clave) {
 // "Equipo 2" y "equipo 2" serían dos equipos distintos y cualquier total
 // mentiría. Agregar un tercero es una línea acá.
 //
-// El equipo de un viático NO se elige al registrarlo: sale de la persona
-// (columna EQUIPO en USUARIOS) y se GUARDA en la fila. Guardarlo es lo que
-// permite reasignar a alguien de equipo mañana sin reescribir su historial.
+// El equipo de un viático lo ELIGE quien lo registra, con el suyo
+// preseleccionado (ver equipoDelPago_), y se GUARDA en la fila. Guardarlo es
+// lo que permite mover a alguien de equipo mañana sin reescribir su historial.
+//
+// Quién está en cada equipo lo cambia SOLO un administrador (asignarEquipo_).
 const EQUIPOS = [
   { clave: 'equipo_1', etiqueta: 'Equipo 1' },
   { clave: 'equipo_2', etiqueta: 'Equipo 2' }
@@ -564,6 +566,35 @@ function etiquetaDeEquipo_(clave) {
 
 function equipoValido_(clave) {
   return !!etiquetaDeEquipo_(clave);
+}
+
+// EL EQUIPO DE UN VIÁTICO: lo elige quien registra; si no eligió, el suyo.
+//
+// Esto cambió el 2026-10-15 y va en contra de cómo estaba. Antes salía solo de
+// la persona, con este argumento: un desplegable más en el celular, en cada
+// almuerzo, es una oportunidad más de equivocarse, y equivocarse acá no da
+// error — el gasto se va al equipo que no es y los dos presupuestos mienten a
+// la vez.
+//
+// Sigue siendo cierto. Pero hay algo peor, y lo trajo la rotación: los equipos
+// NO son siempre los mismos (decisión del usuario, 15/10) y el reparto en
+// USUARIOS lo mantiene un administrador. Si alguien pasa al Equipo 2 el lunes
+// y nadie lo actualiza hasta el jueves, tres días de gastos se cargan al
+// equipo equivocado — y tampoco da error. El reparto puede quedar viejo; quien
+// está registrando, no.
+//
+// El costo del desplegable se paga una vez por pago y se VE; el del reparto
+// viejo no se ve hasta que alguien cuadra los números. Por eso manda la
+// elección, con el equipo de la persona puesto de entrada para que el caso
+// normal siga siendo un solo toque.
+//
+// Un equipo que no esté en la lista cerrada se ignora y se cae al de la
+// persona: misma regla que con el rubro. Un dato mal clasificado es peor que
+// uno sin clasificar, y acá decide a qué presupuesto se le carga la plata.
+function equipoDelPago_(body, ctx) {
+  const pedido = String((body && body.equipo) || '').trim().toLowerCase();
+  if (equipoValido_(pedido)) return pedido;
+  return (ctx && ctx.equipo) || '';
 }
 
 // Hojas que NO son de pagos (no entran en consultas ni reportes).
@@ -685,6 +716,11 @@ function registrarPago_(body) {
 
   const hoja = hojaDeSeccion_(seccion);
 
+  // Se resuelve UNA vez, acá, y se usa tanto para la fila como para el aviso
+  // de presupuesto. Tenerlo en dos lugares es lo que hizo que el aviso
+  // comparara contra un equipo distinto del que quedó guardado.
+  const equipoDelViatico = seccion === 'viaticos' ? equipoDelPago_(body, ctx) : '';
+
   // Sin columna ID REGISTRO no hay forma de reconocer un reintento: el id no se
   // guardaría en ningún lado y la protección contra duplicados sería letra
   // muerta, en silencio. Se asegura antes de tocar nada.
@@ -745,16 +781,10 @@ function registrarPago_(body) {
     // uno sin clasificar.
     'RUBRO':          seccion === 'viaticos' && rubroValido_(body.rubro)
                         ? String(body.rubro).trim().toLowerCase() : '',
-    // EL EQUIPO NO SE PREGUNTA: sale de quién registra.
-    //
-    // Es la misma decisión que con "Registrado por". Un desplegable más en el
-    // celular, en cada almuerzo, es una oportunidad más de equivocarse — y
-    // equivocarse acá no da error: el gasto se va al equipo que no es y los
-    // dos presupuestos mienten a la vez.
-    //
-    // Se GUARDA en la fila, no se deduce al leer. Así, reasignar a alguien de
-    // equipo mañana no reescribe lo que ya registró.
-    'EQUIPO':         seccion === 'viaticos' ? (ctx.equipo || '') : ''
+    // Se GUARDA en la fila, no se deduce al leer. Así, mover a alguien de
+    // equipo mañana no reescribe lo que ya registró: lo de ayer lo gastó con
+    // el equipo de ayer.
+    'EQUIPO':         equipoDelViatico
   });
 
   // Un pago cambia el saldo: lo calculado que hubiera guardado ya no vale.
@@ -764,7 +794,7 @@ function registrarPago_(body) {
   // de escribir la fila y dentro de su propio try: un aviso que falle no puede
   // voltear un pago que ya quedó registrado.
   if (seccion === 'viaticos') {
-    avisarSiCruzaPresupuesto_(body.monto, fechaDeTextoISO_(body.fecha_pago), ctx.equipo);
+    avisarSiCruzaPresupuesto_(body.monto, fechaDeTextoISO_(body.fecha_pago), equipoDelViatico);
   }
 
   // Los saldos nuevos viajan con la confirmación del pago: el navegador los
@@ -1825,6 +1855,7 @@ function doPost(e) {
     if (body.action === 'consultar_movimientos') return respuestaJson_(consultarMovimientos_(body));
     if (body.action === 'consultar_presupuesto') return respuestaJson_(consultarPresupuesto_(body));
     if (body.action === 'ajustar_presupuesto')   return respuestaJson_(ajustarPresupuesto_(body));
+    if (body.action === 'asignar_equipo')        return respuestaJson_(asignarEquipo_(body));
     return respuestaJson_({ status: 'error', message: 'Acción no reconocida: ' + body.action });
   } catch (err) {
     return errorJson_(err);
@@ -2206,7 +2237,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-10-15-a · viaticos por equipo, con presupuesto propio';
+const REVISION_BACKEND = '2026-10-15-b · el equipo se elige al registrar; el reparto lo mueve un admin';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -2520,19 +2551,35 @@ function contextoDe_(body) {
     throw new Error(estado === 'pendiente' ? 'PENDIENTE_APROBACION' : 'USUARIO_INACTIVO');
   }
 
+  return contextoDeUsuario_(correo, usuario, nombreGoogle, estado);
+}
+
+// El contexto de un usuario YA validado. Una sola función para armarlo.
+//
+// Existía dos veces —acá y dentro de arranque_— y se desincronizaron: cuando
+// se agregó el campo `equipo`, arranque_ no lo copió. La app recibía
+// `undefined` y no podía preseleccionar el equipo de la persona, sin que nada
+// fallara ni avisara. Un armador duplicado es una desincronización esperando
+// que alguien agregue un campo.
+function contextoDeUsuario_(correo, usuario, nombreFallback, estado) {
   return {
     autenticado: true,
-    correo:      correo,
-    nombre:      String(usuario['NOMBRE'] || nombreGoogle),
+    correo:      String(correo || '').toLowerCase(),
+    nombre:      String(usuario['NOMBRE'] || nombreFallback || ''),
     rol:         String(usuario['ROL'] || 'usuario').toLowerCase(),
     secciones:   seccionesDeUsuario_(usuario),
-    estado:      estado,
-    // El equipo de esta persona. De acá sale el de cada viático que registre.
+    estado:      String(estado || usuario['ESTADO'] || '').toLowerCase(),
+    // El equipo de esta persona. Es el que viene PRESELECCIONADO cuando
+    // registra un viático; no es el que manda (ver equipoDelPago_).
     // Vacío si todavía no se le asignó uno: no se adivina.
-    equipo:      equipoValido_(usuario['EQUIPO'])
-                   ? String(usuario['EQUIPO']).trim().toLowerCase() : '',
+    equipo:      equipoDeUsuario_(usuario),
     modo:        MODO_LOGIN
   };
+}
+
+function equipoDeUsuario_(usuario) {
+  const e = String((usuario && usuario['EQUIPO']) || '').trim().toLowerCase();
+  return equipoValido_(e) ? e : '';
 }
 
 // La columna SECCIONES admite "todas" o una lista separada por comas.
@@ -2672,7 +2719,11 @@ function arranque_(body) {
     modo:      MODO_LOGIN,
     revision:  REVISION_BACKEND,
     clientId:  CLIENT_ID_GOOGLE,
-    secciones: Object.keys(SECCIONES)
+    secciones: Object.keys(SECCIONES),
+    // La lista cerrada de equipos, para que el formulario de pagos arme su
+    // desplegable sin pagar una llamada aparte. No es un dato sensible: son
+    // dos etiquetas que ya se ven en pantalla.
+    equipos:   EQUIPOS.map(function (e) { return { clave: e.clave, etiqueta: e.etiqueta }; })
   };
 
   if (MODO_LOGIN === 'off') {
@@ -2717,15 +2768,8 @@ function arranque_(body) {
   // sigue usando esa.
   if (perfilGoogle) tokenNuevo = crearSesionPropia_(correo);
 
-  const ctx = {
-    autenticado: true,
-    correo:      correo,
-    nombre:      String(usuario['NOMBRE'] || (perfilGoogle ? perfilGoogle.nombre : '')),
-    rol:         String(usuario['ROL'] || 'usuario').toLowerCase(),
-    secciones:   seccionesDeUsuario_(usuario),
-    estado:      estado,
-    modo:        MODO_LOGIN
-  };
+  const ctx = contextoDeUsuario_(
+    correo, usuario, perfilGoogle ? perfilGoogle.nombre : '', estado);
 
   base.sesion = {
     correo:    ctx.correo,
@@ -3739,25 +3783,34 @@ function consultarPresupuesto_(body) {
   const desde = body && body.desde ? fechaDeTextoISO_(body.desde) : null;
   const hasta = body && body.hasta ? fechaDeTextoISO_(body.hasta) : null;
 
-  // QUIÉN VE QUÉ EQUIPO.
+  // QUIÉN VE QUÉ EQUIPO: cualquiera que tenga Viáticos puede elegir.
   //
-  // Un administrador elige cualquiera, o todos. Alguien de un equipo ve EL
-  // SUYO y nada más: mostrarle el presupuesto de otro equipo no le sirve de
-  // nada y enturbia el número que sí le importa.
+  // Es consecuencia directa de que el equipo se elija AL REGISTRAR. Si alguien
+  // acaba de cargar un gasto al Equipo 2, tiene que poder ver el presupuesto
+  // del Equipo 2; atarlo a su equipo asignado le mostraría un número que no
+  // corresponde a lo que acaba de hacer.
   //
-  // Esto afina la decisión del 30/09 ("ve lo mismo que un admin"), que valía
-  // cuando el presupuesto era UNO para todos. Con un tope por equipo, "lo
-  // mismo" pasó a ser ruido.
+  // MIRAR NO ES MODIFICAR. Definir el presupuesto sigue siendo solo de
+  // administradores (ajustarPresupuesto_) y mover a alguien de equipo también
+  // (asignarEquipo_). Eso es lo que pidió el usuario el 15/10: "solo los
+  // administradores pueden modificar los equipos, nadie mas".
+  //
+  // Vacío = todos los equipos. Se respeta tal cual, sin caer al equipo de la
+  // persona: si eligió "Todos" a propósito, cambiárselo sería desobedecerlo.
+  // Cuál se muestra la PRIMERA vez lo decide la pantalla, con `miEquipo`.
   const pedido = String((body && body.equipo) || '').trim().toLowerCase();
   const esAdministrador = MODO_LOGIN === 'off' || esAdmin_(ctx);
-  const equipo = esAdministrador
-    ? (equipoValido_(pedido) ? pedido : '')
-    : (ctx.equipo || '');
+  const equipo = equipoValido_(pedido) ? pedido : '';
 
   return {
     status: 'success',
-    // Para que la pantalla sepa si puede ofrecer el selector de equipos.
-    puedeElegirEquipo: esAdministrador,
+    puedeElegirEquipo: true,
+    // El reparto de personas por equipo, para el panel de administración.
+    // Solo a administradores: son los únicos que lo pueden cambiar, y la lista
+    // lleva los correos de todo el equipo.
+    personas: esAdministrador ? personasPorEquipo_() : [],
+    // Para que la pantalla sepa qué preseleccionar la primera vez.
+    miEquipo: ctx.equipo || '',
     presupuesto: estadoPresupuesto_(desde || hasta || new Date(),
                                     hasta || desde || new Date(), equipo)
   };
@@ -3800,6 +3853,86 @@ function ajustarPresupuesto_(body) {
   return { status: 'success', presupuesto: estadoPresupuesto_(new Date(), new Date(), equipo) };
 }
 
+// --- Quien esta en cada equipo -------------------------------------------
+//
+// Solo se listan los ACTIVOS que pueden registrar viáticos. A quien solo carga
+// impuestos no se le asigna equipo, y ofrecerlo llenaría la pantalla de gente
+// que no corresponde — una lista con ruido se deja de leer.
+//
+// Los administradores aparecen si tienen la sección: también registran
+// viáticos, así que necesitan equipo como cualquiera.
+function personasPorEquipo_() {
+  return usuariosTodos_()
+    .filter(function (u) {
+      if (String(u['ESTADO'] || '').toLowerCase() !== 'activo') return false;
+      return seccionesDeUsuario_(u).indexOf('viaticos') !== -1;
+    })
+    .map(function (u) {
+      const eq = equipoDeUsuario_(u);
+      return {
+        correo:      String(u['CORREO'] || '').trim().toLowerCase(),
+        nombre:      String(u['NOMBRE'] || '').trim() || String(u['CORREO'] || '').trim(),
+        rol:         String(u['ROL'] || 'usuario').toLowerCase(),
+        equipo:      eq,
+        equipoTexto: eq ? etiquetaDeEquipo_(eq) : ''
+      };
+    });
+}
+
+// Mover a alguien de equipo. SOLO ADMINISTRADORES.
+//
+// Pedido textual del usuario (15/10): "solo los administradores pueden
+// modificar los equipos, nadie mas".
+//
+// Va como acción propia en vez de reusar guardar_usuario porque esa reescribe
+// la fila ENTERA: para cambiar un equipo habría que mandar también rol,
+// secciones y estado, y un campo que viajara mal pisaría un permiso sin que
+// nadie lo haya pedido. Acá se escribe una celda y nada más.
+//
+// NO reescribe el historial. Cada viático guarda su equipo en la fila, así que
+// mover a alguien hoy no cambia a qué equipo se le cargó lo de ayer. Es a
+// propósito: lo de ayer lo gastó con el equipo de ayer, y reescribirlo haría
+// que un reporte ya enviado deje de coincidir con la hoja.
+function asignarEquipo_(body) {
+  const ctx = contextoDe_(body);
+  if (MODO_LOGIN !== 'off' && !esAdmin_(ctx)) throw new Error('SOLO_ADMIN');
+
+  const correo = String((body && body.correo) || '').trim().toLowerCase();
+  if (!correo) return { status: 'error', message: 'Falta el correo de la persona.' };
+
+  // Vacío es válido y significa "sin equipo": no todo el mundo pertenece a uno.
+  // Un valor que no esté en la lista cerrada se rechaza en vez de guardarse:
+  // sería un equipo que ningún presupuesto conoce.
+  const pedido = String((body && body.equipo) || '').trim().toLowerCase();
+  if (pedido && !equipoValido_(pedido)) {
+    return { status: 'error', message: 'Ese equipo no existe.' };
+  }
+
+  const usuario = usuarioPorCorreo_(correo);
+  if (!usuario) return { status: 'error', message: 'Esa persona no está registrada.' };
+
+  const hoja = hojaUsuarios_();
+  // La hoja USUARIOS se creó antes de que existiera la columna EQUIPO.
+  asegurarColumnas_(hoja, ENCABEZADOS_USUARIOS);
+
+  // Por NOMBRE, no por posición: si la columna se creó reusando un hueco de
+  // una Tabla de Sheets, no está donde la lista de encabezados la pondría.
+  const col = valoresDeHoja_(hoja)[0]
+    .map(function (h) { return String(h).trim(); }).indexOf('EQUIPO');
+  if (col === -1) return { status: 'error', message: 'No se encontró la columna EQUIPO.' };
+
+  escribirCelda_(hoja, usuario._fila, col + 1, pedido);
+
+  return {
+    status:   'success',
+    correo:   correo,
+    equipo:   pedido,
+    // El reparto ya actualizado vuelve en esta misma respuesta: la pantalla se
+    // repinta sin pedir todo otra vez.
+    personas: personasPorEquipo_()
+  };
+}
+
 // ─── Aviso cuando el día pasa el presupuesto ──────────────────────────────
 //
 // Se avisa UNA sola vez por día, sin guardar ningún marcador: el correo sale
@@ -3812,10 +3945,15 @@ function ajustarPresupuesto_(body) {
 // topes distintos, un correo que no diga de cuál habla no sirve para actuar.
 function avisarSiCruzaPresupuesto_(montoDelPago, fechaDelGasto, equipo) {
   try {
-    const eq = String(equipo || '').trim().toLowerCase();
-    // Sin equipo no hay con qué comparar. Callarse es correcto: inventar un
-    // equipo sería avisarle al que no es.
-    if (!equipoValido_(eq)) return;
+    // La MISMA resolución que usa el panel: un viático sin equipo cuenta para
+    // el Equipo 1. Antes acá se devolvía temprano, y eso dejaba el peor de los
+    // dos mundos — el panel mostraba el gasto en el Equipo 1 y el aviso no
+    // salía nunca. Dos pantallas contando cosas distintas es el error que ya
+    // se repitió tres veces en este sistema.
+    //
+    // Desde que el formulario exige elegir equipo esto casi no pasa, pero
+    // "casi" no alcanza para un aviso que tiene que sonar siempre.
+    const eq = equipoDeLaFila_(equipo);
 
     const vigente = presupuestoDiarioVigente_(eq);
     if (!vigente || !(vigente.monto > 0)) return;

@@ -1478,6 +1478,10 @@ console.log('\n=== La pantalla se bloquea mientras el pago viaja ===');
   chk('el monto se lee ANTES de vaciar el formulario',
       exito.indexOf('const montoTxt') < exito.indexOf('resetForm()'),
       'el aviso mostraria $0 y sin proveedor');
+  // El equipo corre el mismo riesgo: tambien sale del formulario.
+  chk('y el equipo tambien',
+      exito.indexOf('const equipoTxt') < exito.indexOf('resetForm()'),
+      'el aviso no diria a que equipo quedo cargado');
 }
 
 console.log('\n=== Viaticos por equipo, cada uno con su presupuesto ===');
@@ -1485,8 +1489,12 @@ console.log('\n=== Viaticos por equipo, cada uno con su presupuesto ===');
   // El 15/10/2026 se formo el Equipo 2. Cada equipo controla sus viaticos por
   // separado: sumarlos seria perder justo lo que se quiere ver.
   //
-  // El equipo NO se elige al registrar: sale de la persona y se GUARDA en la
-  // fila. Guardarlo es lo que permite reasignar a alguien manana sin
+  // El equipo lo ELIGE quien registra, con el suyo preseleccionado, y se
+  // GUARDA en la fila. Cambio el 15/10: los equipos rotan, y el reparto en
+  // USUARIOS lo mantiene un administrador, asi que puede quedar viejo. Quien
+  // esta registrando no.
+  //
+  // Guardarlo en la fila es lo que permite mover a alguien manana sin
   // reescribir su historial.
   const ENC = ENC_PAGOS.concat(['RUBRO', 'CORREO REGISTRO', 'EQUIPO']);
   const dia = (d, h) => new Date(2026, 9, d, h || 12, 0, 0);
@@ -1556,7 +1564,11 @@ console.log('\n=== Viaticos por equipo, cada uno con su presupuesto ===');
       todos.porEquipo[0].gastado === 220000 && todos.porEquipo[1].gastado === 300000,
       todos.porEquipo);
 
-  // ─── Quien ve que equipo ───
+  // ─── Quien puede MIRAR que equipo ───
+  //
+  // Cualquiera que tenga Viaticos, no solo los administradores. Es
+  // consecuencia de que el equipo se elija al registrar: quien acaba de cargar
+  // un gasto al Equipo 2 tiene que poder ver el presupuesto del Equipo 2.
   const gE = montar(foto, 'estricto');
   require('vm').runInContext(
     'verificarIdToken_ = function (t) { return t ? { correo: String(t), nombre: String(t) } : null; };' +
@@ -1564,33 +1576,127 @@ console.log('\n=== Viaticos por equipo, cada uno con su presupuesto ===');
     gE.globales);
 
   const comoLaura = gE.globales.consultarPresupuesto_({ idToken: 'laura@energy-millennium.com' });
-  chk('alguien de un equipo ve EL SUYO',
-      comoLaura.presupuesto.equipo === 'equipo_1', comoLaura.presupuesto.equipo);
-  chk('y no puede pedir el del otro equipo',
+  chk('se le ofrece el selector de equipos', comoLaura.puedeElegirEquipo === true,
+      comoLaura.puedeElegirEquipo);
+  chk('SI puede mirar el del otro equipo',
       gE.globales.consultarPresupuesto_({ idToken: 'laura@energy-millennium.com', equipo: 'equipo_2' })
-        .presupuesto.equipo === 'equipo_1',
-      'podria mirar el presupuesto ajeno pidiendolo a mano');
-  chk('no se le ofrece el selector', comoLaura.puedeElegirEquipo === false, comoLaura.puedeElegirEquipo);
+        .presupuesto.equipo === 'equipo_2',
+      'no podria revisar el equipo al que le acaba de cargar un gasto');
+  // Sin pedir nada se ve TODO, y la pantalla decide con que arrancar.
+  chk('sin pedir equipo se ven todos', comoLaura.presupuesto.equipo === '',
+      comoLaura.presupuesto.equipo);
+  chk('y viene su equipo para preseleccionarlo', comoLaura.miEquipo === 'equipo_1',
+      comoLaura.miEquipo);
 
   const comoAdmin = gE.globales.consultarPresupuesto_({ idToken: 'nathan@ylevigroup.com', equipo: 'equipo_2' });
-  chk('un administrador SI puede elegir cualquiera',
-      comoAdmin.presupuesto.equipo === 'equipo_2' && comoAdmin.puedeElegirEquipo === true,
-      comoAdmin.presupuesto.equipo);
+  chk('un administrador tambien elige cualquiera',
+      comoAdmin.presupuesto.equipo === 'equipo_2', comoAdmin.presupuesto.equipo);
 
-  // ─── El equipo se guarda, no se deduce ───
+  // El reparto de personas lleva los correos de todo el equipo: solo admins.
+  chk('el reparto de personas solo le llega a un administrador',
+      comoAdmin.personas.length === 3 && comoLaura.personas.length === 0,
+      [comoAdmin.personas.length, comoLaura.personas.length]);
+  chk('y dice en que equipo esta cada uno',
+      comoAdmin.personas.filter(p => p.correo === 'didier@energy-millennium.com')[0].equipo === 'equipo_2',
+      comoAdmin.personas);
+
+  // ─── Mover a alguien de equipo: SOLO administradores ───
+  let laura = () => gE.globales.usuarioPorCorreo_('laura@energy-millennium.com')['EQUIPO'];
+
+  let negado = false;
+  try {
+    gE.globales.asignarEquipo_({ idToken: 'laura@energy-millennium.com',
+                                 correo: 'laura@energy-millennium.com', equipo: 'equipo_2' });
+  } catch (err) { negado = /SOLO_ADMIN/.test(err.message); }
+  chk('un usuario NO se puede cambiar de equipo a si mismo', negado);
+  chk('y su equipo quedo intacto', laura() === 'equipo_1', laura());
+
+  const movida = gE.globales.asignarEquipo_({ idToken: 'nathan@ylevigroup.com',
+                                              correo: 'laura@energy-millennium.com',
+                                              equipo: 'equipo_2' });
+  chk('un administrador SI la mueve', movida.status === 'success' && laura() === 'equipo_2',
+      [movida.status, laura()]);
+  chk('y el reparto actualizado vuelve en la misma respuesta',
+      movida.personas.filter(p => p.correo === 'laura@energy-millennium.com')[0].equipo === 'equipo_2',
+      movida.personas);
+
+  // Lo que ya registro NO se reescribe: lo de ayer lo gasto con el equipo de
+  // ayer, y reescribirlo haria que un reporte ya enviado deje de cuadrar.
+  chk('mover a alguien NO le cambia el historial',
+      gE.globales.estadoPresupuesto_(HOY, HOY, 'equipo_1').totalGastado === 220000,
+      gE.globales.estadoPresupuesto_(HOY, HOY, 'equipo_1').totalGastado);
+
+  chk('un equipo que no existe se rechaza',
+      gE.globales.asignarEquipo_({ idToken: 'nathan@ylevigroup.com',
+                                   correo: 'laura@energy-millennium.com',
+                                   equipo: 'equipo_9' }).status === 'error');
+  chk('vacio es valido: no todos pertenecen a un equipo',
+      gE.globales.asignarEquipo_({ idToken: 'nathan@ylevigroup.com',
+                                   correo: 'laura@energy-millennium.com',
+                                   equipo: '' }).status === 'success' && laura() === '');
+
+  // ─── El equipo del viatico: lo elige quien registra ───
+  const ENC2 = ENC;
+  const colE = ENC2.indexOf('EQUIPO');
+  const ultima = g2 => {
+    const v = g2.SpreadsheetApp.getActiveSpreadsheet()
+               .getSheetByName('Viaticos').getDataRange().getValues();
+    return v[v.length - 1];
+  };
+  const registrar = (g2, id, equipo) => {
+    const cuerpo = {
+      idToken: 'laura@energy-millennium.com', tipo_factura: 'viaticos',
+      empresa: 'BLAZAR ENERGY', monto: '1000', nombre_pago: 'x', proveedor: 'y',
+      fecha_pago: '2026-10-15', fecha_envio: id, rubro: 'almuerzo', archivos: []
+    };
+    if (equipo !== undefined) cuerpo.equipo = equipo;
+    g2.registrarPago_(cuerpo);
+    return ultima(g2);
+  };
+
+  const gR = montar(JSON.parse(JSON.stringify(foto)), 'estricto');
+  require('vm').runInContext(
+    'verificarIdToken_ = function (t) { return t ? { correo: String(t), nombre: String(t) } : null; };' +
+    'subirArchivosASeccion_ = function () { return \'\'; };' +
+    'avisarSiCruzaPresupuesto_ = function () {};',
+    gR.globales);
+
+  // Laura es del Equipo 1, pero hoy esta en campo con el Equipo 2.
+  chk('se guarda el equipo que ELIGIO, no el suyo',
+      registrar(gR.globales, 'op-eq-1', 'equipo_2')[colE] === 'equipo_2',
+      registrar(gR.globales, 'op-eq-1', 'equipo_2')[colE]);
+  chk('si no elige, se guarda el de su cuenta',
+      registrar(gR.globales, 'op-eq-2')[colE] === 'equipo_1',
+      registrar(gR.globales, 'op-eq-2')[colE]);
+  chk('un equipo inventado se ignora y cae al de su cuenta',
+      registrar(gR.globales, 'op-eq-3', 'equipo_9')[colE] === 'equipo_1',
+      registrar(gR.globales, 'op-eq-3', 'equipo_9')[colE]);
+
+  // Un pago que no es viatico nunca lleva equipo, aunque lo manden.
+  gR.globales.registrarPago_({
+    idToken: 'nathan@ylevigroup.com', tipo_factura: 'caja_menor',
+    empresa: 'BLAZAR ENERGY', monto: '1000', nombre_pago: 'x', proveedor: 'y',
+    fecha_pago: '2026-10-15', fecha_envio: 'op-eq-4', archivos: [], equipo: 'equipo_2'
+  });
+  const cajaV = gR.globales.SpreadsheetApp.getActiveSpreadsheet()
+                  .getSheetByName('Caja Menor').getDataRange().getValues();
+  chk('un pago que no es viatico no lleva equipo',
+      (cajaV[cajaV.length - 1] || [])[colE] === '',
+      (cajaV[cajaV.length - 1] || [])[colE]);
+
+  // ─── El aviso y el panel tienen que contar LO MISMO ───
   const fuente = require('fs').readFileSync(RUTA, 'utf8').replace(/\r\n/g, '\n');
   chk('EQUIPO es columna de todas las hojas de pago',
       /'EQUIPO'\s*\n\];/.test(fuente.split('const ENCABEZADOS_PAGOS = [')[1].split('];')[0] + "'EQUIPO'\n];"),
       'faltaria en alguna hoja y el PDF saldria con celdas undefined');
 
   const reg = fuente.split('function registrarPago_')[1].split('\n}\n')[0];
-  chk('al registrar, el equipo sale de la SESION',
-      /'EQUIPO':\s*seccion === 'viaticos' \? \(ctx\.equipo \|\| ''\)/.test(reg),
-      'se preguntaria en el formulario, que es donde se equivoca la gente');
-  chk('y no se acepta lo que mande el navegador',
-      !/body\.equipo/.test(reg), 'cualquiera podria cargarle el gasto a otro equipo');
+  chk('el equipo de la fila y el del aviso salen del MISMO calculo',
+      /const equipoDelViatico = /.test(reg) &&
+      /'EQUIPO':\s*equipoDelViatico/.test(reg) &&
+      /avisarSiCruzaPresupuesto_\([\s\S]*?equipoDelViatico\)/.test(reg),
+      'el aviso compararia contra un equipo distinto del que quedo guardado');
 
-  // El aviso por correo tiene que decir de que equipo habla.
   const av = fuente.split('function avisarSiCruzaPresupuesto_')[1].split('\n}\n')[0];
   chk('el aviso por correo es de UN equipo',
       /presupuestoDiarioVigente_\(eq\)/.test(av) && /gastoViaticosPorRubro_\(dia, dia, eq\)/.test(av),
@@ -1598,8 +1704,29 @@ console.log('\n=== Viaticos por equipo, cada uno con su presupuesto ===');
   chk('y el asunto dice cual',
       /etiquetaDeEquipo_\(eq\) \+ ' · viáticos del '/.test(av),
       'llegaria un aviso sin decir de que equipo');
-  chk('sin equipo no se avisa, en vez de avisarle al que no es',
-      /if \(!equipoValido_\(eq\)\) return;/.test(av), av.slice(0, 200));
+  // Antes se devolvia temprano sin equipo: el panel mostraba el gasto en el
+  // Equipo 1 y el aviso no salia nunca.
+  chk('un viatico sin equipo se resuelve igual que en el panel',
+      /const eq = equipoDeLaFila_\(equipo\);/.test(av) && !/equipoValido_\(eq\)\) return;/.test(av),
+      av.slice(0, 200));
+
+  // ─── Un solo armador de contexto ───
+  //
+  // Existia dos veces y se desincronizaron: arranque_ no copio `equipo`
+  // cuando se agrego, asi que la app recibia undefined y no podia
+  // preseleccionar el equipo de la persona. Sin fallar ni avisar.
+  const arr = fuente.split('function arranque_')[1].split('\n}\n')[0];
+  chk('arranque_ no arma su propio contexto',
+      /contextoDeUsuario_\(/.test(arr) && !/autenticado: true,/.test(arr),
+      'volveria a desincronizarse en el proximo campo que se agregue');
+  chk('y manda el equipo de la persona a la pantalla',
+      gE.globales.arranque_({ idToken: 'didier@energy-millennium.com' })
+        .sesion.equipo === 'equipo_2',
+      gE.globales.arranque_({ idToken: 'didier@energy-millennium.com' }).sesion.equipo);
+  chk('junto con la lista de equipos, para armar el desplegable',
+      (gE.globales.arranque_({ idToken: 'didier@energy-millennium.com' }).equipos || [])
+        .map(x => x.clave).join(',') === 'equipo_1,equipo_2',
+      gE.globales.arranque_({ idToken: 'didier@energy-millennium.com' }).equipos);
 }
 
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
