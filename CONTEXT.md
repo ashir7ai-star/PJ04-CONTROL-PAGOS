@@ -558,6 +558,11 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
   - **Por qué el correo lo manda el Apps Script y no el servidor.** Para enviar harían falta las credenciales de Google en el VPS, duplicadas donde no deben estar. En vez de eso el vigilante le *pide* el correo a `avisar_caida`, que corre en Google y sigue en pie aunque el servidor esté apagado. En el VPS solo hace falta `curl`.
   - **Seguridad de esa acción**, que vive en una URL pública: exige una clave que **se genera y se guarda en las propiedades del script** (`generarClaveDeVigilancia()`), nunca en el repositorio — que es público. El correo va **siempre** a `DESTINATARIOS`, jamás a una dirección que mande quien llama: eso lo convertiría en un relé de spam con la reputación de esta cuenta. Lo que viene de afuera se recorta a 300 caracteres y viaja como texto plano.
   - ⚠️ **Lo que el vigilante NO cubre:** si apagan el VPS entero, se apaga con él — justo el caso del 17/10. Para eso hace falta monitoreo **externo** (UptimeRobot sobre `/salud`). Son complementarios, no redundantes.
+  - ✅ **INSTALADO Y VERIFICADO el 18/10**: cron cada 5 min en `srv1111386`, correo de prueba recibido, corrida normal en `salida: 0`.
+  - 🐛 **Dos bugs propios, encontrados en la primera prueba real** (y por eso el vigilante se prueba contra el servicio de verdad, no solo en papel):
+    - `curl -sL -X POST` contra Apps Script devuelve **411**. Con `-L`, curl reenvía el método al seguir el 302 pero **descarta el cuerpo**. Sin `-X POST` funciona: el `-d` ya lo hace POST, y el redirect se sigue con GET, que es como Apps Script entrega el resultado del POST ya ejecutado.
+    - **HTTP 200 no significa enviado.** Apps Script devuelve 200 con un cuerpo de error cuando la clave no coincide. Hay que mirar el cuerpo (`"status":"success"`), no el código.
+  - 📌 **Al instalarlo, ojo con la consola web de Hostinger**: `Ctrl+W` lo intercepta el navegador y cierra la pestaña, así que la búsqueda de nano no se puede usar. Conviene bajar el archivo con `curl` desde GitHub y poner la clave con `read -s` + `sed`, que además la mantiene fuera del historial de bash.
   - **611 comprobaciones**, 68 mutaciones.
 
 ### 🔁 Si el VPS se cae otra vez: pasar la app al Apps Script
