@@ -1729,5 +1729,89 @@ console.log('\n=== Viaticos por equipo, cada uno con su presupuesto ===');
       gE.globales.arranque_({ idToken: 'didier@energy-millennium.com' }).equipos);
 }
 
+console.log('\n=== El aviso de que la app no responde ===');
+{
+  // El 17/10 Hostinger reinicio el VPS y la app quedo caida toda la noche.
+  // Nadie se entero hasta que avisaron los usuarios.
+  //
+  // El correo lo manda ESTO, que corre en Google, porque el vigilante vive en
+  // el servidor y ahi no hay —ni debe haber— credenciales de Google.
+  const foto = {
+    'PAGOS REGISTRADOS': [ENC_PAGOS],
+    'SALDOS':    [['FECHA', 'CUENTA', 'SALDO BASE', 'CONCEPTO', 'REGISTRADO POR']],
+    'TRASLADOS': [['FECHA', 'ORIGEN', 'DESTINO', 'MONTO', 'REGISTRADO POR', 'NOTA',
+                   'URL COMPROBANTE', 'FECHA REGISTRO', 'REALIZADO POR']],
+    'PRESUPUESTO': [['FECHA', 'MONTO DIARIO', 'REGISTRADO POR', 'NOTA', 'EQUIPO']],
+    'USUARIOS': [['CORREO', 'NOMBRE', 'TELEFONO', 'ROL', 'SECCIONES', 'ESTADO',
+                  'FECHA REGISTRO', 'ULTIMO ACCESO', 'EQUIPO']],
+    'SESIONES': [['HASH', 'CORREO', 'CREADA', 'ULTIMO USO', 'VENCE']],
+    'SOLICITUDES DE APROBACION': [['ID SOLICITUD']]
+  };
+  const e = montar(foto, 'estricto');
+  const g = e.globales;
+
+  // Sin clave configurada no manda nada, y lo DICE: un vigilante que falla en
+  // silencio es peor que no tenerlo, porque se cree que esta cuidando.
+  const sinClave = g.avisarCaida_({ clave: 'lo-que-sea' });
+  chk('sin clave configurada no manda correo', sinClave.status === 'error', sinClave);
+  chk('y explica que hay que generarla', /generarClaveDeVigilancia/.test(sinClave.message), sinClave.message);
+  chk('no se envio nada', e.correos().length === 0, e.correos().length);
+
+  // La clave se GENERA, no se escribe en el codigo: el repositorio es publico.
+  const texto = g.generarClaveDeVigilancia();
+  const clave = g.PropertiesService.getScriptProperties().getProperty('CLAVE_VIGILANCIA');
+  chk('la clave se genera y se guarda', !!clave && clave.length >= 32, clave && clave.length);
+  chk('y no queda escrita en el codigo fuente',
+      require('fs').readFileSync(RUTA, 'utf8').indexOf(clave) === -1,
+      'la clave quedaria en el repositorio, que es publico');
+  chk('se muestra una vez para copiarla al servidor', texto.indexOf(clave) !== -1);
+
+  // Esta URL es publica: sin la clave correcta, nada.
+  let negado = false;
+  try { g.avisarCaida_({ clave: 'incorrecta' }); } catch (err) { negado = /SOLO_ADMIN/.test(err.message); }
+  chk('con la clave equivocada se rechaza', negado);
+  chk('sigue sin enviarse nada', e.correos().length === 0, e.correos().length);
+
+  // El aviso real.
+  const r1 = g.avisarCaida_({ clave: clave, detalle: 'HTTP 502 en /salud' });
+  chk('con la clave correcta avisa', r1.status === 'success' && e.correos().length === 1, r1);
+  const c1 = e.correos()[0];
+  chk('el asunto dice que NO responde', /NO responde/.test(c1.subject), c1.subject);
+  chk('y el detalle del vigilante viaja en el cuerpo', /HTTP 502 en \/salud/.test(c1.body), c1.body);
+
+  // JAMAS a una direccion que mande quien llama: seria un rele de spam con la
+  // reputacion de esta cuenta de Google.
+  const r2 = g.avisarCaida_({ clave: clave, estado: 'recuperada', to: 'atacante@ejemplo.com' });
+  // DESTINATARIOS es un `const` del archivo: no queda como propiedad del
+  // contexto, hay que evaluarlo adentro.
+  const DEST = require('vm').runInContext("DESTINATARIOS.join(',')", g);
+  chk('el correo va SIEMPRE a los administradores',
+      e.correos().length > 0 && e.correos().every(function (m) { return m.to === DEST; }),
+      e.correos().map(function (m) { return m.to; }));
+  chk('nunca a la direccion que mande quien llama',
+      e.correos().every(function (m) { return m.to.indexOf('atacante') === -1; }));
+
+  // El aviso de que volvio cierra la historia: nunca se frena.
+  chk('el aviso de recuperada si sale', r2.status === 'success' && e.correos().length === 2, r2);
+  chk('y lo dice en el asunto', /volvió a funcionar/.test(e.correos()[1].subject), e.correos()[1].subject);
+
+  // 288 correos por dia no se leen: se filtran.
+  g.avisarCaida_({ clave: clave, detalle: 'otra vez' });
+  const antes = e.correos().length;
+  const frenado = g.avisarCaida_({ clave: clave, detalle: 'y otra' });
+  chk('dos caidas seguidas no mandan dos correos',
+      frenado.omitido === true && e.correos().length === antes, e.correos().length);
+
+  // Lo que viene de afuera se recorta y va sin HTML: si la clave se filtrara,
+  // lo peor posible es un texto corto y feo, no una pagina falsa.
+  const cache = g.CacheService.getScriptCache();
+  cache.remove('aviso_caida');
+  g.avisarCaida_({ clave: clave, detalle: '<b>ojo</b>' + 'x'.repeat(900) });
+  const ultimo = e.correos()[e.correos().length - 1];
+  chk('el detalle de afuera va sin etiquetas HTML', ultimo.body.indexOf('<b>') === -1);
+  chk('y recortado', ultimo.body.indexOf('x'.repeat(400)) === -1, 'entraria texto sin limite');
+  chk('el correo es TEXTO PLANO, sin htmlBody', ultimo.htmlBody === undefined, Object.keys(ultimo));
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);

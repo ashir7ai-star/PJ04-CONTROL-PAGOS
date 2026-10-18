@@ -158,6 +158,32 @@ function crearEntorno(foto, opciones) {
       getUserCache:   () => cacheCompartido
     },
 
+    // PropertiesService EN MEMORIA, y a propósito.
+    //
+    // En Apps Script guarda secretos que no pueden vivir en el repositorio,
+    // que es público: hoy, la clave que autoriza al vigilante del servidor a
+    // pedir el correo de "la app no responde".
+    //
+    // Acá NO persiste, y eso es lo correcto: este backend no es el que manda
+    // ese aviso —no podría, es justamente el que se cae— así que la clave
+    // nunca se configura de este lado y `avisarCaida_` responde "no hay clave
+    // configurada". Lo que importa es que exista el objeto: sin él, el archivo
+    // compartido tiraría ReferenceError al tocar esa función.
+    PropertiesService: (function () {
+      const guardadas = new Map();
+      const almacen = {
+        getProperty:  (k) => (guardadas.has(String(k)) ? guardadas.get(String(k)) : null),
+        setProperty:  (k, v) => { guardadas.set(String(k), String(v)); return almacen; },
+        deleteProperty: (k) => { guardadas.delete(String(k)); return almacen; },
+        getProperties: () => Object.fromEntries(guardadas)
+      };
+      return {
+        getScriptProperties: () => almacen,
+        getUserProperties:   () => almacen,
+        getDocumentProperties: () => almacen
+      };
+    })(),
+
     // La respuesta ya no viaja por ContentService: el servidor HTTP la manda
     // directo. Se conserva el objeto porque el código lo usa, y se guarda el
     // texto para que el servidor lo tome.

@@ -1856,6 +1856,7 @@ function doPost(e) {
     if (body.action === 'consultar_presupuesto') return respuestaJson_(consultarPresupuesto_(body));
     if (body.action === 'ajustar_presupuesto')   return respuestaJson_(ajustarPresupuesto_(body));
     if (body.action === 'asignar_equipo')        return respuestaJson_(asignarEquipo_(body));
+    if (body.action === 'avisar_caida')          return respuestaJson_(avisarCaida_(body));
     return respuestaJson_({ status: 'error', message: 'Acción no reconocida: ' + body.action });
   } catch (err) {
     return errorJson_(err);
@@ -2237,7 +2238,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-10-15-b · el equipo se elige al registrar; el reparto lo mueve un admin';
+const REVISION_BACKEND = '2026-10-18-a · aviso por correo cuando la app no responde';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -3995,6 +3996,111 @@ function avisarSiCruzaPresupuesto_(montoDelPago, fechaDelGasto, equipo) {
     // Un aviso que falla NUNCA puede voltear un pago ya registrado.
     Logger.log('aviso de presupuesto: ' + err);
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// F) AVISO DE CAÍDA — el correo que manda el vigilante del servidor
+//
+// POR QUÉ VIVE ACÁ Y NO EN EL SERVIDOR.
+//
+// El 17/10 Hostinger reinició el VPS por una vulnerabilidad del kernel y la
+// app quedó caída TODA LA NOCHE. Nadie se enteró hasta que los usuarios
+// avisaron a la mañana siguiente.
+//
+// Un vigilante que corra dentro de la app no sirve: si la app está colgada, el
+// vigilante está colgado con ella y no puede contar su propia muerte. Y uno
+// que corra en el servidor tampoco puede mandar el correo, porque para eso
+// necesitaría las credenciales de Google ahí — duplicadas en un lugar donde no
+// deben estar.
+//
+// Por eso se parte en dos: el vigilante MIRA desde el servidor (un curl, sin
+// credenciales de nada) y el correo lo MANDA esto, que corre en Google y sigue
+// en pie aunque el servidor esté apagado.
+//
+// ⚠️ LO QUE ESTO NO CUBRE: si Hostinger apaga el VPS entero, el vigilante se
+// apaga con él y nadie llama a esta función. Para ese caso hace falta un
+// monitoreo externo (UptimeRobot). Son complementarios, no redundantes.
+// ══════════════════════════════════════════════════════════════════════════
+
+// Cada cuánto, como mucho, se manda un aviso. Un servicio que parpadea cada 5
+// minutos mandaría 288 correos por día, y 288 correos no se leen: se filtran.
+const MINUTOS_ENTRE_AVISOS = 30;
+
+// Genera la clave que autoriza al vigilante, la guarda y la muestra UNA vez.
+//
+// Se corre A MANO desde el editor. La clave se copia al servidor y NO al
+// repositorio, que es público. Por eso se genera acá en vez de escribirse en
+// el código: así no existe en ningún archivo versionado.
+function generarClaveDeVigilancia() {
+  const clave = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+  PropertiesService.getScriptProperties().setProperty('CLAVE_VIGILANCIA', clave);
+  const texto = 'CLAVE DE VIGILANCIA generada.\n\n' + clave +
+    '\n\nCopiala al script del servidor (/root/vigilar-pj04.sh).\n' +
+    'NO la pegues en el repositorio: es público.\n' +
+    'Volver a correr esta función genera otra y anula la anterior.';
+  Logger.log(texto);
+  return texto;
+}
+
+// El aviso. Lo llama el vigilante del servidor cuando la app no responde, y
+// otra vez cuando vuelve.
+//
+// SEGURIDAD, porque esta URL es pública:
+//   · Sin la clave correcta no hace nada. Se compara contra la guardada en las
+//     propiedades del script, que no está en ningún archivo.
+//   · El correo va SIEMPRE a DESTINATARIOS. Jamás a una dirección que mande
+//     quien llama: eso lo convertiría en un relé de spam con la reputación de
+//     esta cuenta de Google.
+//   · El detalle que viene de afuera se recorta y viaja como TEXTO PLANO. Si
+//     la clave alguna vez se filtrara, lo peor que se podría hacer es mandarle
+//     a los tres administradores un texto corto y feo, no una página falsa.
+function avisarCaida_(body) {
+  const esperada = PropertiesService.getScriptProperties().getProperty('CLAVE_VIGILANCIA');
+  if (!esperada) {
+    return { status: 'error', message: 'No hay clave de vigilancia configurada. ' +
+             'Correr generarClaveDeVigilancia() desde el editor.' };
+  }
+  if (String((body && body.clave) || '') !== esperada) {
+    // No se dice que la clave esté mal: a quien prueba a ciegas no se le
+    // confirma que exista algo que adivinar.
+    throw new Error('SOLO_ADMIN');
+  }
+
+  const vuelve = String((body && body.estado) || '') === 'recuperada';
+
+  // Freno de ruido. El aviso de que VOLVIÓ nunca se frena: es el que cierra la
+  // historia, y si se perdiera quedaría una alarma encendida para siempre.
+  const cache = CacheService.getScriptCache();
+  if (!vuelve) {
+    if (cache.get('aviso_caida')) {
+      return { status: 'success', omitido: true,
+               message: 'Ya se avisó hace menos de ' + MINUTOS_ENTRE_AVISOS + ' minutos.' };
+    }
+    cache.put('aviso_caida', '1', MINUTOS_ENTRE_AVISOS * 60);
+  } else {
+    cache.remove('aviso_caida');
+  }
+
+  // Recortado y sin HTML: viene de afuera.
+  const detalle = String((body && body.detalle) || '').replace(/[<>]/g, '').slice(0, 300);
+  const cuando  = Utilities.formatDate(new Date(), ZONA_HORARIA, 'dd/MM/yyyy HH:mm');
+
+  MailApp.sendEmail({
+    to: DESTINATARIOS.join(','),
+    subject: (vuelve ? 'Control de Pagos volvió a funcionar' : 'Control de Pagos NO responde') +
+             ' — ' + cuando,
+    body: (vuelve
+      ? 'La aplicación volvió a responder.\n\nHora: ' + cuando + '\n'
+      : 'La aplicación no está respondiendo y nadie puede registrar pagos.\n\n' +
+        'Hora: ' + cuando + '\n') +
+      (detalle ? '\nQué vio el vigilante:\n' + detalle + '\n' : '') +
+      '\n' + URL_APP + '\n\n' +
+      'Aviso automático del vigilante que corre en el servidor.\n' +
+      'Si el servidor entero está apagado, este correo NO llega: para ese caso\n' +
+      'está el monitoreo externo.'
+  });
+
+  return { status: 'success', estado: vuelve ? 'recuperada' : 'caida' };
 }
 
 // ─── Traslados entre cuentas propias ──────────────────────────────────────
