@@ -65,15 +65,30 @@ anotar() {
 
 # El aviso. Nunca hace fallar al vigilante: si no se puede avisar, se anota y
 # se sigue — un error acá no puede dejar de vigilar.
+#
+# ⚠️ DOS TRAMPAS, las dos encontradas en la primera prueba real:
+#
+# 1. NADA de `-X POST` junto con `-L`. El `-d` ya hace que sea POST. Si además
+#    se fuerza con `-X POST`, al seguir el 302 de Apps Script curl reenvía el
+#    método pero DESCARTA el cuerpo, y Google contesta 411 (Length Required).
+#    Sin `-X`, curl sigue el redirect con GET —que es como Apps Script entrega
+#    el resultado del POST que ya ejecutó— y todo funciona.
+#
+# 2. HTTP 200 NO significa que se haya enviado. Apps Script devuelve 200 con
+#    un cuerpo de error cuando la clave está mal. Hay que mirar el CUERPO.
 avisar() {
-  local estado="$1" detalle="$2" codigo
-  codigo=$(curl -sL -o /dev/null -w '%{http_code}' --max-time 45 \
-    -X POST "$URL_AVISO" \
+  local estado="$1" detalle="$2" cuerpo
+  cuerpo=$(curl -sL --max-time 45 "$URL_AVISO" \
     -H 'Content-Type: application/json' \
     -d "{\"action\":\"avisar_caida\",\"clave\":\"$CLAVE\",\"estado\":\"$estado\",\"detalle\":\"$detalle\"}" \
-    2>/dev/null) || codigo="000"
-  anotar "aviso[$estado] -> HTTP $codigo"
-  [ "$codigo" = "200" ]
+    2>/dev/null) || cuerpo=""
+
+  if echo "$cuerpo" | grep -q '"status":"success"'; then
+    anotar "aviso[$estado] -> enviado"
+    return 0
+  fi
+  anotar "aviso[$estado] -> FALLO: $(echo "$cuerpo" | head -c 200)"
+  return 1
 }
 
 # ─── El chequeo ───────────────────────────────────────────────────────────
@@ -144,12 +159,23 @@ if [ "${1:-}" = "--probar" ]; then
   else
     echo "  FALLA: $salida"
   fi
+  if [ "$CLAVE" = "PEGAR_LA_CLAVE_ACA" ]; then
+    echo
+    echo "  FALTA LA CLAVE. Corré generarClaveDeVigilancia() en el editor de"
+    echo "  Apps Script y pegá el resultado en la variable CLAVE de este archivo."
+    exit 1
+  fi
   echo "Mandando un correo de prueba a los administradores..."
   if avisar "recuperada" "PRUEBA del vigilante. Si recibiste esto, el aviso funciona."; then
     echo "  Enviado. Revisá la bandeja."
   else
-    echo "  NO se pudo enviar. Revisá la CLAVE y que el Apps Script esté desplegado"
-    echo "  con la version que incluye la accion avisar_caida."
+    echo
+    echo "  NO se pudo enviar. El motivo exacto quedó en $BITACORA :"
+    tail -1 "$BITACORA" 2>/dev/null | sed 's/^/    /'
+    echo
+    echo "  SOLO_ADMIN           -> la clave no coincide con la del Apps Script."
+    echo "  clave de vigilancia  -> falta correr generarClaveDeVigilancia()."
+    echo "  Accion no reconocida -> el Apps Script esta desplegado en una version vieja."
   fi
   exit 0
 fi
