@@ -1,5 +1,16 @@
-process.env.GOOGLE_CREDENCIALES_ARCHIVO='../credenciales.json';
-process.env.SHEETS_ID='1z8qd3qfU0k2y07xddtu-3-kFVe9EnOU8ZT7mDEjf1e8';
+// ⚠️ Los identificadores NO se escriben acá: este repositorio es PÚBLICO.
+// Salen del entorno, igual que en producción. Para correrlo:
+//   SHEETS_ID=<id> node verificar-dominios.js
+function exigir_(nombre) {
+  if (!process.env[nombre]) {
+    console.error('Falta ' + nombre + '. Pasalo por entorno:  ' + nombre +
+                  '=<valor> node ' + require('path').basename(__filename));
+    process.exit(1);
+  }
+}
+exigir_('SHEETS_ID');
+process.env.GOOGLE_CREDENCIALES_ARCHIVO =
+  process.env.GOOGLE_CREDENCIALES_ARCHIVO || '../credenciales.json';
 const { leerHojas } = require('./src/hojas');
 (async () => {
   const d = await leerHojas(['USUARIOS'], true);

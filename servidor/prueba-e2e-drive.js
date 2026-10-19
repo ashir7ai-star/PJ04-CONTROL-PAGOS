@@ -1,7 +1,19 @@
-process.env.GOOGLE_CREDENCIALES_ARCHIVO = '../credenciales.json';
-process.env.DRIVE_CARPETA_MADRE = process.env.DRIVE_CARPETA_MADRE || '1E8M52g8IfEAdzYYpeXqLsMX2nDlw7OCO';
-process.env.DRIVE_TOKEN_ARCHIVO = '../token-drive.json';
-process.env.SHEETS_ID = '1z8qd3qfU0k2y07xddtu-3-kFVe9EnOU8ZT7mDEjf1e8';
+// ⚠️ Los identificadores NO se escriben acá: este repositorio es PÚBLICO.
+// Salen del entorno, igual que en producción. Para correrlo:
+//   SHEETS_ID=<id> node prueba-e2e-drive.js
+function exigir_(nombre) {
+  if (!process.env[nombre]) {
+    console.error('Falta ' + nombre + '. Pasalo por entorno:  ' + nombre +
+                  '=<valor> node ' + require('path').basename(__filename));
+    process.exit(1);
+  }
+}
+exigir_('SHEETS_ID');
+exigir_('DRIVE_CARPETA_MADRE');
+process.env.GOOGLE_CREDENCIALES_ARCHIVO =
+  process.env.GOOGLE_CREDENCIALES_ARCHIVO || '../credenciales.json';
+process.env.DRIVE_TOKEN_ARCHIVO =
+  process.env.DRIVE_TOKEN_ARCHIVO || '../token-drive.json';
 
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const { crearEntorno } = require('./src/entorno');
