@@ -456,6 +456,46 @@ console.log('\n=== Quien esta en cada equipo: solo administradores ===');
       'la pantalla le pisaria la eleccion en cada recarga');
 }
 
+console.log('\n=== "Registrado por" nunca queda en blanco ===');
+{
+  // Reportado el 19/10: "han habido ocasiones que no aparece el nombre".
+  //
+  // La causa: el nombre se escribia SOLO dentro de aplicarPermisos(), que
+  // corre al entrar y al refrescar la sesion — pero no despues de registrar
+  // un pago. Y resetForm() hace form.reset(), que devuelve cada campo a su
+  // defaultValue: como este input no trae `value` en el HTML, quedaba VACIO.
+  // Desaparecia a partir del segundo pago de cada sesion.
+  chk('pintar el nombre es una funcion propia, no codigo suelto',
+      /function pintarQuienRegistra\(\)/.test(codigo),
+      'volveria a estar metido en un solo lugar, y a perderse en el otro');
+
+  const reset = codigo.split('function resetForm()')[1].split('\n    }')[0];
+  chk('se repinta al vaciar el formulario',
+      /pintarQuienRegistra\(\);/.test(reset),
+      'el segundo pago de cada sesion saldria sin nombre');
+  // El orden importa: repintar ANTES del reset no sirve de nada.
+  chk('y DESPUES de form.reset(), no antes',
+      reset.indexOf('form.reset()') < reset.indexOf('pintarQuienRegistra()'),
+      'el reset lo borraria justo despues de pintarlo');
+
+  // El arreglo de raiz: el valor por omision de un input es su defaultValue.
+  // Con esto, cualquier reset futuro lo restaura en vez de borrarlo.
+  const pinta = codigo.split('function pintarQuienRegistra()')[1].split('\n    }')[0];
+  chk('el valor queda como defaultValue, para que reset lo RESTAURE',
+      /campo\.defaultValue = quienSoy;/.test(pinta),
+      'habria que acordarse de repintar en cada lugar que resetee');
+
+  // Un pago sin saber quien lo cargo es lo unico que esta columna no puede
+  // permitir: es toda la trazabilidad que tiene la contabilidad.
+  chk('sin nombre en la cuenta se cae al correo, nunca a vacio',
+      /sesion\.nombre \|\| sesion\.correo \|\| ''/.test(pinta),
+      'quedaria en blanco para quien no tenga nombre cargado');
+
+  chk('y aplicarPermisos sigue llamandola',
+      /pintarQuienRegistra\(\);/.test(codigo.split('function aplicarPermisos()')[1].split('\n    }')[0]),
+      'no se pintaria al entrar');
+}
+
 console.log('\n=== El panel compara los equipos, no los muestra de a uno ===');
 {
   // Con dos presupuestos distintos, la primera pregunta es "como va cada uno".

@@ -907,12 +907,17 @@ console.log('\n=== El formulario no deja escribir ese campo ===');
   chk('ya no se pide como campo a completar',
       !/const required = \[[^\]]*'registradoPor'/.test(html),
       'seguiria pidiendo completar un campo que no se puede tocar');
-  // Ojo con como se comprueba esto: buscar solo "campoQuien.value = quienSoy"
-  // NO sirve, porque ese texto sigue estando aunque se le ponga un `if` que lo
+  // Ojo con como se comprueba esto: buscar solo "campo.value = quienSoy" NO
+  // sirve, porque ese texto sigue estando aunque se le ponga un `if` que lo
   // condicione. Se exige la forma incondicional Y la ausencia del guardia.
+  //
+  // El 19/10 esto se movio a su propia funcion, porque hacia falta llamarlo
+  // tambien desde resetForm(): estaba solo en aplicarPermisos() y el nombre
+  // desaparecia a partir del segundo pago de cada sesion.
+  const pintaQuien = html.split('function pintarQuienRegistra()')[1].split('\n    }')[0];
   chk('se pisa SIEMPRE con la sesion, no solo si esta vacio',
-      /if \(campoQuien\) campoQuien\.value = quienSoy;/.test(html) &&
-      !/campoQuien[^;]*\.value\.trim\(\)/.test(html),
+      /campo\.value = quienSoy;/.test(pintaQuien) &&
+      !/campo[^;]*\.value\.trim\(\)/.test(pintaQuien),
       'si solo se precarga cuando esta vacio, entra el autocompletado del navegador');
 
   // La pestana de Control de Viaticos: visible para quien tenga la seccion,

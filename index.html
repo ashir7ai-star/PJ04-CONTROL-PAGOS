@@ -5419,6 +5419,9 @@
       // El pago se guardó (o se descartó): el próximo empieza con id nuevo.
       idPagoPendiente = null;
       form.reset();
+      // Explícito además del defaultValue: si la sesión llegó DESPUÉS de haber
+      // pintado el campo, acá se pone al día.
+      pintarQuienRegistra();
       tipoHidden.value = '';
       selectRubro.selectedIndex = 0;
       campoRubro.style.display = 'none';
@@ -6417,15 +6420,40 @@
       //
       // Esto es solo lo que se VE. La garantía está en el servidor, que
       // reescribe el campo desde la sesión e ignora lo que mande el navegador.
-      const quienSoy = sesion.nombre || sesion.correo || '';
-      const campoQuien = document.getElementById('registradoPor');
-      if (campoQuien) campoQuien.value = quienSoy;
+      pintarQuienRegistra();
 
       // "Solicitado por" SÍ sigue editable: una solicitud de aprobación puede
       // pedirla alguien a nombre de otro, y el servidor filtra por correo, no
       // por este texto. Se precarga solo si está vacío.
       const campoSolicita = document.getElementById('solicitadoPor');
+      const quienSoy = sesion.nombre || sesion.correo || '';
       if (campoSolicita && !campoSolicita.value.trim() && quienSoy) campoSolicita.value = quienSoy;
+    }
+
+    // Quién registra, en el formulario de pagos.
+    //
+    // ⚠️ VIVE APARTE porque hay que llamarlo desde DOS lados. Estaba metido
+    // dentro de aplicarPermisos(), que corre al entrar y al refrescar la
+    // sesión — pero NO después de registrar un pago. Y `resetForm()` hace
+    // `form.reset()`, que devuelve cada campo a su valor del HTML: como este
+    // input no tiene `value`, quedaba VACÍO. El nombre desaparecía a partir
+    // del segundo pago de cada sesión, que es el "a veces no aparece".
+    //
+    // Nunca queda en blanco: si no hay nombre en USUARIOS se cae al correo.
+    // Un pago sin saber quién lo cargó es lo único que esta columna no puede
+    // permitir — es toda la trazabilidad que tiene la contabilidad.
+    //
+    // Esto es solo lo que se VE. La garantía está en el servidor, que reescribe
+    // el campo desde la sesión e ignora lo que mande el navegador.
+    function pintarQuienRegistra() {
+      const campo = document.getElementById('registradoPor');
+      if (!campo) return;
+      const quienSoy = sesion.nombre || sesion.correo || '';
+      campo.value = quienSoy;
+      // Y que `form.reset()` lo RESTAURE en vez de borrarlo: el valor por
+      // omisión de un input es su `defaultValue`, no lo que diga el HTML.
+      // Sin esto habría que acordarse de repintar en cada lugar que resetee.
+      campo.defaultValue = quienSoy;
     }
 
     function seccionDeTipoFront(tipo) {

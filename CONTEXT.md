@@ -551,6 +551,11 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-19**: 👤 **"Registrado por" ya no se queda en blanco.** Reportado como *"han habido ocasiones que no aparece el nombre"*.
+  - **La causa.** El nombre se escribía **solo** dentro de `aplicarPermisos()`, que corre al entrar y al refrescar la sesión — pero **no** después de registrar un pago. Y `resetForm()` hace `form.reset()`, que devuelve cada campo a su `defaultValue`: como ese input no trae `value` en el HTML, quedaba **vacío**. Desaparecía a partir del **segundo pago de cada sesión**.
+  - **El arreglo de raíz:** al pintarlo se fija también `campo.defaultValue`, así cualquier `reset()` futuro lo **restaura** en vez de borrarlo — sin depender de que alguien se acuerde de repintar. Y se extrajo a `pintarQuienRegistra()`, llamada desde `aplicarPermisos()` **y** desde `resetForm()` (después del reset, no antes).
+  - **Nunca queda en blanco:** sin nombre en USUARIOS se cae al correo. Un pago sin saber quién lo cargó es lo único que esa columna no puede permitir.
+  - Es el mismo patrón que el campo Equipo del mismo día: **un valor que se pinta en un solo lugar y se borra en otro**. Cambio solo de pantalla; cache `v111`.
 - **2026-10-19**: 🔒 **El campo Equipo pasa a ser fijo e informativo. Y nunca bloquea un registro.**
   - **El síntoma.** jose Durango no pudo cargar sus facturas el 18/10: el desplegable de Equipo le salía vacío y el formulario no lo dejaba seguir. Reportado un día después.
   - **La causa, en dos capas.** (1) La app arranca restaurando la sesión del navegador y llamando `ocultarLogin()` **antes** de hablar con el servidor, así que con el VPS caído se veía perfectamente normal; la llamada fallaba y `refrescarModoEnSegundoPlano` hacía `return` **en silencio**. (2) 🐛 `guardarSesion` **guardaba** la lista de equipos en el navegador y **nada la volvía a leer** — `aplicarSesion` restauraba `equipo` pero no `equipos`. Se guardaba y no se usaba, así que bastaba con que el servidor no respondiera para quedarse sin lista.
