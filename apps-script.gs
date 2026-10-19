@@ -568,32 +568,32 @@ function equipoValido_(clave) {
   return !!etiquetaDeEquipo_(clave);
 }
 
-// EL EQUIPO DE UN VIÁTICO: lo elige quien registra; si no eligió, el suyo.
+// EL EQUIPO DE UN VIÁTICO: sale de la SESIÓN. El navegador no lo decide.
 //
-// Esto cambió el 2026-10-15 y va en contra de cómo estaba. Antes salía solo de
-// la persona, con este argumento: un desplegable más en el celular, en cada
-// almuerzo, es una oportunidad más de equivocarse, y equivocarse acá no da
-// error — el gasto se va al equipo que no es y los dos presupuestos mienten a
-// la vez.
+// Esto se movió dos veces en cuatro días y conviene dejar escrito por qué,
+// porque la segunda vez fue para atrás:
 //
-// Sigue siendo cierto. Pero hay algo peor, y lo trajo la rotación: los equipos
-// NO son siempre los mismos (decisión del usuario, 15/10) y el reparto en
-// USUARIOS lo mantiene un administrador. Si alguien pasa al Equipo 2 el lunes
-// y nadie lo actualiza hasta el jueves, tres días de gastos se cargan al
-// equipo equivocado — y tampoco da error. El reparto puede quedar viejo; quien
-// está registrando, no.
+// • Hasta el 15/10 salía de la persona (columna EQUIPO en USUARIOS).
+// • El 15/10 pasó a ser un desplegable que elegía quien registraba, con el
+//   suyo preseleccionado. El argumento era la rotación: el reparto lo mantiene
+//   un administrador y puede quedar viejo, mientras que quien está en campo
+//   sabe con quién estuvo hoy.
+// • El 19/10 volvió a salir de la sesión, por decisión del usuario, pero ahora
+//   el formulario MUESTRA el equipo en un campo fijo. Esa era la parte que
+//   faltaba: antes no se elegía y tampoco se veía.
 //
-// El costo del desplegable se paga una vez por pago y se VE; el del reparto
-// viejo no se ve hasta que alguien cuadra los números. Por eso manda la
-// elección, con el equipo de la persona puesto de entrada para que el caso
-// normal siga siendo un solo toque.
+// Lo que inclinó la balanza fue un incidente real. El 18/10, con el servidor
+// caído, la lista de equipos no llegó, el desplegable quedó vacío y —como el
+// campo era obligatorio— NADIE PUDO REGISTRAR. Un campo que depende de la red
+// para poder guardar un pago es un punto de falla que no compensa.
 //
-// Un equipo que no esté en la lista cerrada se ignora y se cae al de la
-// persona: misma regla que con el rubro. Un dato mal clasificado es peor que
-// uno sin clasificar, y acá decide a qué presupuesto se le carga la plata.
+// Y es coherente con el resto: igual que "Registrado por", lo que identifica a
+// quien registra no lo decide el navegador. Mover a alguien de equipo sigue
+// siendo cosa de administradores (asignarEquipo_).
+//
+// ⚠️ `body.equipo` se IGNORA a propósito. Aunque el formulario ya no lo mande,
+// cualquiera puede llamar a esta URL directamente.
 function equipoDelPago_(body, ctx) {
-  const pedido = String((body && body.equipo) || '').trim().toLowerCase();
-  if (equipoValido_(pedido)) return pedido;
   return (ctx && ctx.equipo) || '';
 }
 
@@ -2238,7 +2238,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-10-18-a · aviso por correo cuando la app no responde';
+const REVISION_BACKEND = '2026-10-19-a · el equipo se muestra fijo; nunca bloquea el registro';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [

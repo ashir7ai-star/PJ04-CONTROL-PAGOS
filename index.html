@@ -2839,14 +2839,17 @@
             </select>
           </div>
 
-          <!-- Solo aparece en Viáticos. Viene con el equipo de la persona ya
-               puesto, así el caso normal sigue siendo un solo toque; se puede
-               cambiar porque los equipos rotan y quien está registrando sabe
-               con quién estuvo hoy mejor que el reparto, que lo actualiza un
-               administrador y puede estar atrasado. -->
-          <div class="field" id="campoEquipo" style="display:none;">
-            <label for="equipoViatico">Equipo <span class="req">*</span></label>
-            <select id="equipoViatico" name="equipo"></select>
+          <!-- Solo aparece en Viáticos, y es INFORMATIVO: sale de la cuenta,
+               igual que "Registrado por". El 18/10, con el servidor caído, la
+               lista de equipos no llegó, el desplegable quedó vacío y —como
+               era obligatorio— nadie pudo registrar un pago. Un campo que
+               necesita la red para poder guardar es un punto de falla que no
+               compensa. Mover a alguien de equipo es cosa de administradores. -->
+          <div class="field campo-fijo" id="campoEquipo" style="display:none;">
+            <label for="equipoViatico">Equipo</label>
+            <input type="text" id="equipoViatico" readonly tabindex="-1"
+                   title="Sale de tu cuenta. Para cambiarlo, hablá con un administrador." />
+            <span class="candado" id="equipoNota">🔒 Asignado a tu cuenta</span>
           </div>
 
           <div class="field-row">
@@ -3814,6 +3817,10 @@
       // elegir otro, porque los equipos rotan y este dato lo mantiene un
       // administrador: puede quedar viejo, y quien está en campo no.
       equipo:    '',
+      // Cómo se llama ese equipo. Se guarda en el navegador junto con la
+      // sesión para que el formulario lo pueda mostrar aunque el servidor no
+      // responda.
+      equipoTexto: '',
       // La lista CERRADA de equipos, que manda el servidor en el arranque.
       // Tenerla acá escrita a mano se desalinearía el día que se agregue un
       // tercer equipo: el servidor conocería tres y la pantalla ofrecería dos.
@@ -4990,25 +4997,31 @@
 
     // ─── Equipo del viático ───────────────────────────────────────────────
     //
-    // La lista la manda el SERVIDOR en el arranque: es el dueño de la lista
-    // cerrada, y una copia escrita acá ofrecería dos equipos el día que él
-    // conozca tres.
+    // INFORMATIVO, no editable. Sale de la cuenta, igual que "Registrado por",
+    // y el servidor lo escribe desde la sesión — mande lo que mande la
+    // pantalla. Acá solo se MUESTRA, para que quien registra sepa a qué
+    // presupuesto se le está cargando el gasto.
     const campoEquipo  = document.getElementById('campoEquipo');
     const selectEquipo = document.getElementById('equipoViatico');
 
     function pintarEquiposDelPago() {
       if (!selectEquipo) return;
-      // Lo que ya haya elegido manda sobre el valor por omisión: repintar no
-      // puede deshacerle la elección a quien está a mitad de un registro.
-      const elegido = selectEquipo.value || sesion.equipo || '';
-      selectEquipo.innerHTML =
-        '<option value="" disabled' + (elegido ? '' : ' selected') + '>Seleccionar</option>' +
-        (sesion.equipos || []).map(function (e) {
-          return '<option value="' + escapeHtml(e.clave) + '"' +
-                 (e.clave === elegido ? ' selected' : '') + '>' +
-                 escapeHtml(e.etiqueta) + '</option>';
-        }).join('');
-      if (elegido) selectEquipo.value = elegido;
+      const nota = document.getElementById('equipoNota');
+
+      // La etiqueta se guarda en el navegador junto con la sesión, así que se
+      // sigue viendo aunque el servidor no responda. Ese fue el problema del
+      // 18/10: el dato vivía solo en la respuesta del arranque.
+      if (sesion.equipoTexto) {
+        selectEquipo.value = sesion.equipoTexto;
+        if (nota) nota.textContent = '🔒 Asignado a tu cuenta';
+        return;
+      }
+
+      // Sin equipo asignado el pago se registra IGUAL. Bloquearlo sería repetir
+      // el 18/10: dejar a alguien sin poder trabajar por un dato de
+      // configuración que él no puede arreglar.
+      selectEquipo.value = 'Sin equipo asignado';
+      if (nota) nota.textContent = '⚠️ Pedile a un administrador que te asigne uno. El pago se registra igual.';
     }
 
     // El rubro y el equipo solo tienen sentido en Viáticos. Se muestran y se
@@ -5252,14 +5265,9 @@
         return;
       }
 
-      // El equipo es obligatorio en Viáticos. Sin él el gasto no se puede
-      // cargar a ningún presupuesto, y el aviso de que el día se pasó del tope
-      // nunca saldría: el peor error posible acá es el que no avisa.
-      if (String(tipoHidden.value || '').toLowerCase() === 'viaticos' && !selectEquipo.value) {
-        showToast('error', 'Falta el equipo', 'Elegí a qué equipo le corresponde este gasto.');
-        selectEquipo.focus();
-        return;
-      }
+      // El equipo NO se valida acá, y es a propósito: no es un campo que la
+      // persona llene, sale de su cuenta. Exigirlo fue lo que el 18/10 dejó a
+      // todo el mundo sin poder registrar cuando la lista no cargó.
 
       if (uploadNuevoPago.getFiles().length === 0) {
         showToast('error', 'Archivo requerido', 'Debes adjuntar al menos un documento del pago.');
@@ -5291,7 +5299,8 @@
           monto:          document.getElementById('monto').value.replace(/\./g, ''),
           notas:          document.getElementById('notas').value.trim(),
           rubro:          selectRubro.value,
-          equipo:         selectEquipo.value,
+          // El equipo NO se manda: lo escribe el servidor desde la sesión, y
+          // lo ignora aunque llegue. Ver equipoDelPago_.
           fecha_envio:    idPagoPendiente,
           archivos:       archivos
         });
@@ -5306,12 +5315,10 @@
           const montoTxt = '$' + (Number(String(document.getElementById('monto').value)
                             .replace(/\./g, '')) || 0).toLocaleString('es-CO');
           const provTxt  = document.getElementById('proveedor').value.trim();
-          // A qué equipo quedó cargado. Va en la confirmación porque es el
-          // único dato del pago que la persona ELIGIÓ y que no se ve en ningún
-          // lado después: si se equivocó, este es el momento de notarlo.
-          const equipoTxt = (sesion.equipos || [])
-            .filter(function (e) { return e.clave === selectEquipo.value; })
-            .map(function (e) { return e.etiqueta; })[0] || '';
+          // A qué equipo quedó cargado. Va en la confirmación para que quede
+          // claro a qué presupuesto se le cargó la plata, sin tener que ir a
+          // buscarlo a Control de Viáticos.
+          const equipoTxt = sesion.equipoTexto || '';
           const esViatico = String(tipoHidden.value || '').toLowerCase() === 'viaticos';
 
           resetForm();
@@ -5415,9 +5422,6 @@
       tipoHidden.value = '';
       selectRubro.selectedIndex = 0;
       campoRubro.style.display = 'none';
-      // Vuelve al equipo de la persona, no a vacío: el próximo pago arranca
-      // otra vez en un solo toque.
-      selectEquipo.value = '';
       pintarEquiposDelPago();
       campoEquipo.style.display = 'none';
       tipoBtns.forEach(b => b.classList.remove('active'));
@@ -5834,8 +5838,9 @@
           modo:      sesion.modo,
           // Se guardan para que una recarga pueda preseleccionar el equipo sin
           // esperar al servidor. El reparto real lo manda él en el arranque.
-          equipo:    sesion.equipo,
-          equipos:   sesion.equipos,
+          equipo:      sesion.equipo,
+          equipoTexto: sesion.equipoTexto,
+          equipos:     sesion.equipos,
           vence:     vencimientoDeToken(sesion.idToken)
         }));
       } catch (err) { /* modo incógnito o almacenamiento lleno: no es crítico */ }
@@ -5886,6 +5891,15 @@
       sesion.secciones = datos.secciones || [];
       sesion.urlHoja   = datos.urlHoja   || '';
       sesion.equipo    = datos.equipo    || '';
+      // ⚠️ Estos dos se RESTAURAN acá, y es el arreglo del 18/10: se estaban
+      // guardando en el navegador y nadie los volvía a leer, así que si el
+      // servidor no respondía el formulario se quedaba sin equipo que mostrar
+      // — y con el campo obligatorio, sin poder registrar.
+      //
+      // Solo se pisan si vienen: una respuesta parcial no puede borrar lo que
+      // ya se sabía.
+      if (datos.equipoTexto) sesion.equipoTexto = datos.equipoTexto;
+      if (datos.equipos && datos.equipos.length) sesion.equipos = datos.equipos;
       pintarSesionEnHeader();
       aplicarPermisos();
       // El formulario tiene que reflejar el equipo nuevo: si un admin movió a
@@ -6019,6 +6033,21 @@
         // Sin respuesta se mantiene el último modo conocido. No se expulsa a
         // nadie por un problema de red: el servidor valida igual cada operación.
         console.warn('No se pudo completar el arranque:', err && err.message);
+
+        // PERO SE DICE. El 18/10 el servidor estuvo caído toda la noche y la
+        // app se veía perfectamente normal: sesión restaurada del navegador,
+        // pantallas completas, y los datos del servidor simplemente faltando.
+        // Quien la usaba no tenía forma de saber qué pasaba, y lo reportó un
+        // día después. Una falla silenciosa cuesta más que el error que la
+        // causó.
+        //
+        // Solo a quien ya tenía sesión: a quien está en la pantalla de ingreso
+        // el login ya le muestra lo suyo.
+        if (sesion.correo) {
+          showToast('error', 'Sin conexión con el servidor',
+                    'Los datos que ves pueden estar desactualizados y no vas a poder ' +
+                    'registrar pagos hasta que vuelva. Avisá si sigue así.');
+        }
       }
     }
 
@@ -6297,7 +6326,9 @@
       sesion.foto      = '';
       sesion.rol       = 'usuario';
       sesion.secciones = [];
-      sesion.equipo    = '';
+      sesion.equipo      = '';
+      sesion.equipoTexto = '';
+      sesion.equipos     = [];
       // Cerrar sesión tiene que borrar de verdad lo guardado: si no, la próxima
       // recarga volvería a entrar sola con la misma cuenta.
       correoRecordado = '';

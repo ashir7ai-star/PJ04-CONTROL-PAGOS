@@ -304,9 +304,20 @@ console.log('\n=== El equipo se elige al registrar el viatico ===');
   chk('arranca oculto, como el rubro',
       /id="campoEquipo" style="display:none;"/.test(html),
       'se veria en secciones donde no significa nada');
-  chk('es obligatorio en la pantalla',
-      /<label for="equipoViatico">Equipo <span class="req">\*<\/span>/.test(html),
-      'no se veria que hace falta');
+  // 19/10: dejó de ser un desplegable obligatorio y pasó a ser informativo,
+  // igual que "Registrado por". Lo decidió el usuario después del incidente
+  // del 18/10, en el que un campo obligatorio que dependía de la red dejó a
+  // todo el mundo sin poder registrar.
+  chk('es un campo FIJO, no un desplegable',
+      /<input type="text" id="equipoViatico" readonly/.test(html) &&
+      !/<select id="equipoViatico"/.test(html),
+      'volveria a poder elegirse, y a poder equivocarse');
+  chk('y se ve como los demas campos bloqueados',
+      /<div class="field campo-fijo" id="campoEquipo"/.test(html),
+      'no se leeria como "esto sale de tu cuenta"');
+  chk('ya no lleva asterisco de obligatorio',
+      !/<label for="equipoViatico">Equipo <span class="req">/.test(html),
+      'diria que hace falta llenarlo cuando no se llena');
 
   // Rubro y equipo se prenden y se apagan JUNTOS. Separarlos es como uno de los
   // dos se queda visible en una seccion donde no corresponde.
@@ -329,21 +340,50 @@ console.log('\n=== El equipo se elige al registrar el viatico ===');
       /if \(esViatico\) pintarEquiposDelPago\(\);/.test(togg),
       'apareceria vacio');
 
-  // Sin equipo el gasto no se carga a ningun presupuesto Y el aviso de que el
-  // dia se paso del tope no sale. El peor error posible aca es el que no avisa.
-  chk('no se puede enviar un viatico sin equipo',
-      /'viaticos' && !selectEquipo\.value/.test(codigo),
-      'se registraria sin equipo y el aviso del tope no saldria');
-  chk('el equipo viaja en el pago',
-      /equipo:\s*selectEquipo\.value,/.test(codigo), 'el servidor no lo recibiria');
+  // ⚠️ LO QUE EL 18/10 ROMPIO. El campo era obligatorio y su contenido venia
+  // del servidor; con el servidor caido quedo vacio y NADIE PUDO REGISTRAR.
+  // Un dato de configuracion no puede bloquear un pago.
+  chk('el equipo NUNCA bloquea el registro',
+      !/!selectEquipo\.value/.test(codigo),
+      'volveria a dejar a todos sin poder registrar si no carga la lista');
+  chk('y sin equipo asignado se avisa, pero se deja registrar',
+      /Sin equipo asignado/.test(codigo) && /El pago se registra igual/.test(codigo),
+      'quedaria sin explicar por que el campo esta raro');
+  chk('el equipo NO viaja en el pago: lo pone el servidor',
+      !/equipo:\s*selectEquipo\.value,/.test(codigo),
+      'el navegador decidiria a que presupuesto se carga la plata');
 
-  // El equipo de la persona viene puesto: el caso normal es un solo toque.
-  chk('viene preseleccionado el equipo de la cuenta',
-      /selectEquipo\.value \|\| sesion\.equipo/.test(codigo),
-      'habria que elegirlo a mano en cada almuerzo');
-  chk('la lista sale del servidor, no de una copia escrita a mano',
-      /\(sesion\.equipos \|\| \[\]\)\.map/.test(codigo),
-      'ofreceria dos equipos el dia que el servidor conozca tres');
+  // Se MUESTRA el equipo de la cuenta: antes no se elegia y tampoco se veia.
+  chk('muestra el equipo de la cuenta',
+      /selectEquipo\.value = sesion\.equipoTexto;/.test(codigo),
+      'no se veria a que presupuesto se le carga el gasto');
+
+  // ⚠️ EL BUG DE FONDO DEL 18/10: guardarSesion escribia estos datos en el
+  // navegador y NADA los volvia a leer. Se guardaban y no se usaban, asi que
+  // bastaba con que el servidor no respondiera para quedarse sin equipo.
+  chk('la sesion guardada se RESTAURA, no solo se guarda',
+      /if \(datos\.equipoTexto\) sesion\.equipoTexto = datos\.equipoTexto;/.test(codigo) &&
+      /if \(datos\.equipos && datos\.equipos\.length\) sesion\.equipos = datos\.equipos;/.test(codigo),
+      'se guardaria en el navegador y nadie lo leeria, como el 18/10');
+  chk('y se guarda la etiqueta, no solo la clave',
+      /equipoTexto: sesion\.equipoTexto,/.test(codigo),
+      'sin servidor se sabria equipo_2 pero no como se llama');
+  // Una respuesta parcial no puede borrar lo que ya se sabia.
+  chk('una respuesta sin equipos no borra la lista guardada',
+      /datos\.equipos && datos\.equipos\.length/.test(codigo),
+      'un arranque a medias dejaria el panel sin equipos');
+
+  // La peor parte del 18/10 no fue el campo vacio: fue que la app se veia
+  // normal y nadie supo que pasaba hasta un dia despues.
+  // Mirar que el TEXTO exista no alcanza: envolverlo en `if (false)` lo deja
+  // escrito y mudo. Hay que mirar que se LLAME, y guardado por la condicion
+  // que corresponde. Sin saltos de linea en el patron: `[\s\S]{0,40}` salta
+  // el que haya entre el `if` y la llamada.
+  const falloArranque = codigo.split('No se pudo completar el arranque:')[1].slice(0, 1200);
+  chk('si el arranque falla, se avisa en pantalla',
+      /if \(sesion\.correo\) \{\s*showToast\('error', 'Sin conexión con el servidor'/
+        .test(falloArranque),
+      'la app volveria a verse normal con el servidor caido');
   chk('el arranque la trae',
       /if \(r\.equipos\)\s+sesion\.equipos\s+= r\.equipos;/.test(codigo) &&
       /if \(datos\.equipos\)\s+sesion\.equipos\s+= datos\.equipos;/.test(codigo),

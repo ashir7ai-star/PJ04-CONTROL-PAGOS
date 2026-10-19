@@ -1661,14 +1661,16 @@ console.log('\n=== Viaticos por equipo, cada uno con su presupuesto ===');
     'avisarSiCruzaPresupuesto_ = function () {};',
     gR.globales);
 
-  // Laura es del Equipo 1, pero hoy esta en campo con el Equipo 2.
-  chk('se guarda el equipo que ELIGIO, no el suyo',
-      registrar(gR.globales, 'op-eq-1', 'equipo_2')[colE] === 'equipo_2',
+  // 19/10: el equipo volvio a salir de la SESION. El navegador no lo decide,
+  // igual que con "Registrado por". Aunque el formulario ya no lo mande,
+  // cualquiera puede llamar a esta URL directamente.
+  chk('se guarda el equipo de la CUENTA, no el que mande el navegador',
+      registrar(gR.globales, 'op-eq-1', 'equipo_2')[colE] === 'equipo_1',
       registrar(gR.globales, 'op-eq-1', 'equipo_2')[colE]);
-  chk('si no elige, se guarda el de su cuenta',
+  chk('sin que el navegador mande nada, igual sale el de su cuenta',
       registrar(gR.globales, 'op-eq-2')[colE] === 'equipo_1',
       registrar(gR.globales, 'op-eq-2')[colE]);
-  chk('un equipo inventado se ignora y cae al de su cuenta',
+  chk('un equipo inventado tampoco lo cambia',
       registrar(gR.globales, 'op-eq-3', 'equipo_9')[colE] === 'equipo_1',
       registrar(gR.globales, 'op-eq-3', 'equipo_9')[colE]);
 
