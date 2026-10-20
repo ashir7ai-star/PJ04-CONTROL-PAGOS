@@ -28,6 +28,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 Y si llega a pasar: **no alcanza con corregir el archivo**. Hay que **subir también la versión de `CACHE` en `sw.js`**, porque quien ya cargó la versión rota la tiene cacheada bajo ese mismo nombre y el Service Worker es cache-first: se la quedaría para siempre.
 
 ## Última actualización
+**2026-10-19** — ✅ **VERSIÓN ESTABLE: `v2.7-avisa-y-no-bloquea`.** La respuesta a dos incidentes seguidos: el VPS caído toda la noche sin que nadie se enterara, y un usuario sin poder registrar porque un campo obligatorio dependía de la red. **Nada bloquea un pago** —el equipo sale de la cuenta, se muestra, y sin equipo asignado el pago entra igual—, **las fallas se ven** —aviso en pantalla cuando el arranque no responde— y hay **vigilancia**: `vigilar-pj04.sh` revisa cada 5 min y manda correo por el Apps Script, que sigue en pie aunque el servidor esté apagado. Además: "Registrado por" ya no queda en blanco, el detalle de viáticos se baja en PDF, y salieron del repositorio público el `SHEETS_ID` y el id de carpeta de Drive. Verificado en producción: Apps Script **y** EasyPanel en `2026-10-19-a`, web en `v112`, **635 comprobaciones y 81 mutaciones**.
+
 **2026-10-19** — 🔒 **El equipo del viático vuelve a salir de la cuenta, pero ahora SE VE.** Campo fijo, como “Registrado por”. Revierte la decisión del 15/10 por una razón concreta: el 18/10, con el servidor caído, la lista de equipos no llegó, el desplegable quedó vacío y —por ser obligatorio— **nadie pudo registrar un pago**. Un dato de configuración no puede bloquear un pago. Backend `2026-10-19-a`, web `v110`: **hay que desplegar Apps Script y EasyPanel**.
 
 **2026-10-18** — 🚨 **Incidente: la app estuvo caída toda la noche y nadie se enteró.** Hostinger reinició el VPS por una vulnerabilidad del kernel; el contenedor volvió `1/1` pero **sin registrarse en la red interna de Docker**, así que Traefik tenía la ruta y no encontraba a quién servir. Se arregló con `docker service update --force --detach ashir_pj04-pagos-api`. Para que no vuelva a pasar sin aviso se agregó un **vigilante** (`servidor/vigilar-pj04.sh`) y la acción `avisar_caida`. Backend `2026-10-18-a`: **hay que desplegar Apps Script y EasyPanel**.
@@ -551,6 +553,7 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-19**: ✅ Marcada como **versión estable** — etiqueta `v2.7-avisa-y-no-bloquea`, `index.stable.html` = `index.html`, publicada en GitHub. Backend `2026-10-19-a` confirmado en los **dos** despliegues (Apps Script y EasyPanel), cache `v112`.
 - **2026-10-19**: 📄 **El detalle de Control de Viáticos se descarga en PDF.** Botón en la tarjeta "Detalle de pagos".
   - **Baja lo que se está VIENDO**, con los filtros de texto, rubro y persona puestos, y el total es el de lo filtrado. Un PDF con más filas que la pantalla no se puede verificar contra ella — y el reporte se usa justamente para eso. Si hay un filtro activo, el documento lo dice.
   - Incluye el **gasto por rubro** y el encabezado con equipo, período, presupuesto y disponible: un listado de renglones sin ese contexto no se entiende solo.
