@@ -541,6 +541,58 @@ console.log('\n=== El panel compara los equipos, no los muestra de a uno ===');
       'un boton que hace algo no es un filtro');
 }
 
+console.log('\n=== El detalle de viaticos se puede bajar en PDF ===');
+{
+  chk('hay boton de PDF en la tarjeta de Detalle',
+      /id="btnVtPdf"/.test(html), 'no habria como descargarlo');
+  chk('y esta DENTRO de esa tarjeta, no en otra',
+      html.split('Detalle de pagos')[1].split('</section>')[0].indexOf('btnVtPdf') !== -1,
+      'quedaria en un bloque que no le corresponde');
+  chk('el boton hace algo', /btnVtPdf'\)\.addEventListener\('click', descargarViaticosPdf\)/.test(codigo),
+      'seria decorativo');
+
+  const pdf = codigo.split('function descargarViaticosPdf()')[1].split('\n    }\n')[0];
+
+  // Un PDF que traiga MAS filas que la pantalla no se puede verificar contra
+  // ella, y el reporte se usa justamente para eso.
+  chk('baja lo que se esta VIENDO, con los filtros puestos',
+      /const det = vtDetalleFiltrado\(\);/.test(pdf),
+      'traeria filas que no estan en pantalla');
+  chk('y el total es el de lo filtrado, no el del periodo',
+      /const total\s+= det\.reduce/.test(pdf),
+      'la suma no cuadraria con las filas de la tabla');
+  chk('si hay filtro puesto, el PDF lo dice',
+      /FILTRADO \(/.test(pdf), 'pareceria el reporte completo del periodo');
+
+  // Sin filas no se genera un PDF vacio: se explica.
+  chk('sin pagos avisa en vez de bajar un PDF en blanco',
+      /if \(!det\.length\) \{[\s\S]{0,120}showToast/.test(pdf),
+      'bajaria un documento vacio que parece un error');
+
+  // Con un equipo elegido ya lo dice el encabezado; repetirlo por fila es ruido.
+  chk('la columna de equipo sale solo cuando se ven todos',
+      /const porEquipo = !p\.equipo;/.test(pdf),
+      'o faltaria el equipo, o se repetiria en cada fila');
+
+  // Si se cargo otro dia hay que decirlo, igual que en la pantalla.
+  chk('avisa cuando el gasto se cargo otro dia',
+      /cargado el ' \+ d\.registrado/.test(pdf),
+      'nadie entenderia por que un gasto de ayer sale hoy');
+
+  // La lista de rubros vive en el servidor. Una copia aca se desalinea.
+  chk('las etiquetas de rubro salen del servidor, no de una copia',
+      /vtDatos && vtDatos\.rubros/.test(codigo.split('function etiquetaDeRubroVt')[1].split('\n    }')[0]),
+      'habria dos listas de rubros que se separan con el tiempo');
+
+  // Tres documentos de la misma empresa que se ven distinto parecen de
+  // sistemas distintos.
+  chk('usa el mismo azul y el mismo encabezado que el otro PDF',
+      /const azul = \[0, 113, 227\]/.test(pdf) && /Millennium Energy Co/.test(pdf),
+      'se veria como de otro sistema');
+  chk('y numera las paginas', /Página ' \+ i \+ ' de ' \+ paginas/.test(pdf),
+      'un reporte de varias hojas sin numerar se desordena al imprimir');
+}
+
 console.log('\n=== Las variables de CSS que se usan EXISTEN ===');
 {
   // El 15/10 esta hoja usaba --surface-1, --border-subtle y --text-1, que NO

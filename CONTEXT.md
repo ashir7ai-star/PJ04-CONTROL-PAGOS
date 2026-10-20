@@ -551,6 +551,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-19**: 📄 **El detalle de Control de Viáticos se descarga en PDF.** Botón en la tarjeta "Detalle de pagos".
+  - **Baja lo que se está VIENDO**, con los filtros de texto, rubro y persona puestos, y el total es el de lo filtrado. Un PDF con más filas que la pantalla no se puede verificar contra ella — y el reporte se usa justamente para eso. Si hay un filtro activo, el documento lo dice.
+  - Incluye el **gasto por rubro** y el encabezado con equipo, período, presupuesto y disponible: un listado de renglones sin ese contexto no se entiende solo.
+  - **La columna de equipo aparece solo en la vista "Todos"**; con un equipo elegido ya lo dice el encabezado, y repetirlo por fila es ruido.
+  - Mismo diseño que el PDF de Consultar Pagos y que el reporte por correo — tres documentos de la misma empresa que se vean distinto parecen de sistemas distintos.
+  - Solo pantalla; cache `v112`.
+- **2026-10-19**: 🔐 **Se sacaron del repositorio público el `SHEETS_ID` y el id de la carpeta de Drive**, que estaban escritos a mano en `verificar-dominios.js` y `prueba-e2e-drive.js`. Ahora salen del entorno y el script avisa si falta. ⚠️ Auditoría completa del historial: **no hay ni hubo credenciales versionadas**; las coincidencias de `private_key` y `refresh_token` son documentación y código, no valores. Lo que sí está expuesto y no se puede borrar del historial son **8 correos del personal** — razón suficiente para pasar el repositorio a privado (pendiente: GitHub Pages no sirve repos privados en el plan gratuito).
 - **2026-10-19**: 👤 **"Registrado por" ya no se queda en blanco.** Reportado como *"han habido ocasiones que no aparece el nombre"*.
   - **La causa.** El nombre se escribía **solo** dentro de `aplicarPermisos()`, que corre al entrar y al refrescar la sesión — pero **no** después de registrar un pago. Y `resetForm()` hace `form.reset()`, que devuelve cada campo a su `defaultValue`: como ese input no trae `value` en el HTML, quedaba **vacío**. Desaparecía a partir del **segundo pago de cada sesión**.
   - **El arreglo de raíz:** al pintarlo se fija también `campo.defaultValue`, así cualquier `reset()` futuro lo **restaura** en vez de borrarlo — sin depender de que alguien se acuerde de repintar. Y se extrajo a `pintarQuienRegistra()`, llamada desde `aplicarPermisos()` **y** desde `resetForm()` (después del reset, no antes).

@@ -1759,6 +1759,7 @@
       border-bottom: 1px solid var(--border);
     }
     .vt-card-tit { font-size: .92rem; font-weight: 700; letter-spacing: -.01em; margin: 0; color: var(--text); }
+    .vt-card-acc { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     /* La tabla ya está dentro de la tarjeta: su propio borde sería un marco
        dentro de otro marco. */
     .vt-card .vt-tabla-wrap { border: 0; border-radius: 0; }
@@ -3467,7 +3468,18 @@
     <section class="vt-card">
       <div class="vt-card-cab">
         <h3 class="vt-card-tit">Detalle de pagos</h3>
-        <span class="vt-nota" id="vtDetalleNota"></span>
+        <div class="vt-card-acc">
+          <span class="vt-nota" id="vtDetalleNota"></span>
+          <button type="button" class="btn-export pdf" id="btnVtPdf"
+                  title="Descargar este detalle en PDF, tal como se ve">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="13" y2="11"/>
+            </svg>
+            PDF
+          </button>
+        </div>
       </div>
       <div class="vt-tabla-wrap"><table class="vt-tabla" id="vtDetalle"></table></div>
     </section>
@@ -7143,6 +7155,144 @@
         }).join('');
       sel.value = elegido;
     }
+
+    // ─── Descargar el detalle en PDF ─────────────────────────────────────
+    //
+    // Baja EXACTAMENTE lo que se está viendo: mismo período, mismo equipo y
+    // los mismos filtros de texto, rubro y persona. Un PDF que trajera más
+    // filas que la pantalla sería imposible de verificar contra ella, y el
+    // reporte se usa justamente para eso.
+    //
+    // Mismo diseño que el PDF de Consultar Pagos y que el reporte que llega
+    // por correo: encabezado azul, franjas, fila de TOTAL. Tres documentos de
+    // la misma empresa que se ven distinto parecen de sistemas distintos.
+    function descargarViaticosPdf() {
+      const p = vtDatos;
+      if (!p) return;
+      const det = vtDetalleFiltrado();
+      if (!det.length) {
+        showToast('error', 'Nada para descargar', 'No hay pagos en lo que estás viendo.');
+        return;
+      }
+
+      const { jsPDF } = window.jspdf;
+      const doc  = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+      const azul = [0, 113, 227];
+      const pesos = function (n) { return '$' + Math.round(Number(n) || 0).toLocaleString('es-CO'); };
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.setTextColor(30, 30, 32);
+      doc.text('Millennium Energy Co', 40, 40);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(12);
+      doc.setTextColor(90, 90, 95);
+      doc.text('Control de Viáticos — ' + (p.equipoTexto || 'Todos los equipos'), 40, 58);
+
+      // El total de lo FILTRADO, no el del período: es lo que se está
+      // mirando y lo que va a salir en la tabla.
+      const total    = det.reduce(function (a, d) { return a + d.valor; }, 0);
+      const filtrado = det.length !== (p.detalle || []).length;
+
+      doc.setFontSize(9);
+      doc.setTextColor(120, 120, 125);
+      doc.text(p.titulo + '   ·   ' + det.length + ' pago(s)   ·   ' + pesos(total) +
+               (filtrado ? '   ·   FILTRADO (' + det.length + ' de ' + p.detalle.length + ')' : ''), 40, 74);
+      doc.text((p.totalSugerido > 0
+                 ? 'Presupuesto ' + pesos(p.montoDiario) + ' por día' +
+                   (p.dias > 1 ? '  ·  ' + pesos(p.totalSugerido) + ' en ' + p.dias + ' días' : '') +
+                   '  ·  ' + (p.totalSugerido - p.totalGastado < 0
+                                ? 'excedido en ' + pesos(p.totalGastado - p.totalSugerido)
+                                : pesos(p.totalSugerido - p.totalGastado) + ' disponible')
+                 : 'Sin presupuesto definido') +
+               '      Generado el ' + new Date().toLocaleString('es-CO'), 40, 88);
+
+      // ─── Gasto por rubro ───
+      // Va primero y compacto: responde "en qué se fue la plata" antes de
+      // entrar al renglón por renglón.
+      const rubros = (p.rubros || []).filter(function (r) { return r.gastado > 0; })
+                                     .sort(function (a, b) { return b.gastado - a.gastado; });
+      let desdeY = 104;
+      if (rubros.length && !filtrado) {
+        doc.autoTable({
+          head: [['Rubro', 'Pagos', 'Gastado', 'Participación']],
+          body: rubros.map(function (r) {
+            return [r.etiqueta, String(r.pagos), pesos(r.gastado), r.participacion + '%'];
+          }),
+          startY: desdeY,
+          tableWidth: 330,
+          styles: { font: 'helvetica', fontSize: 7.5, cellPadding: 3.5, textColor: [40, 40, 45] },
+          headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold', fontSize: 7.5 },
+          alternateRowStyles: { fillColor: [248, 248, 250] },
+          columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+          margin: { left: 40, right: 40 }
+        });
+        desdeY = doc.lastAutoTable.finalY + 18;
+      }
+
+      // ─── Detalle ───
+      // La columna de equipo SOLO cuando se están viendo todos: con un equipo
+      // elegido ya lo dice el encabezado, y repetirlo en cada fila es ruido.
+      const porEquipo = !p.equipo;
+      const cabecera = ['Fecha del gasto', 'Rubro', 'Concepto', 'Proveedor', 'Registró']
+                         .concat(porEquipo ? ['Equipo'] : []).concat(['Valor']);
+
+      const cuerpo = det.map(function (d) {
+        // Si se cargó otro día se dice, igual que en la pantalla: si no, nadie
+        // entiende por qué un gasto de ayer aparece en el reporte de hoy.
+        const fecha = d.dia + (d.registrado && d.registrado !== d.dia
+                                 ? '\n(cargado el ' + d.registrado + ')' : '');
+        return [fecha, d.rubro ? (etiquetaDeRubroVt(d.rubro) || d.rubro) : '—',
+                d.nombre || '', d.proveedor || '', d.quien || '']
+                 .concat(porEquipo ? [d.equipoTexto || '—'] : [])
+                 .concat([pesos(d.valor)]);
+      });
+
+      const iValor = cabecera.length - 1;
+      doc.autoTable({
+        head: [cabecera],
+        body: cuerpo,
+        foot: [cabecera.map(function (_, i) {
+          return i === iValor ? pesos(total) : (i === iValor - 1 ? 'TOTAL' : '');
+        })],
+        startY: desdeY,
+        styles: { font: 'helvetica', fontSize: 7.5, cellPadding: 4, textColor: [40, 40, 45] },
+        headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold', fontSize: 7.5 },
+        footStyles: { fillColor: [240, 240, 245], textColor: [30, 30, 32], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [248, 248, 250] },
+        columnStyles: (function () {
+          const e = {}; e[iValor] = { halign: 'right', cellWidth: 70 };
+          e[0] = { cellWidth: 82 };
+          return e;
+        })(),
+        margin: { left: 40, right: 40 }
+      });
+
+      const paginas = doc.internal.getNumberOfPages();
+      const med = doc.internal.pageSize;
+      for (let i = 1; i <= paginas; i++) {
+        doc.setPage(i);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 155);
+        doc.text('Página ' + i + ' de ' + paginas, med.width - 100, med.height - 20);
+      }
+
+      // El nombre dice qué es sin tener que abrirlo.
+      const trozo = function (t) { return String(t || '').replace(/[^\w]+/g, '-').replace(/^-|-$/g, ''); };
+      doc.save('Viaticos_' + trozo(p.equipoTexto || 'Todos') + '_' +
+               (p.desde === p.hasta ? p.desde : p.desde + '_a_' + p.hasta) + '.pdf');
+    }
+
+    // La etiqueta de un rubro, desde lo que ya mandó el servidor. No se
+    // reescribe la lista acá: sería una segunda copia que se desalinea.
+    function etiquetaDeRubroVt(clave) {
+      const r = ((vtDatos && vtDatos.rubros) || []).filter(function (x) { return x.clave === clave; })[0];
+      return r ? r.etiqueta : '';
+    }
+
+    document.getElementById('btnVtPdf').addEventListener('click', descargarViaticosPdf);
 
     // ─── Quién está en cada equipo (solo administradores) ────────────────
     //
