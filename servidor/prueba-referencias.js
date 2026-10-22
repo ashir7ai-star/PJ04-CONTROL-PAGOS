@@ -541,6 +541,94 @@ console.log('\n=== El panel compara los equipos, no los muestra de a uno ===');
       'un boton que hace algo no es un filtro');
 }
 
+console.log('\n=== Filtrar por VARIOS tipos de pago a la vez ===');
+{
+  // Antes era un <select> de una sola opcion: pedir "proveedores Y traslados"
+  // era imposible. Ahora son casillas.
+  chk('el filtro de tipo son casillas, no un desplegable',
+      /id="fTipos"/.test(html) && !/<select id="fTipo">/.test(html),
+      'seguiria dejando elegir un solo tipo');
+
+  const caja = html.split('id="fTipos"')[1].split('</div>')[0];
+  const valores = [...caja.matchAll(/value="([^"]+)"/g)].map(m => m[1]);
+  chk('estan los 10 tipos', valores.length === 10, valores);
+  chk('incluido Traslado entre cuentas', valores.indexOf('traslado') !== -1, valores);
+  chk('y se dice que sin marcar nada salen todos',
+      /Sin marcar nada se muestran todos/.test(html),
+      'nadie sabria que significa no marcar nada');
+
+  // Un filtro activo que no se ve es un filtro que confunde.
+  chk('una casilla marcada se distingue a simple vista',
+      /\.tipo-casilla:has\(input:checked\)/.test(html),
+      'se buscaria con un tipo puesto sin notarlo');
+
+  // ─── claveDeTipo, ejecutada de verdad ───
+  //
+  // El filtro comparaba con `rTipo.includes(tipo)` y eso tenia un error que no
+  // se veia: 'compra_materiales' CONTIENE 'compra'. Filtrar por Compra traia
+  // 43 pagos en vez de 21 (verificado contra la hoja real el 22/10).
+  const fuente = codigo.split('function claveDeTipo(')[1];
+  const cuerpo = 'function claveDeTipo(' + fuente.split('\n    }')[0] + '\n}';
+  let claveDeTipo;
+  try { claveDeTipo = eval('(' + cuerpo + ')'); } catch (e) { claveDeTipo = null; }
+  chk('claveDeTipo se puede ejecutar', typeof claveDeTipo === 'function', cuerpo.slice(0, 80));
+
+  if (claveDeTipo) {
+    chk('Compra y Compra Materiales son tipos DISTINTOS',
+        claveDeTipo('compra') === 'compra' &&
+        claveDeTipo('compra_materiales') === 'compra_materiales',
+        [claveDeTipo('compra'), claveDeTipo('compra_materiales')]);
+
+    // Los 8 tipos que existen de verdad en la hoja. Si alguno diera '', esas
+    // filas quedarian fuera de TODO filtro.
+    const reales = ['caja_menor', 'compra', 'compra_materiales', 'impuestos',
+                    'nomina', 'pago_proveedor', 'seguridad_social', 'viaticos'];
+    const perdidos = reales.filter(t => claveDeTipo(t) !== t);
+    chk('los 8 tipos reales de la hoja se reconocen', perdidos.length === 0, perdidos);
+
+    // Se escribieron de varias formas a lo largo del tiempo: recortar aca
+    // seria perder pagos viejos.
+    chk('las variantes viejas siguen cayendo donde corresponde',
+        claveDeTipo('viatico') === 'viaticos' &&
+        claveDeTipo('Caja Menor') === 'caja_menor' &&
+        claveDeTipo('nómina') === 'nomina' &&
+        claveDeTipo('Compra Materiales') === 'compra_materiales',
+        [claveDeTipo('viatico'), claveDeTipo('Caja Menor'),
+         claveDeTipo('nómina'), claveDeTipo('Compra Materiales')]);
+
+    // NO adivina: un pago mal etiquetado queda fuera, no se cuela en otro.
+    chk('un tipo desconocido no se cuela en ningun filtro',
+        claveDeTipo('cualquier_cosa') === '' && claveDeTipo('') === '',
+        [claveDeTipo('cualquier_cosa')]);
+  }
+
+  // Vacio = todos. Y la comparacion es por clave canonica, no por "contiene".
+  chk('sin marcar nada no se filtra por tipo',
+      /if \(tipos\.length && tipos\.indexOf\(claveDeTipo\(rTipo\)\) === -1\) return false;/.test(codigo),
+      'o filtraria de mas, o volveria al "contiene"');
+
+  // Una casilla oculta por permisos tiene que DESMARCARSE: si no, filtra por
+  // algo que la persona no ve y los resultados salen recortados sin motivo.
+  chk('una casilla que se oculta se desmarca',
+      /et\.hidden = !permitido;\s*\n\s*if \(!permitido\) c\.checked = false;/.test(codigo),
+      'quedaria filtrando por un tipo invisible');
+  chk('los traslados siguen siendo solo para administradores',
+      /c\.value === 'traslado'\s*\n\s*\? sesion\.rol === 'admin'/.test(codigo),
+      'un usuario comun veria movimientos entre cuentas');
+
+  // El Excel y el PDF tienen que decir TODOS los tipos pedidos.
+  chk('el archivo exportado lista todos los tipos elegidos',
+      /tipos\.map\(function \(t\) \{[\s\S]{0,60}tipoInfo\(t\)\.label/.test(codigo),
+      'quien reciba el archivo no podria reproducir la consulta');
+
+  chk('Limpiar desmarca todas las casillas',
+      /#fTipos input'\)\.forEach\(function \(c\) \{ c\.checked = false; \}\)/.test(codigo),
+      'quedarian tipos marcados despues de limpiar');
+  chk('marcar una casilla refiltra sin volver al servidor',
+      /getElementById\('fTipos'\)\.addEventListener\('change'/.test(codigo),
+      'habria que apretar Buscar de nuevo, y eso es una consulta completa');
+}
+
 console.log('\n=== Las columnas que se exportan EXISTEN en las filas ===');
 {
   // `clave` en COLUMNAS_EXPORT hace dos trabajos: es el titulo de la columna

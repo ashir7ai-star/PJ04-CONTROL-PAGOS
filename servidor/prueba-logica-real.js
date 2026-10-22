@@ -1012,7 +1012,10 @@ console.log('\n=== Un traslado no es un gasto: no puede sumar al total ===');
       ti.indexOf("tipo === 'traslado'") < ti.indexOf("label: 'Venta'"),
       'un traslado saldria etiquetado como Venta');
 
-  chk('se puede filtrar por traslado', /<option value="traslado">/.test(html), 'falta la opcion');
+  // El 22/10 el filtro de tipo paso de un <select> a casillas, para poder
+  // pedir varios tipos a la vez. La capacidad es la misma; cambio el control.
+  chk('se puede filtrar por traslado',
+      /<input type="checkbox" value="traslado">/.test(html), 'falta la casilla');
 
   // Lo importante: el total.
   chk('los traslados se separan de los pagos para el total',

@@ -1000,6 +1000,27 @@
       flex-wrap: wrap;
     }
 
+    /* Filtro de tipo: casillas que se pueden marcar de a varias. */
+    .field.ancho-total { grid-column: 1 / -1; }
+    .tipos-casillas { display: flex; flex-wrap: wrap; gap: 7px; }
+    .tipo-casilla {
+      display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+      padding: 6px 12px; border-radius: 20px;
+      border: 1px solid var(--border); background: var(--surface);
+      font-size: .82rem; font-weight: 500; color: var(--text-2);
+      transition: all var(--transition);
+    }
+    .tipo-casilla:hover { border-color: var(--border-strong); color: var(--text); }
+    .tipo-casilla input { margin: 0; width: 15px; height: 15px; accent-color: var(--primary); cursor: pointer; flex: none; }
+    /* Un filtro activo tiene que verse DE LEJOS: si no, se busca con un tipo
+       marcado sin darse cuenta y los resultados parecen incompletos. */
+    .tipo-casilla:has(input:checked) {
+      border-color: var(--primary); background: var(--primary-light);
+      color: var(--primary); font-weight: 600;
+    }
+    .tipo-casilla[hidden] { display: none; }
+    .tipos-nota { font-size: .75rem; color: var(--text-muted); margin-top: 7px; display: block; }
+
     .btn-export {
       display: flex;
       align-items: center;
@@ -2955,21 +2976,27 @@
             <option value="BLAZAR ENERGY">BLAZAR ENERGY (antes AMPAC SAS)</option>
           </select>
         </div>
-        <div class="field" id="fTipoField">
-          <label for="fTipo">Tipo de pago</label>
-          <select id="fTipo">
-            <option value="">Todos</option>
-            <option value="pago_proveedor">Pago a Proveedor</option>
-            <option value="compra">Compra</option>
-            <option value="venta">Venta</option>
-            <option value="impuestos">Pago Impuestos</option>
-            <option value="viaticos">Viáticos</option>
-            <option value="caja_menor">Caja Menor</option>
-            <option value="seguridad_social">Seguridad Social</option>
-            <option value="nomina">Pago Nómina</option>
-            <option value="compra_materiales">Compra Materiales</option>
-            <option value="traslado">Traslado entre cuentas</option>
-          </select>
+        <!-- Casillas en vez de un desplegable: se pueden pedir VARIOS tipos a
+             la vez (por ejemplo proveedores y traslados juntos), que con un
+             select de una sola opción era imposible.
+
+             Quedan a la vista en vez de escondidas tras un menú: un filtro
+             activo que no se ve es un filtro que confunde. -->
+        <div class="field ancho-total" id="fTipoField">
+          <label>Tipo de pago</label>
+          <div class="tipos-casillas" id="fTipos">
+            <label class="tipo-casilla"><input type="checkbox" value="pago_proveedor"><span>Pago a Proveedor</span></label>
+            <label class="tipo-casilla"><input type="checkbox" value="compra"><span>Compra</span></label>
+            <label class="tipo-casilla"><input type="checkbox" value="venta"><span>Venta</span></label>
+            <label class="tipo-casilla"><input type="checkbox" value="impuestos"><span>Pago Impuestos</span></label>
+            <label class="tipo-casilla"><input type="checkbox" value="viaticos"><span>Viáticos</span></label>
+            <label class="tipo-casilla"><input type="checkbox" value="caja_menor"><span>Caja Menor</span></label>
+            <label class="tipo-casilla"><input type="checkbox" value="seguridad_social"><span>Seguridad Social</span></label>
+            <label class="tipo-casilla"><input type="checkbox" value="nomina"><span>Pago Nómina</span></label>
+            <label class="tipo-casilla"><input type="checkbox" value="compra_materiales"><span>Compra Materiales</span></label>
+            <label class="tipo-casilla"><input type="checkbox" value="traslado"><span>Traslado entre cuentas</span></label>
+          </div>
+          <span class="tipos-nota" id="fTiposNota">Sin marcar nada se muestran todos</span>
         </div>
         <div class="field">
           <label for="fProveedor">Proveedor</label>
@@ -4104,7 +4131,6 @@
     let vistaRestringida = new URLSearchParams(location.search).get('vista') === 'gastos' ? 'gastos' : null;
 
     // Se guarda el estado original para poder volver atrás si el login se activa.
-    const fTipoOriginal      = document.getElementById('fTipo').innerHTML;
     const etiquetasOriginales = {
       formTitle:      document.getElementById('formTitle').textContent,
       formSubtitle:   document.getElementById('formSubtitle').textContent,
@@ -4117,7 +4143,9 @@
     function desactivarVistaRestringida() {
       if (!vistaRestringida) return;
       vistaRestringida = null;
-      document.getElementById('fTipo').innerHTML = fTipoOriginal;
+      // Las casillas vuelven a mostrarse todas; cuáles puede ver cada persona
+      // lo decide aplicarPermisos(), que corre después.
+      document.querySelectorAll('#fTipos .tipo-casilla').forEach(function (et) { et.hidden = false; });
       Object.keys(etiquetasOriginales).forEach(id => {
         document.getElementById(id).textContent = etiquetasOriginales[id];
       });
@@ -4135,8 +4163,12 @@
       document.getElementById('formSubtitle').textContent = 'Registra un gasto de viáticos o caja menor.';
 
       // Consultar Pagos: el filtro de tipo solo ofrece estas dos opciones
-      document.getElementById('fTipo').innerHTML =
-        '<option value="">Todos</option><option value="viaticos">Viáticos</option><option value="caja_menor">Caja Menor</option>';
+      document.querySelectorAll('#fTipos .tipo-casilla').forEach(function (et) {
+        const c = et.querySelector('input');
+        const ok = c.value === 'viaticos' || c.value === 'caja_menor';
+        et.hidden = !ok;
+        if (!ok) c.checked = false;
+      });
       document.getElementById('searchTitle').textContent    = 'Consultar Gastos';
       document.getElementById('searchSubtitle').textContent = 'Filtra y busca gastos de viáticos y caja menor registrados en el sistema.';
 
@@ -4212,16 +4244,22 @@
     // Cambiar un filtro vuelve a filtrar lo que ya se trajo. Antes había que
     // apretar Buscar otra vez, y cada búsqueda es una consulta completa al
     // servidor — hasta 90 segundos para mostrar lo mismo recortado.
-    ['fEmpresa', 'fTipo', 'fRegistradoPor'].forEach(function (id) {
+    ['fEmpresa', 'fRegistradoPor'].forEach(function (id) {
       const el = document.getElementById(id);
       if (el) el.addEventListener('change', function () {
         if (todasLasFilas.length) renderResultados(filtrarRows(todasLasFilas));
       });
     });
 
+    // Las casillas refiltran igual que los otros campos: sobre lo ya traído,
+    // sin volver a consultar al servidor.
+    document.getElementById('fTipos').addEventListener('change', function () {
+      if (todasLasFilas.length) renderResultados(filtrarRows(todasLasFilas));
+    });
+
     document.getElementById('btnClear').addEventListener('click', () => {
       document.getElementById('fEmpresa').value        = '';
-      document.getElementById('fTipo').value           = '';
+      document.querySelectorAll('#fTipos input').forEach(function (c) { c.checked = false; });
       document.getElementById('fProveedor').value      = '';
       document.getElementById('fRegistradoPor').value  = '';
       document.getElementById('fFechaInicio')._flatpickr.clear();
@@ -4398,7 +4436,7 @@
 
     function filtrarRows(rows) {
       const empresa  = document.getElementById('fEmpresa').value.toLowerCase();
-      const tipo     = document.getElementById('fTipo').value.toLowerCase();
+      const tipos    = tiposMarcados();
       const prov     = document.getElementById('fProveedor').value.toLowerCase().trim();
       const quien    = document.getElementById('fRegistradoPor').value;
       const fi       = document.getElementById('fFechaInicio')._flatpickr.selectedDates[0];
@@ -4415,7 +4453,8 @@
         // NOMBRES_DE_EMPRESA: quien busca "los pagos de Blazar" no esta
         // pensando en que dia cambio la razon social.
         if (empresa && !nombresDe(empresa).some(n => rEmpresa.includes(n))) return false;
-        if (tipo    && !rTipo.includes(tipo))         return false;
+        // Coincidencia por tipo CANÓNICO, no por "contiene": ver claveDeTipo.
+        if (tipos.length && tipos.indexOf(claveDeTipo(rTipo)) === -1) return false;
         if (prov    && !rProv.includes(prov))         return false;
         // Exacta, no "contiene": el valor sale del desplegable, así que
         // "Laura Leyton" no tiene por qué arrastrar a nadie más.
@@ -4526,13 +4565,17 @@
     function resumenFiltros() {
       const partes  = [];
       const empresa = document.getElementById('fEmpresa').value;
-      const tipoVal = document.getElementById('fTipo').value;
+      const tipos   = tiposMarcados();
       const prov    = document.getElementById('fProveedor').value.trim();
       const fi      = document.getElementById('fFechaInicio').value.trim();
       const ff      = document.getElementById('fFechaFin').value.trim();
 
       if (empresa)  partes.push('Empresa: ' + empresa);
-      if (tipoVal)  partes.push('Tipo: ' + tipoInfo(tipoVal).label);
+      // Todos los tipos pedidos, no solo uno: quien reciba el archivo tiene
+      // que poder reproducir la misma consulta.
+      if (tipos.length) partes.push('Tipo: ' + tipos.map(function (t) {
+        return tipoInfo(t).label;
+      }).join(', '));
       if (prov)     partes.push('Proveedor: ' + prov);
       if (fi || ff) partes.push('Fecha: ' + (fi || '…') + ' a ' + (ff || '…'));
 
@@ -6399,10 +6442,16 @@
         btn.style.display = puede(seccion) ? '' : 'none';
       });
 
-      // Opciones del filtro de tipo en Consultar Pagos
-      document.querySelectorAll('#fTipo option').forEach(op => {
-        if (!op.value) return;   // "Todos" siempre visible
-        op.hidden = !puede(seccionDeTipoFront(op.value));
+      // Casillas del filtro de tipo en Consultar Pagos. Una casilla oculta se
+      // DESMARCA: si no, quedaría filtrando por algo que la persona no ve y
+      // los resultados saldrían recortados sin explicación.
+      document.querySelectorAll('#fTipos .tipo-casilla').forEach(function (et) {
+        const c = et.querySelector('input');
+        const permitido = c.value === 'traslado'
+          ? sesion.rol === 'admin'      // los traslados solo los ven los admins
+          : puede(seccionDeTipoFront(c.value));
+        et.hidden = !permitido;
+        if (!permitido) c.checked = false;
       });
 
       // Mover dinero entre cuentas de la empresa es un acto administrativo.
@@ -6468,6 +6517,44 @@
       // omisión de un input es su `defaultValue`, no lo que diga el HTML.
       // Sin esto habría que acordarse de repintar en cada lugar que resetee.
       campo.defaultValue = quienSoy;
+    }
+
+    // EL TIPO CANÓNICO DE UNA FILA. Un solo lugar.
+    //
+    // El filtro comparaba con `rTipo.includes(tipo)`, y eso tenía un error que
+    // nadie veía: 'compra_materiales' CONTIENE 'compra', así que filtrar por
+    // Compra traía también las compras de materiales — 20 pagos que no se
+    // habían pedido. Con casillas se nota enseguida, porque se ven las dos
+    // marcadas y los resultados no cambian.
+    //
+    // Los exactos van PRIMERO, igual que en tipoInfo y en etiquetaTipo_ del
+    // servidor. Las comparaciones por "contiene" quedan solo para los tipos
+    // que se escribieron de varias formas a lo largo del tiempo ('viaticos' y
+    // 'viatico', 'nomina' y 'nómina'): ahí recortar sería perder pagos viejos.
+    //
+    // Devuelve '' si no reconoce el tipo. NO adivina: un pago mal etiquetado
+    // tiene que quedar fuera del filtro, no colarse en el que no es.
+    function claveDeTipo(tipoRaw) {
+      const t = String(tipoRaw || '').toLowerCase().trim();
+      if (!t) return '';
+      const exactos = ['traslado', 'compra_materiales', 'seguridad_social',
+                       'pago_proveedor', 'caja_menor', 'compra', 'venta'];
+      if (exactos.indexOf(t) !== -1) return t;
+      if (t.indexOf('impuesto') !== -1) return 'impuestos';
+      if (t.indexOf('viatic')   !== -1) return 'viaticos';
+      if (t.indexOf('caja')     !== -1) return 'caja_menor';
+      if (t.indexOf('seguridad') !== -1) return 'seguridad_social';
+      if (t.indexOf('nomina') !== -1 || t.indexOf('nómina') !== -1) return 'nomina';
+      if (t.indexOf('materiales') !== -1) return 'compra_materiales';
+      if (t.indexOf('pago') !== -1) return 'pago_proveedor';
+      return '';
+    }
+
+    // Los tipos marcados. Vacío = todos, que es lo que dice la nota en pantalla.
+    function tiposMarcados() {
+      return Array.prototype.slice
+        .call(document.querySelectorAll('#fTipos input:checked'))
+        .map(function (c) { return c.value; });
     }
 
     function seccionDeTipoFront(tipo) {
