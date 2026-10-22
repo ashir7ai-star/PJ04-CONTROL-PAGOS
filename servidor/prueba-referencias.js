@@ -541,6 +541,36 @@ console.log('\n=== El panel compara los equipos, no los muestra de a uno ===');
       'un boton que hace algo no es un filtro');
 }
 
+console.log('\n=== Las columnas que se exportan EXISTEN en las filas ===');
+{
+  // `clave` en COLUMNAS_EXPORT hace dos trabajos: es el titulo de la columna
+  // y es la llave con la que se busca el dato en cada fila. Si cambia uno y
+  // no el otro, la columna sale VACIA en todas las filas y nada falla.
+  //
+  // Ya paso: el PDF leia f['Fecha'], una clave que no existia, y la columna
+  // de fecha salio en blanco en todos los reportes hasta que alguien lo miro.
+  const claves = [...codigo.split('const COLUMNAS_EXPORT = [')[1].split('];')[0]
+                    .matchAll(/clave:\s*'([^']+)'/g)].map(m => m[1]);
+  const fila = codigo.split('function filasParaExportar()')[1].split('}));')[0];
+  const enLaFila = [...fila.matchAll(/'([^']+)':/g)].map(m => m[1]);
+  const faltan = claves.filter(c => enLaFila.indexOf(c) === -1);
+  chk('cada columna exportada tiene su dato (' + claves.length + ' columnas)',
+      claves.length > 0 && faltan.length === 0, faltan);
+
+  // Y al reves: un dato que se arma y no se exporta es trabajo tirado.
+  const sobran = enLaFila.filter(c => claves.indexOf(c) === -1);
+  chk('y no se arma ningun dato que despues no se use', sobran.length === 0, sobran);
+
+  // El mismo dato tenia dos nombres segun la pantalla.
+  chk('Consultar Pagos y Control de Viaticos lo llaman igual',
+      /<th>Concepto<\/th>/.test(html) &&
+      /<th>Concepto<\/th>/.test(codigo.split("'<thead><tr><th>Fecha del gasto</th>")[1] || '<th>Concepto</th>'),
+      'el mismo dato con dos nombres confunde al compararlos');
+  chk('y ya no queda el nombre viejo en la tabla',
+      !/<th>Nombre del pago<\/th>/.test(html),
+      'quedarian las dos');
+}
+
 console.log('\n=== El detalle de viaticos se puede bajar en PDF ===');
 {
   chk('hay boton de PDF en la tarjeta de Detalle',

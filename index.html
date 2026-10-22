@@ -3036,7 +3036,7 @@
               <th>Fecha de pago</th>
               <th>Empresa</th>
               <th>Tipo</th>
-              <th>Nombre del pago</th>
+              <th>Concepto</th>
               <th>Proveedor</th>
               <th>Registrado por</th>
               <th>Valor</th>
@@ -4561,7 +4561,9 @@
       { clave: 'Fecha de pago',   ancho: 13, anchoPdf: 58 },
       { clave: 'Empresa',         ancho: 16, anchoPdf: 70 },
       { clave: 'Tipo',            ancho: 16, anchoPdf: 72 },
-      { clave: 'Nombre del pago', ancho: 30 },
+      // Se llama igual que en Control de Viáticos: es el mismo dato y tenía
+      // dos nombres distintos según la pantalla.
+      { clave: 'Concepto',        ancho: 30 },
       { clave: 'Proveedor',       ancho: 24 },
       { clave: 'Registrado por',  ancho: 18, anchoPdf: 72 },
       { clave: 'Valor',           ancho: 14, anchoPdf: 62, numero: true },
@@ -4575,7 +4577,7 @@
         'Fecha de pago':   r['FECHA DE PAGO'] || '',
         'Empresa':         r['EMPRESA'] || '',
         'Tipo':            tipoInfo(r['TIPO FACTURA']).label,
-        'Nombre del pago': r['NOMBRE DE PAGO'] || '',
+        'Concepto':        r['NOMBRE DE PAGO'] || '',
         'Proveedor':       r['PROVEEDOR'] || '',
         'Registrado por':  r['REGISTRADO POR'] || '',
         'Valor':           valorDe(r),
