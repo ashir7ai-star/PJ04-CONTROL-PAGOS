@@ -553,7 +553,8 @@ function rubroValido_(clave) {
 // Quién está en cada equipo lo cambia SOLO un administrador (asignarEquipo_).
 const EQUIPOS = [
   { clave: 'equipo_1', etiqueta: 'Equipo 1' },
-  { clave: 'equipo_2', etiqueta: 'Equipo 2' }
+  { clave: 'equipo_2', etiqueta: 'Equipo 2' },
+  { clave: 'equipo_3', etiqueta: 'Equipo 3' }
 ];
 
 function etiquetaDeEquipo_(clave) {
@@ -2238,7 +2239,7 @@ const MODO_LOGIN = 'estricto';
 // desplegar, y viaja en estado_login. Sirve para verificar DESDE AFUERA qué
 // código está realmente publicado, en vez de deducirlo por síntomas — no saber
 // eso ya costó varias rondas de despliegues a ciegas.
-const REVISION_BACKEND = '2026-10-19-a · el equipo se muestra fijo; nunca bloquea el registro';
+const REVISION_BACKEND = '2026-10-22-a · un fondo de viáticos por equipo';
 
 const NOMBRE_HOJA_USUARIOS = 'USUARIOS';
 const ENCABEZADOS_USUARIOS = [
@@ -3043,13 +3044,46 @@ const CUENTAS = {
   // Es el mismo criterio de CORREO REGISTRO: el nombre cambia, la clave no.
   banco_ampac:      { etiqueta: 'BLAZAR ENERGY',  detalle: 'Cuenta bancaria', empresa: 'blazar',     grupo: 'banco' },
   caja_menor:       { etiqueta: 'Caja Menor',     detalle: 'Fondo compartido', empresa: null,        grupo: 'fondo' },
-  viaticos:         { etiqueta: 'Viáticos',       detalle: 'Fondo compartido', empresa: null,        grupo: 'fondo' },
+  // ⚠️ EL FONDO VIEJO DE VIÁTICOS, OCULTO PERO VIVO.
+  //
+  // Desde el 22/10 cada equipo tiene su propio fondo. Este ya no se muestra,
+  // pero NO se puede borrar: 30 traslados y 7 filas de SALDOS apuntan a
+  // `viaticos`, y sin la clave `etiquetaDeCuenta_` devolvería el texto crudo
+  // y el historial pasaría a decir "viaticos" en vez de "Viáticos".
+  //
+  // No hereda nada: cada fondo nuevo arranca con su propio SALDO BASE, y el
+  // cálculo solo cuenta lo posterior a esa fecha.
+  viaticos:         { etiqueta: 'Viáticos (histórico)', detalle: 'Fondo cerrado', empresa: null, grupo: 'fondo', oculto: true },
   // Fondo propio desde el 2026-10-01. Antes los materiales descontaban de
   // Viáticos; el usuario decidió separar las dos bolsas y manejarlas
   // independientes. Con `grupo: 'fondo'` ya queda habilitado como destino de
   // traslados y visible para quien tenga la sección: no hay nada mas que tocar.
   compra_materiales:{ etiqueta: 'Compra Materiales', detalle: 'Fondo compartido', empresa: null,    grupo: 'fondo' }
 };
+
+// UN FONDO POR EQUIPO, generado desde la lista de equipos.
+//
+// Se construyen acá y no se escriben a mano en CUENTAS a propósito: agregar un
+// Equipo 4 es una línea en EQUIPOS y su fondo aparece solo, con su saldo, sus
+// traslados y su historial. Escribirlos a mano significaría acordarse de tocar
+// dos listas, y la segunda vez nadie se acuerda.
+EQUIPOS.forEach(function (e) {
+  CUENTAS[claveFondoViaticos_(e.clave)] = {
+    etiqueta: 'Viáticos ' + e.etiqueta,
+    detalle:  'Fondo del equipo',
+    empresa:  null,
+    grupo:    'fondo',
+    // De qué sección depende para los permisos. Sin esto, `puedeVerCuenta_`
+    // buscaría una sección llamada 'viaticos_equipo_1', que no existe, y
+    // ningún usuario común vería su propio fondo.
+    seccion:  'viaticos',
+    equipo:   e.clave
+  };
+});
+
+function claveFondoViaticos_(equipo) {
+  return 'viaticos_' + equipoDeLaFila_(equipo);
+}
 
 function etiquetaDeCuenta_(clave) {
   const c = CUENTAS[String(clave || '').trim()];
@@ -3067,10 +3101,9 @@ function puedeVerCuenta_(contexto, clave) {
   if (MODO_LOGIN === 'off' || esAdmin_(contexto)) return true;
   const cfg = CUENTAS[clave];
   if (!cfg || cfg.grupo !== 'fondo') return false;
-  // Cada fondo se llama igual que la sección que gasta de él (viaticos,
-  // caja_menor, compra_materiales), así que con esto alcanza. Hubo un caso
-  // especial mientras materiales descontaba de Viáticos; se fue con él.
-  return contexto.secciones.indexOf(clave) !== -1;
+  // Los fondos por equipo dependen de la sección Viáticos, no de una sección
+  // con su propio nombre. El resto se sigue llamando igual que su sección.
+  return contexto.secciones.indexOf(cfg.seccion || clave) !== -1;
 }
 
 // De qué bolsa sale un pago. Devuelve null si no debe tocar ningún saldo.
@@ -3086,14 +3119,18 @@ function puedeVerCuenta_(contexto, clave) {
 // El cambio no mueve ningún saldo hacia atrás: los 17 pagos de materiales
 // son todos anteriores al SALDO BASE de Viáticos (27/09 11:24), así que no
 // pesaban en el cálculo. Verificado contra los datos reales antes de aplicar.
-function cuentaDePago_(tipoFactura, empresa) {
+// `equipo` solo lo usan los viáticos: decide de qué fondo sale la plata.
+function cuentaDePago_(tipoFactura, empresa, equipo) {
   const t = String(tipoFactura || '').toLowerCase();
 
   // Una venta es dinero que ENTRA, no que sale: no mueve estos saldos
   // (decisión del usuario).
   if (t === 'venta') return null;
 
-  if (t === 'viaticos')   return 'viaticos';
+  // Cada equipo descuenta de SU fondo. Un viático sin equipo cae en el
+  // Equipo 1, igual que en el panel y en el aviso del tope: una sola regla
+  // (`equipoDeLaFila_`) para que las tres pantallas no puedan contar distinto.
+  if (t === 'viaticos')   return claveFondoViaticos_(equipo);
   if (t === 'caja_menor') return 'caja_menor';
   if (t === 'compra_materiales') return 'compra_materiales';
 
@@ -3298,7 +3335,9 @@ function calcularSaldosCrudos_() {
     valores.slice(1).forEach(fila => {
       if (!fila.some(v => v !== '')) return;
 
-      const cuenta = cuentaDePago_(fila[cTipo], cEmpresa === -1 ? '' : fila[cEmpresa]);
+      const cEquipo = enc.indexOf('EQUIPO');
+      const cuenta = cuentaDePago_(fila[cTipo], cEmpresa === -1 ? '' : fila[cEmpresa],
+                                   cEquipo === -1 ? '' : fila[cEquipo]);
       if (!cuenta) { sinCuenta++; return; }
 
       const base = bases[cuenta];
@@ -3362,7 +3401,11 @@ function consultarSaldos_(ctx, forzar) {
   // administradores. Un usuario común ve únicamente los fondos (Viáticos y
   // Caja Menor) y solo aquellos cuya sección tenga asignada.
   const esAdministrador = MODO_LOGIN === 'off' || esAdmin_(contexto);
-  const visibles = Object.keys(CUENTAS).filter(clave => puedeVerCuenta_(contexto, clave));
+  // `oculto` saca una cuenta de la pantalla sin borrarla: el fondo viejo de
+  // viáticos tiene que seguir existiendo para que su historial se lea bien.
+  const visibles = Object.keys(CUENTAS)
+    .filter(clave => !CUENTAS[clave].oculto)
+    .filter(clave => puedeVerCuenta_(contexto, clave));
 
   const cuentas = visibles.map(clave => {
     const cfg = CUENTAS[clave];
@@ -4264,7 +4307,12 @@ function registrarTraslado_(body) {
     return { status: 'error', message: 'El origen tiene que ser una cuenta bancaria.' };
   }
   if (CUENTAS[destino].grupo !== 'fondo') {
-    return { status: 'error', message: 'El destino tiene que ser Viáticos o Caja Menor.' };
+    return { status: 'error', message: 'El destino tiene que ser un fondo.' };
+  }
+  // Un fondo cerrado no recibe plata nueva. Se valida acá y no solo en la
+  // pantalla, porque cualquiera puede llamar a esta URL directamente.
+  if (CUENTAS[destino].oculto) {
+    return { status: 'error', message: 'Ese fondo está cerrado. Elegí el de un equipo.' };
   }
 
   const monto = montoANumero_(body.monto);
@@ -4332,7 +4380,7 @@ function consultarTraslados_(body) {
 
   return {
     status: 'success',
-    cuentas: Object.keys(CUENTAS).map(c => ({
+    cuentas: Object.keys(CUENTAS).filter(c => !CUENTAS[c].oculto).map(c => ({
       clave: c, etiqueta: CUENTAS[c].etiqueta, grupo: CUENTAS[c].grupo
     })),
     // Quiénes pueden figurar como autores de un traslado. Sale de la hoja, no

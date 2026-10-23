@@ -94,7 +94,7 @@ console.log('\n=== La logica real calcula saldos sobre el adaptador ===');
       [serie(2026, 9, 15, 12, 0), 'AMPAC SAS', 'compra_materiales', 'q', 'n', 'p', serie(2026, 9, 15), 50000, '', '', 'id3']],
     'SALDOS': [['FECHA', 'CUENTA', 'SALDO BASE', 'CONCEPTO', 'REGISTRADO POR'],
       [serie(2026, 9, 15, 8, 0), 'banco_ampac', 1000000, 'base', 'admin'],
-      [serie(2026, 9, 15, 8, 0), 'viaticos',     500000, 'base', 'admin'],
+      [serie(2026, 9, 15, 8, 0), 'viaticos_equipo_1', 500000, 'base', 'admin'],
       [serie(2026, 9, 15, 8, 0), 'compra_materiales', 200000, 'base', 'admin']],
     'TRASLADOS': [['FECHA', 'ORIGEN', 'DESTINO', 'MONTO', 'REGISTRADO POR', 'NOTA', 'URL COMPROBANTE', 'FECHA REGISTRO', 'REALIZADO POR']],
     'USUARIOS':  [['CORREO', 'NOMBRE', 'TELEFONO', 'ROL', 'SECCIONES', 'ESTADO', 'FECHA REGISTRO', 'ULTIMO ACCESO']],
@@ -109,18 +109,41 @@ console.log('\n=== La logica real calcula saldos sobre el adaptador ===');
   chk('banco AMPAC: 1.000.000 - 300.000', de('banco_ampac').saldo === 700000, de('banco_ampac').saldo);
   // Desde el 2026-10-01 son DOS bolsas independientes. Antes materiales
   // descontaba de Viaticos y esta misma prueba esperaba 350.000.
+  // Desde el 22/10 cada equipo tiene su fondo. Estos pagos no llevan equipo,
+  // asi que caen en el del Equipo 1 — la misma regla que usan el panel de
+  // viaticos y el aviso del tope.
   chk('Viaticos descuenta SOLO viaticos: 500.000 - 100.000',
-      de('viaticos').saldo === 400000, de('viaticos').saldo);
+      de('viaticos_equipo_1').saldo === 400000, de('viaticos_equipo_1').saldo);
   chk('Compra Materiales tiene su propia bolsa: 200.000 - 50.000',
       de('compra_materiales').saldo === 150000, de('compra_materiales').saldo);
   chk('y un pago de materiales NO toca el saldo de viaticos',
-      de('viaticos').gastado === 100000, de('viaticos').gastado);
+      de('viaticos_equipo_1').gastado === 100000, de('viaticos_equipo_1').gastado);
+
+  // El fondo viejo sigue EXISTIENDO —30 traslados y 7 filas de SALDOS lo
+  // nombran— pero ya no se muestra como tarjeta.
+  chk('el fondo viejo de viaticos ya no aparece en pantalla',
+      de('viaticos') === undefined, 'seguiria mostrandose una bolsa cerrada');
+  chk('pero su clave sigue resolviendo para el historial',
+      e.globales.etiquetaDeCuenta_('viaticos') !== 'viaticos',
+      'los traslados viejos dirian "viaticos" en crudo');
+
+  // Agregar un equipo tiene que crear su fondo solo.
+  const fondos = require('vm').runInContext(
+    "Object.keys(CUENTAS).filter(function (k) { return k.indexOf('viaticos_') === 0; }).join(',')",
+    e.globales);
+  chk('hay un fondo por cada equipo',
+      fondos === 'viaticos_equipo_1,viaticos_equipo_2,viaticos_equipo_3', fondos);
   chk('ningun pago queda sin bolsa', r.sinCuenta === 0, r.sinCuenta);
 
   // A que bolsa va cada tipo. Es la regla entera en una linea cada una.
   const bolsa = t => e.globales.cuentaDePago_(t, 'AMPAC SAS');
   chk('materiales ya NO sale de viaticos', bolsa('compra_materiales') === 'compra_materiales', bolsa('compra_materiales'));
-  chk('viaticos sigue saliendo de viaticos', bolsa('viaticos') === 'viaticos', bolsa('viaticos'));
+  // Cada equipo descuenta de SU fondo; sin equipo cae en el del Equipo 1.
+  chk('un viatico del Equipo 2 sale del fondo del Equipo 2',
+      e.globales.cuentaDePago_('viaticos', 'AMPAC SAS', 'equipo_2') === 'viaticos_equipo_2',
+      e.globales.cuentaDePago_('viaticos', 'AMPAC SAS', 'equipo_2'));
+  chk('y sin equipo cae en el del Equipo 1',
+      bolsa('viaticos') === 'viaticos_equipo_1', bolsa('viaticos'));
   chk('caja menor sigue en la suya', bolsa('caja_menor') === 'caja_menor', bolsa('caja_menor'));
   chk('y lo demas sigue saliendo del banco', bolsa('proveedor') === 'banco_ampac', bolsa('proveedor'));
 
@@ -329,7 +352,7 @@ console.log('\n=== NINGUNA accion puede topar con algo sin implementar ===');
     ['registrar_usuario',     { nombre: 'X', telefono: '1' }],
     ['guardar_usuario',       { correo: 'otro@x.com', nombre: 'Otro', telefono: '1', rol: 'usuario', secciones: 'viaticos', estado: 'activo' }],
     ['ajustar_saldo',         { cuenta: 'banco_ampac', monto: '1000' }],
-    ['registrar_traslado',    { origen: 'banco_ampac', destino: 'viaticos', monto: '1000',
+    ['registrar_traslado',    { origen: 'banco_ampac', destino: 'viaticos_equipo_1', monto: '1000',
                                 fecha: '2026-09-18', realizado_por: 'nathan@ylevigroup.com',
                                 archivos: [] }],
     ['solicitar_aprobacion',  { empresa: 'AMPAC SAS', tipo_pago: 'viaticos', nombre_pago: 'X',
@@ -437,9 +460,9 @@ console.log('\n=== Historial de movimientos: tiene que CUADRAR con el saldo ==='
       // Anterior al saldo base: NO cuenta, ya esta incluido en la base.
       pago(new Date(2026, 8, 16, 9, 0, 0), 'VIEJO', 500000)],
     'Caja Menor': [ENC_PAGOS],
-    'SALDOS':   [ENC_SALDOS[0], [base, 'viaticos', 1000000, 'inicial', 'Nathan']],
+    'SALDOS':   [ENC_SALDOS[0], [base, 'viaticos_equipo_1', 1000000, 'inicial', 'Nathan']],
     'TRASLADOS':[ENC_TRAS[0],
-      [new Date(2026, 8, 20), 'banco_ampac', 'viaticos', 400000, 'Nathan', 'refuerzo', '',
+      [new Date(2026, 8, 20), 'banco_ampac', 'viaticos_equipo_1', 400000, 'Nathan', 'refuerzo', '',
        new Date(2026, 8, 20, 15, 0, 0), 'Nathan <n@x.com>']],
     'USUARIOS': [['CORREO','NOMBRE','TELEFONO','ROL','SECCIONES','ESTADO','FECHA REGISTRO','ULTIMO ACCESO'],
                  ['nathan@ylevigroup.com','Nathan','300','admin','todas','activo','',''],
@@ -453,7 +476,7 @@ console.log('\n=== Historial de movimientos: tiene que CUADRAR con el saldo ==='
   const e = montar(foto, 'off');
   const pedir = a => JSON.parse(e.globales.doPost({ postData:{ contents: JSON.stringify(a) } })._json);
 
-  const r = pedir({ action: 'consultar_movimientos', cuenta: 'viaticos', forzar: true });
+  const r = pedir({ action: 'consultar_movimientos', cuenta: 'viaticos_equipo_1', forzar: true });
   chk('responde bien', r.status === 'success', r);
   chk('trae la base', r.base === 1000000, r.base);
 
@@ -503,7 +526,7 @@ console.log('\n=== Historial de movimientos: tiene que CUADRAR con el saldo ==='
   chk('un usuario comun NO ve los movimientos de un banco',
       /SIN_PERMISO/.test(String(malo)), malo);
 
-  const suyo = g.globales.consultarMovimientos_(Object.assign({ cuenta: 'viaticos' }, laura));
+  const suyo = g.globales.consultarMovimientos_(Object.assign({ cuenta: 'viaticos_equipo_1' }, laura));
   chk('pero SI los de su propio fondo', suyo.status === 'success', suyo);
 
   // Y un fondo que NO es suyo tampoco.
@@ -522,7 +545,7 @@ console.log('\n=== Historial de movimientos: tiene que CUADRAR con el saldo ==='
     const e2 = montar(foto, 'off');
     const crudos = {
       porCuenta: {
-        viaticos: { configurado: true, base: 1000000, desde: '17/09/2026 10:00', concepto: '',
+        viaticos_equipo_1: { configurado: true, base: 1000000, desde: '17/09/2026 10:00', concepto: '',
                     gastado: 0, pagos: 0, enviado: 0, recibido: 0, traslados: 0,
                     // 1.000.000 - 300.000 = 700.000, pero el saldo dice otra cosa.
                     saldo: 999999,
@@ -532,7 +555,7 @@ console.log('\n=== Historial de movimientos: tiene que CUADRAR con el saldo ==='
       sinCuenta: 0
     };
     e2.globales.CacheService.getScriptCache().put('saldos_calculados_v1', JSON.stringify(crudos), 600);
-    const r2 = e2.globales.consultarMovimientos_({ cuenta: 'viaticos' });
+    const r2 = e2.globales.consultarMovimientos_({ cuenta: 'viaticos_equipo_1' });
     chk('si el historial no suma el saldo, lo DICE', r2.cuadra === false, r2.cuadra);
     chk('y dice cuanto falta', r2.descuadre === 299999, r2.descuadre);
   }
@@ -941,7 +964,7 @@ console.log('\n=== Los traslados salen en Consultar Pagos, pero NO suman ===');
     'SALDOS': [['FECHA', 'CUENTA', 'SALDO BASE', 'CONCEPTO', 'REGISTRADO POR']],
     'TRASLADOS': [['FECHA', 'ORIGEN', 'DESTINO', 'MONTO', 'REGISTRADO POR', 'NOTA',
                    'URL COMPROBANTE', 'FECHA REGISTRO', 'REALIZADO POR'],
-      [serie(2026, 9, 16), 'banco_ampac', 'viaticos', 500000, 'Nathan De Lima',
+      [serie(2026, 9, 16), 'banco_ampac', 'viaticos_equipo_1', 500000, 'Nathan De Lima',
        'Envio para viaticos', 'https://drive/comp1', serie(2026, 9, 16, 9, 30),
        'nathan@ylevigroup.com']],
     'USUARIOS': [['CORREO', 'NOMBRE', 'TELEFONO', 'ROL', 'SECCIONES', 'ESTADO',
@@ -965,8 +988,10 @@ console.log('\n=== Los traslados salen en Consultar Pagos, pero NO suman ===');
   const t = tras[0] || {};
   chk('la empresa es la cuenta de donde SALE, con su nombre actual',
       t['EMPRESA'] === 'BLAZAR ENERGY', t['EMPRESA']);
+  // Desde el 22/10 el dinero entra al fondo de UN equipo, no a una bolsa
+  // compartida: por eso la etiqueta lleva el equipo.
   chk('el proveedor es la cuenta a donde ENTRA',
-      t['PROVEEDOR'] === 'Viáticos', t['PROVEEDOR']);
+      t['PROVEEDOR'] === 'Viáticos Equipo 1', t['PROVEEDOR']);
   chk('el concepto dice a donde fue', /Traslado a Vi/.test(String(t['NOMBRE DE PAGO'])), t['NOMBRE DE PAGO']);
   chk('el valor es el monto trasladado', Number(t['VALOR FACTURA']) === 500000, t['VALOR FACTURA']);
   chk('el comprobante viaja como archivo del pago',
@@ -1568,8 +1593,9 @@ console.log('\n=== Viaticos por equipo, cada uno con su presupuesto ===');
   chk('y el tope es la SUMA de los topes, no el de uno',
       todos.totalSugerido === 700000, todos.totalSugerido);
   chk('el desglose dice cuanto gasto cada equipo',
-      todos.porEquipo.length === 2 &&
-      todos.porEquipo[0].gastado === 220000 && todos.porEquipo[1].gastado === 300000,
+      todos.porEquipo.length === 3 &&
+      todos.porEquipo[0].gastado === 220000 && todos.porEquipo[1].gastado === 300000 &&
+      todos.porEquipo[2].gastado === 0,
       todos.porEquipo);
 
   // ─── Quien puede MIRAR que equipo ───
@@ -1735,8 +1761,95 @@ console.log('\n=== Viaticos por equipo, cada uno con su presupuesto ===');
       gE.globales.arranque_({ idToken: 'didier@energy-millennium.com' }).sesion.equipo);
   chk('junto con la lista de equipos, para armar el desplegable',
       (gE.globales.arranque_({ idToken: 'didier@energy-millennium.com' }).equipos || [])
-        .map(x => x.clave).join(',') === 'equipo_1,equipo_2',
+        .map(x => x.clave).join(',') === 'equipo_1,equipo_2,equipo_3',
       gE.globales.arranque_({ idToken: 'didier@energy-millennium.com' }).equipos);
+}
+
+console.log('\n=== Un fondo de viaticos por equipo ===');
+{
+  // Hasta el 22/10 habia UNA bolsa de viaticos. Con dos equipos en campo —y un
+  // tercero en camino— no se podia saber cuanta plata le quedaba a cada uno.
+  const ENC = ENC_PAGOS.concat(['RUBRO', 'CORREO REGISTRO', 'EQUIPO']);
+  const d = (dia, h) => new Date(2026, 9, dia, h || 10, 0, 0);
+  const vi = (dia, valor, equipo) =>
+    [d(dia, 11), 'BLAZAR ENERGY', 'viaticos', 'Laura', 'Almuerzo', 'Prov',
+     d(dia), valor, '', '', 'id-' + dia + '-' + valor, 'almuerzo', '', equipo];
+
+  const foto = {
+    'PAGOS REGISTRADOS': [ENC],
+    'Viaticos': [ENC, vi(20, 100000, 'equipo_1'), vi(20, 300000, 'equipo_2'),
+                      vi(20,  50000, '')],   // sin equipo: cae en el 1
+    'SALDOS': [['FECHA', 'CUENTA', 'SALDO BASE', 'CONCEPTO', 'REGISTRADO POR'],
+               [d(19, 8), 'viaticos_equipo_1', 1000000, 'base', 'admin'],
+               [d(19, 8), 'viaticos_equipo_2',  500000, 'base', 'admin'],
+               [d(19, 8), 'viaticos_equipo_3',  200000, 'base', 'admin'],
+               [d(19, 8), 'banco_ampac',      9000000, 'base', 'admin']],
+    'TRASLADOS': [['FECHA', 'ORIGEN', 'DESTINO', 'MONTO', 'REGISTRADO POR', 'NOTA',
+                   'URL COMPROBANTE', 'FECHA REGISTRO', 'REALIZADO POR'],
+                  [d(20), 'banco_ampac', 'viaticos_equipo_2', 400000, 'Nathan', '', '', d(20, 9), '']],
+    'USUARIOS': [['CORREO', 'NOMBRE', 'TELEFONO', 'ROL', 'SECCIONES', 'ESTADO',
+                  'FECHA REGISTRO', 'ULTIMO ACCESO', 'EQUIPO']],
+    'SESIONES': [['HASH', 'CORREO', 'CREADA', 'ULTIMO USO', 'VENCE']],
+    'PRESUPUESTO': [['FECHA', 'MONTO DIARIO', 'REGISTRADO POR', 'NOTA', 'EQUIPO']],
+    'SOLICITUDES DE APROBACION': [['ID SOLICITUD']]
+  };
+  const e = montar(foto, 'off');
+  const r = e.globales.consultarSaldos_({ rol: 'admin', secciones: [] }, true);
+  const de = c => r.cuentas.filter(x => x.clave === c)[0];
+
+  // 1.000.000 - 100.000 (equipo 1) - 50.000 (sin equipo, cae en el 1)
+  chk('el Equipo 1 descuenta lo suyo y lo que no tiene equipo',
+      de('viaticos_equipo_1').saldo === 850000, de('viaticos_equipo_1').saldo);
+  // 500.000 - 300.000 + 400.000 de traslado
+  chk('el Equipo 2 descuenta lo suyo y recibe su traslado',
+      de('viaticos_equipo_2').saldo === 600000, de('viaticos_equipo_2').saldo);
+  chk('el Equipo 3 queda intacto: nadie gasto de su fondo',
+      de('viaticos_equipo_3').saldo === 200000, de('viaticos_equipo_3').saldo);
+
+  // Lo que este cambio vino a evitar.
+  chk('el gasto de un equipo NO toca el fondo de otro',
+      de('viaticos_equipo_1').gastado === 150000 &&
+      de('viaticos_equipo_2').gastado === 300000 &&
+      de('viaticos_equipo_3').gastado === 0,
+      [de('viaticos_equipo_1').gastado, de('viaticos_equipo_2').gastado, de('viaticos_equipo_3').gastado]);
+  chk('y el traslado entra SOLO al fondo que lo recibio',
+      de('viaticos_equipo_2').recibido === 400000 && de('viaticos_equipo_1').recibido === 0,
+      [de('viaticos_equipo_2').recibido, de('viaticos_equipo_1').recibido]);
+  chk('ningun pago queda sin bolsa', r.sinCuenta === 0, r.sinCuenta);
+
+  // El fondo viejo: oculto, pero su clave tiene que seguir resolviendo o el
+  // historial de 30 traslados pasaria a decir "viaticos" en crudo.
+  chk('el fondo cerrado no se muestra', de('viaticos') === undefined);
+  chk('pero su etiqueta sigue existiendo',
+      e.globales.etiquetaDeCuenta_('viaticos') === 'Viáticos (histórico)',
+      e.globales.etiquetaDeCuenta_('viaticos'));
+  chk('y no se ofrece como destino de un traslado',
+      (e.globales.consultarTraslados_({}).cuentas || [])
+        .every(function (c) { return c.clave !== 'viaticos'; }),
+      'se le podria mandar plata a una bolsa cerrada');
+  // ⚠️ Mirar solo `status === 'error'` NO sirve: registrarTraslado_ valida
+  // muchas cosas antes (autor, comprobante, fecha) y cualquiera de ellas da
+  // error primero. Hay que exigir EL MENSAJE del fondo cerrado, o la prueba
+  // pasa por el motivo equivocado — que es justo lo que pasaba.
+  const aCerrado = e.globales.registrarTraslado_({
+    origen: 'banco_ampac', destino: 'viaticos', monto: '1000',
+    fecha: '2026-10-20', realizado_por: '', archivos: [] });
+  chk('el servidor tambien lo rechaza, no solo la pantalla',
+      aCerrado.status === 'error' && /cerrado/i.test(aCerrado.message || ''),
+      aCerrado.message);
+
+  // Quien tiene la seccion Viaticos ve los tres fondos: dependen de esa
+  // seccion, no de una llamada 'viaticos_equipo_1' que no existe.
+  // ⚠️ En MODO_LOGIN 'off' todos ven todo, asi que los permisos hay que
+  // probarlos en 'estricto' o la comprobacion pasa sin comprobar nada.
+  const eE = montar(foto, 'estricto');
+  const ve = (secs, clave) => eE.globales.puedeVerCuenta_({ rol: 'usuario', secciones: secs }, clave);
+  chk('quien tiene Viaticos ve el fondo de cada equipo',
+      ve(['viaticos'], 'viaticos_equipo_1') && ve(['viaticos'], 'viaticos_equipo_3'),
+      [ve(['viaticos'], 'viaticos_equipo_1'), ve(['viaticos'], 'viaticos_equipo_3')]);
+  chk('y quien no la tiene, no ve ninguno',
+      !ve(['caja_menor'], 'viaticos_equipo_1') && !ve(['caja_menor'], 'viaticos_equipo_2'),
+      [ve(['caja_menor'], 'viaticos_equipo_1'), ve(['caja_menor'], 'viaticos_equipo_2')]);
 }
 
 console.log('\n=== El aviso de que la app no responde ===');

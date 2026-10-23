@@ -34,7 +34,17 @@ function chk(nombre, cond, detalle) {
   if (!cond) fallos++;
 }
 
-const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+// Se NORMALIZAN los saltos de linea al leer. El archivo usa CRLF, asi que
+// cualquier split por salto de linea de mas abajo nunca coincidia: devolvia
+// el archivo ENTERO en vez del trozo pedido, y las comprobaciones miraban
+// mucho mas de lo que creian.
+//
+// Es el mismo defecto que ya se corrigio en prueba-logica-real.js el 15/10;
+// este archivo habia quedado sin arreglar. Lo delato una mutacion que
+// sobrevivia porque el patron buscado aparecia DOS veces en el archivo
+// completo, y la prueba encontraba la otra.
+const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8')
+               .replace(/\r\n/g, '\n');
 const bloques = [...html.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)];
 const codigo = bloques.map(b => b[1]).join('\n');
 
