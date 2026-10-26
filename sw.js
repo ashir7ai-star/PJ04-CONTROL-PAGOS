@@ -1,4 +1,4 @@
-const CACHE = 'control-pagos-v114';
+const CACHE = 'control-pagos-v115';
 // Rutas RELATIVAS a propósito: así la app funciona igual en
 // ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/ que en un dominio propio, sin
 // tener que cambiar código el día que se mude. En un Service Worker, './'
@@ -108,6 +108,71 @@ self.addEventListener('fetch', e => {
   e.respondWith(
     caches.match(e.request).then(cached => cached || fetch(e.request))
   );
+});
+
+// ─── Notificaciones del panel de mensajes ─────────────────────────────────
+//
+// Esto corre aunque la app esté cerrada: es lo que hace que el aviso suene
+// como el de WhatsApp y no solo cuando alguien tiene la pestaña abierta.
+//
+// ⚠️ En iPhone solo funciona si la app está INSTALADA en la pantalla de
+// inicio. Desde Safari como página web, Apple no entrega estos eventos. No es
+// algo que se pueda resolver acá.
+self.addEventListener('push', e => {
+  // Un push sin datos legibles igual tiene que mostrar ALGO: los navegadores
+  // exigen una notificación visible por cada push recibido, y si no se muestra
+  // ninguna, el navegador puede llegar a dar de baja la suscripción.
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (err) { d = {}; }
+
+  const titulo = d.titulo || 'Control de Pagos';
+  const cuerpo = d.cuerpo || 'Tenés un mensaje nuevo.';
+
+  e.waitUntil(
+    self.registration.showNotification(titulo, {
+      body: cuerpo,
+      icon:  './icons/icon-192.png',
+      badge: './icons/icon-192.png',
+      // Agrupa por conversación: diez mensajes de la misma persona son UN
+      // aviso que se actualiza, no diez avisos apilados.
+      tag: d.etiqueta || 'chat',
+      renotify: true,
+      data: { hilo: d.hilo || '' }
+    })
+  );
+});
+
+// Al tocar la notificación: si la app ya está abierta se la trae al frente, y
+// si no, se abre. Abrir siempre una pestaña nueva dejaría al usuario con cinco
+// copias de la app tras una tarde de mensajes.
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const hilo = (e.notification.data && e.notification.data.hilo) || '';
+
+  e.waitUntil((async () => {
+    const abiertas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of abiertas) {
+      if (c.url.indexOf(self.registration.scope) === 0) {
+        await c.focus();
+        // La página decide qué hacer: acá no se sabe si quien mira es
+        // administrador ni qué conversación tiene abierta.
+        c.postMessage({ tipo: 'abrir-chat', hilo: hilo });
+        return;
+      }
+    }
+    await self.clients.openWindow(self.registration.scope);
+  })());
+});
+
+// Si el navegador renueva la suscripción por su cuenta, la de la base queda
+// muerta y la persona deja de recibir avisos SIN QUE NADA FALLE. Acá no se
+// puede hablar con nuestro servidor (no hay sesión), así que se le avisa a la
+// app para que vuelva a registrarse la próxima vez que esté abierta.
+self.addEventListener('pushsubscriptionchange', e => {
+  e.waitUntil((async () => {
+    const abiertas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    abiertas.forEach(c => c.postMessage({ tipo: 'resuscribir' }));
+  })());
 });
 
 // Escucha mensaje del usuario para activar la nueva versión

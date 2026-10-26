@@ -2523,6 +2523,212 @@
       }
       .header-sesion .nombre, .header-sesion .rol { display: none; }
     }
+
+    /* ─── Mensajes ─────────────────────────────────────────────────────────
+       Dos columnas en pantalla grande: a la izquierda con quién hablás, a la
+       derecha la conversación. En el teléfono se ve una sola cosa por vez —
+       media pantalla de lista y media de chat no sirve para ninguna de las dos.
+
+       ⚠️ Todos los colores salen de las variables declaradas en :root. Usar una
+       que no exista invalida la declaración ENTERA y el navegador la descarta
+       en silencio: eso ya rompió el panel de viáticos una vez. */
+    .msg-wrap {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    .msg-lista {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+      max-height: 68vh;
+      overflow-y: auto;
+    }
+    .msg-persona {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      width: 100%;
+      padding: 13px 15px;
+      background: none;
+      border: none;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      text-align: left;
+      transition: background var(--transition);
+    }
+    .msg-persona:last-child { border-bottom: none; }
+    .msg-persona:hover      { background: var(--surface-2); }
+    .msg-persona.activa     { background: var(--primary-light); }
+    .msg-inicial {
+      width: 36px; height: 36px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      background: var(--surface-3);
+      color: var(--text-2);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 600; font-size: 0.85rem;
+    }
+    .msg-persona.activa .msg-inicial { background: var(--primary); color: #fff; }
+    .msg-datos   { min-width: 0; flex: 1; }
+    .msg-nombre  { font-weight: 600; font-size: 0.88rem; color: var(--text); }
+    .msg-ultimo  {
+      font-size: 0.78rem; color: var(--text-muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+    /* El globo de no leídos. Es el único rojo del panel a propósito: si todo
+       llama la atención, nada la llama. */
+    .msg-globo {
+      flex-shrink: 0;
+      min-width: 20px; height: 20px;
+      padding: 0 6px;
+      border-radius: 10px;
+      background: var(--error);
+      color: #fff;
+      font-size: 0.72rem; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .msg-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      height: 68vh;
+    }
+    .msg-encabezado {
+      display: flex; align-items: center; gap: 10px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .msg-volver {
+      display: none;
+      background: none; border: none; cursor: pointer;
+      color: var(--primary); padding: 4px; margin-left: -4px;
+    }
+    .msg-hilo {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: var(--bg);
+    }
+    .msg-burbuja {
+      max-width: 72%;
+      padding: 9px 13px;
+      border-radius: var(--radius);
+      font-size: 0.9rem;
+      line-height: 1.45;
+      /* El texto del mensaje lo escribió otra persona: se respeta como vino,
+         con sus saltos de línea, y sin dejar que una palabra larga rompa el
+         ancho del panel. */
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      box-shadow: var(--shadow-sm);
+    }
+    .msg-burbuja.mio {
+      align-self: flex-end;
+      background: var(--primary);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .msg-burbuja.suyo {
+      align-self: flex-start;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+    }
+    .msg-firma {
+      font-size: 0.7rem;
+      opacity: 0.72;
+      margin-top: 4px;
+    }
+    .msg-dia {
+      align-self: center;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      background: var(--surface-3);
+      padding: 3px 11px;
+      border-radius: 10px;
+      margin: 4px 0;
+    }
+    .msg-escribir {
+      display: flex;
+      gap: 9px;
+      padding: 12px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .msg-escribir textarea {
+      flex: 1;
+      resize: none;
+      min-height: 42px; max-height: 120px;
+      padding: 10px 13px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 0.9rem;
+      color: var(--text);
+      background: var(--surface);
+    }
+    .msg-escribir textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+    .msg-enviar {
+      flex-shrink: 0;
+      width: 42px; height: 42px;
+      align-self: flex-end;
+      border: none; border-radius: 50%;
+      background: var(--primary); color: #fff;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background var(--transition);
+    }
+    .msg-enviar:hover:not(:disabled) { background: var(--primary-hover); }
+    .msg-enviar:disabled { opacity: 0.4; cursor: default; }
+    .msg-vacio {
+      margin: auto;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      padding: 24px;
+    }
+    /* El aviso de activar notificaciones. En iPhone solo funciona con la app
+       instalada en la pantalla de inicio, así que el texto cambia según el
+       caso en vez de prometer algo que no va a pasar. */
+    .msg-aviso {
+      display: flex; align-items: center; gap: 12px;
+      flex-wrap: wrap;
+      padding: 12px 15px;
+      margin-bottom: 14px;
+      background: var(--warning-light);
+      border: 1px solid var(--warning);
+      border-radius: var(--radius);
+      font-size: 0.85rem;
+      color: var(--text-2);
+    }
+    .msg-aviso .texto { flex: 1; min-width: 200px; }
+
+    @media (max-width: 860px) {
+      .msg-wrap { grid-template-columns: 1fr; }
+      /* Una cosa por vez: o la lista, o la conversación. */
+      .msg-wrap.en-hilo .msg-lista { display: none; }
+      .msg-wrap:not(.en-hilo) .msg-panel { display: none; }
+      .msg-volver { display: block; }
+      .msg-lista { max-height: none; }
+      .msg-panel { height: calc(100vh - var(--header-h) - 150px); }
+      .msg-burbuja { max-width: 86%; }
+    }
   </style>
 </head>
 
@@ -2672,6 +2878,15 @@
         <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
       </svg>
       Traslados
+    </button>
+    <button class="nav-tab" data-view="mensajes" id="navMensajes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+      </svg>
+      <span>Mensajes</span>
+      <!-- El contador de no leídos vive en la pestaña: es lo que hace que
+           alguien entre sin que se lo pidan. -->
+      <span class="msg-globo" id="navMensajesGlobo" style="display:none;">0</span>
     </button>
     <button class="nav-tab" data-view="config" id="navConfig" style="display:none;">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -3627,6 +3842,56 @@
     </div>
   </main>
 
+  <!-- ─── Mensajes ─────────────────────────────────────────────────────────
+       Un hilo por empleado, compartido por todos los administradores: así
+       Joseph ve lo que Nathan ya le dijo a la persona, y no se dan dos
+       instrucciones distintas. El servidor decide qué hilo puede ver cada uno;
+       la pantalla solo pinta lo que recibe. -->
+  <main id="viewMensajes" style="display:none;">
+    <div id="msgAviso" class="msg-aviso" style="display:none;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+      </svg>
+      <span class="texto" id="msgAvisoTexto">Activá las notificaciones para enterarte cuando te escriban.</span>
+      <button type="button" class="btn btn-sm" id="msgActivar">Activar</button>
+    </div>
+
+    <div class="msg-wrap" id="msgWrap">
+      <!-- Solo para administradores: un empleado habla con la administración y
+           no tiene a quién elegir. -->
+      <div class="msg-lista" id="msgLista" style="display:none;"></div>
+
+      <div class="msg-panel">
+        <div class="msg-encabezado">
+          <button type="button" class="msg-volver" id="msgVolver" aria-label="Volver a la lista">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+          </button>
+          <div class="msg-inicial" id="msgInicial">—</div>
+          <div class="msg-datos">
+            <div class="msg-nombre" id="msgTitulo">Mensajes</div>
+            <div class="msg-ultimo" id="msgSubtitulo"></div>
+          </div>
+        </div>
+
+        <div class="msg-hilo" id="msgHilo">
+          <div class="msg-vacio" id="msgVacio">Cargando…</div>
+        </div>
+
+        <form class="msg-escribir" id="msgForm">
+          <textarea id="msgTexto" rows="1" maxlength="2000"
+                    placeholder="Escribí un mensaje…" autocomplete="off"></textarea>
+          <button type="submit" class="msg-enviar" id="msgEnviar" aria-label="Enviar" disabled>
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </form>
+      </div>
+    </div>
+  </main>
+
   <!-- Cargar / corregir el saldo de una cuenta (solo administradores) -->
   <!-- Historial de movimientos de una cuenta. Responde "¿por qué quedó en este
        número?", que es distinto de "¿cuánto hay?". -->
@@ -4188,9 +4453,11 @@
     const viewTraslados      = document.getElementById('viewTraslados');
     const viewViaticos       = document.getElementById('viewViaticos');
     const viewSaldos         = document.getElementById('viewSaldos');
+    const viewMensajes       = document.getElementById('viewMensajes');
     const vistasPorNombre    = { saldos: viewSaldos, form: viewForm, search: viewSearch,
                                  aprobaciones: viewAprobaciones, config: viewConfig,
-                                 traslados: viewTraslados, viaticos: viewViaticos };
+                                 traslados: viewTraslados, viaticos: viewViaticos,
+                                 mensajes: viewMensajes };
 
     navTabs.forEach(tab => {
       tab.addEventListener('click', () => {
@@ -4206,6 +4473,11 @@
         if (tab.dataset.view === 'config')    cargarUsuarios();
         if (tab.dataset.view === 'traslados') cargarTraslados();
         if (tab.dataset.view === 'viaticos')  aplicarRango('hoy');
+        if (tab.dataset.view === 'mensajes')  abrirMensajes();
+        // Al salir del panel se corta el sondeo: preguntar por mensajes nuevos
+        // mientras alguien registra un pago es gastar red y batería por algo
+        // que no está mirando. La notificación del teléfono cubre ese rato.
+        if (tab.dataset.view !== 'mensajes')  detenerSondeoMensajes();
         // Al entrar a los saldos se refresca si están viejos. No siempre: si
         // alguien va y viene entre pestañas, pedir de nuevo cada vez gasta
         // cuota de lectura para mostrar lo mismo.
@@ -4891,6 +5163,428 @@
         addFileBtnText.textContent = 'Subir factura';
       }
     });
+
+    // ══════════════════════════════════════════════════════════════════════
+    // MENSAJES
+    //
+    // Un hilo por empleado. El administrador elige con quién habla; el
+    // empleado no elige nada, porque solo tiene un interlocutor.
+    //
+    // ⚠️ LA PANTALLA NO DECIDE NADA DE PERMISOS. El servidor devuelve
+    // únicamente lo que cada uno puede ver (ver `hiloDe` en mensajes.js), así
+    // que acá no hay ninguna comprobación de rol que alguien pueda saltear
+    // abriendo la consola. Lo de abajo es presentación, nada más.
+    // ══════════════════════════════════════════════════════════════════════
+
+    const msgWrap     = document.getElementById('msgWrap');
+    const msgLista    = document.getElementById('msgLista');
+    const msgHilo     = document.getElementById('msgHilo');
+    const msgVacio    = document.getElementById('msgVacio');
+    const msgForm     = document.getElementById('msgForm');
+    const msgTexto    = document.getElementById('msgTexto');
+    const msgEnviar   = document.getElementById('msgEnviar');
+    const msgTitulo   = document.getElementById('msgTitulo');
+    const msgSubtitulo= document.getElementById('msgSubtitulo');
+    const msgInicial  = document.getElementById('msgInicial');
+    const msgVolver   = document.getElementById('msgVolver');
+    const msgAviso    = document.getElementById('msgAviso');
+    const msgAvisoTexto = document.getElementById('msgAvisoTexto');
+    const msgActivar  = document.getElementById('msgActivar');
+    const navMensajesGlobo = document.getElementById('navMensajesGlobo');
+
+    // Estado del panel. `ultimoId` es lo que permite pedir SOLO lo nuevo en
+    // cada sondeo en vez de traer la conversación entera cada seis segundos.
+    const chat = { hilo: '', hilos: [], ultimoId: 0, sondeo: null, enviando: false };
+
+    const SONDEO_MS = 6000;
+
+    function inicialesDe(nombre) {
+      const partes = String(nombre || '').trim().split(/\s+/).filter(Boolean);
+      if (!partes.length) return '—';
+      return (partes[0][0] + (partes[1] ? partes[1][0] : '')).toUpperCase();
+    }
+
+    // La hora de un mensaje, en local. El servidor manda ISO justamente para
+    // que no haya que adivinar la zona.
+    function horaDe(iso) {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function diaDe(iso) {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '';
+      const hoy = new Date();
+      const ayer = new Date(); ayer.setDate(ayer.getDate() - 1);
+      const mismo = (a, b) => a.getFullYear() === b.getFullYear() &&
+                              a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+      if (mismo(d, hoy))  return 'Hoy';
+      if (mismo(d, ayer)) return 'Ayer';
+      return d.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
+    }
+
+    // El texto de un mensaje lo escribió otra persona: se inserta como TEXTO,
+    // nunca como HTML. Con innerHTML, un mensaje con `<img onerror=...>` se
+    // ejecutaría en la pantalla de quien lo recibe.
+    function burbujaDe(m) {
+      const div = document.createElement('div');
+      div.className = 'msg-burbuja ' + (m.autor === sesion.correo ? 'mio' : 'suyo');
+      const cuerpo = document.createElement('div');
+      cuerpo.textContent = m.texto;
+      div.appendChild(cuerpo);
+      const firma = document.createElement('div');
+      firma.className = 'msg-firma';
+      // En el hilo del empleado puede escribir cualquier administrador, así
+      // que el nombre importa: "la administración" no es una persona.
+      firma.textContent = (m.autor === sesion.correo ? '' : m.nombre + ' · ') + horaDe(m.creado);
+      div.appendChild(firma);
+      return div;
+    }
+
+    function pintarMensajes(mensajes, reiniciar) {
+      if (reiniciar) { msgHilo.innerHTML = ''; chat.ultimoId = 0; }
+      if (!mensajes.length && reiniciar) {
+        const v = document.createElement('div');
+        v.className = 'msg-vacio';
+        v.textContent = 'Todavía no hay mensajes. Escribí el primero.';
+        msgHilo.appendChild(v);
+        return;
+      }
+      if (mensajes.length && msgHilo.querySelector('.msg-vacio')) msgHilo.innerHTML = '';
+
+      let ultimoDia = msgHilo.dataset.ultimoDia || '';
+      mensajes.forEach(m => {
+        const dia = diaDe(m.creado);
+        if (dia && dia !== ultimoDia) {
+          const sep = document.createElement('div');
+          sep.className = 'msg-dia';
+          sep.textContent = dia;
+          msgHilo.appendChild(sep);
+          ultimoDia = dia;
+        }
+        msgHilo.appendChild(burbujaDe(m));
+        if (m.id > chat.ultimoId) chat.ultimoId = m.id;
+      });
+      msgHilo.dataset.ultimoDia = ultimoDia;
+      msgHilo.scrollTop = msgHilo.scrollHeight;
+    }
+
+    function pintarLista() {
+      msgLista.innerHTML = '';
+      chat.hilos.forEach(h => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'msg-persona' + (h.conversacion === chat.hilo ? ' activa' : '');
+
+        const ini = document.createElement('div');
+        ini.className = 'msg-inicial';
+        ini.textContent = inicialesDe(h.nombre);
+        b.appendChild(ini);
+
+        const datos = document.createElement('div');
+        datos.className = 'msg-datos';
+        const nom = document.createElement('div');
+        nom.className = 'msg-nombre';
+        nom.textContent = h.nombre;
+        datos.appendChild(nom);
+        const ult = document.createElement('div');
+        ult.className = 'msg-ultimo';
+        ult.textContent = h.ultimo ? (h.ultimoEsAdmin ? 'Vos: ' : '') + h.ultimo : 'Sin mensajes';
+        datos.appendChild(ult);
+        b.appendChild(datos);
+
+        if (h.sinLeer > 0) {
+          const g = document.createElement('span');
+          g.className = 'msg-globo';
+          g.textContent = h.sinLeer;
+          b.appendChild(g);
+        }
+
+        b.addEventListener('click', () => abrirHilo(h.conversacion, h.nombre));
+        msgLista.appendChild(b);
+      });
+      actualizarGlobo();
+    }
+
+    // El contador de la pestaña. Para el administrador es la suma de todos los
+    // hilos; para el empleado, lo que le mandaron sin leer.
+    function actualizarGlobo(sinLeerPropio) {
+      let total = 0;
+      if (chat.hilos.length) total = chat.hilos.reduce((s, h) => s + (h.sinLeer || 0), 0);
+      else if (sinLeerPropio) total = sinLeerPropio;
+      navMensajesGlobo.textContent = total > 99 ? '99+' : total;
+      navMensajesGlobo.style.display = total > 0 ? '' : 'none';
+    }
+
+    async function abrirMensajes() {
+      revisarPermisoDeAvisos();
+      await cargarMensajes(true);
+      arrancarSondeoMensajes();
+    }
+
+    async function abrirHilo(correo, nombre) {
+      chat.hilo = correo;
+      msgTitulo.textContent = nombre || correo;
+      msgSubtitulo.textContent = correo === nombre ? '' : correo;
+      msgInicial.textContent = inicialesDe(nombre || correo);
+      msgWrap.classList.add('en-hilo');
+      pintarLista();
+      await cargarMensajes(true);
+    }
+
+    async function cargarMensajes(reiniciar) {
+      try {
+        const cuerpo = { action: 'consultar_mensajes' };
+        if (chat.hilo) cuerpo.conversacion = chat.hilo;
+        if (!reiniciar) cuerpo.desde = chat.ultimoId;
+
+        const r = await postAppsScript(cuerpo, 30000);
+        if (r.status !== 'success') {
+          if (r.codigo === 'SIN_MENSAJES') {
+            msgVacio.textContent = 'El panel de mensajes todavía no está disponible.';
+          }
+          return;
+        }
+
+        if (r.esAdmin) {
+          msgLista.style.display = '';
+          chat.hilos = r.hilos || [];
+          pintarLista();
+          // Sin conversación elegida no hay nada que mostrar a la derecha.
+          if (!chat.hilo) {
+            msgHilo.innerHTML = '';
+            const v = document.createElement('div');
+            v.className = 'msg-vacio';
+            v.textContent = 'Elegí a quién le querés escribir.';
+            msgHilo.appendChild(v);
+            msgTexto.disabled = true;
+            msgEnviar.disabled = true;
+            return;
+          }
+        } else {
+          msgLista.style.display = 'none';
+          msgWrap.classList.add('en-hilo');
+          msgTitulo.textContent = 'Administración';
+          msgSubtitulo.textContent = 'Millennium Energy Co';
+          msgInicial.textContent = 'MC';
+        }
+
+        msgTexto.disabled = false;
+        msgEnviar.disabled = !msgTexto.value.trim();
+        pintarMensajes(r.mensajes || [], reiniciar);
+
+        // Marcar leído solo si llegó algo del otro lado: una petición de
+        // escritura en cada sondeo sería escribir en la base cada seis
+        // segundos para no cambiar nada.
+        const hayAjenos = (r.mensajes || []).some(m => m.autor !== sesion.correo);
+        if (hayAjenos) marcarLeido();
+        if (!r.esAdmin) {
+          actualizarGlobo((r.mensajes || []).filter(m => m.esAdmin && !m.leido).length);
+        }
+      } catch (err) {
+        // Un sondeo que falla no muestra nada: la red móvil se corta todo el
+        // tiempo y un cartel por cada corte sería ruido. El próximo lo arregla.
+        if (reiniciar) console.warn('mensajes:', err && err.message);
+      }
+    }
+
+    async function marcarLeido() {
+      try {
+        const cuerpo = { action: 'marcar_leido' };
+        if (chat.hilo) cuerpo.conversacion = chat.hilo;
+        await postAppsScript(cuerpo, 20000);
+        const h = chat.hilos.filter(x => x.conversacion === chat.hilo)[0];
+        if (h) { h.sinLeer = 0; pintarLista(); }
+        else actualizarGlobo(0);
+      } catch (err) { /* se reintenta solo en el próximo sondeo */ }
+    }
+
+    function arrancarSondeoMensajes() {
+      detenerSondeoMensajes();
+      chat.sondeo = setInterval(() => {
+        if (document.hidden) return;   // con la app en segundo plano avisa el teléfono
+        cargarMensajes(false);
+      }, SONDEO_MS);
+    }
+
+    function detenerSondeoMensajes() {
+      if (chat.sondeo) { clearInterval(chat.sondeo); chat.sondeo = null; }
+    }
+
+    msgVolver.addEventListener('click', () => {
+      chat.hilo = '';
+      msgWrap.classList.remove('en-hilo');
+      cargarMensajes(true);
+    });
+
+    msgTexto.addEventListener('input', () => {
+      msgEnviar.disabled = !msgTexto.value.trim() || chat.enviando;
+      // Crece con el texto, hasta el tope que pone el CSS.
+      msgTexto.style.height = 'auto';
+      msgTexto.style.height = Math.min(msgTexto.scrollHeight, 120) + 'px';
+    });
+
+    // Enter manda, Shift+Enter hace un salto de línea. En el teléfono no:
+    // ahí Enter tiene que ser salto de línea, porque el teclado no distingue.
+    msgTexto.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey && window.innerWidth > 860) {
+        e.preventDefault();
+        msgForm.requestSubmit();
+      }
+    });
+
+    msgForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      const texto = msgTexto.value.trim();
+      if (!texto || chat.enviando) return;
+
+      chat.enviando = true;
+      msgEnviar.disabled = true;
+      try {
+        const cuerpo = { action: 'enviar_mensaje', texto: texto };
+        if (chat.hilo) cuerpo.conversacion = chat.hilo;
+        const r = await postAppsScript(cuerpo, 30000);
+        if (r.status !== 'success') {
+          showToast('error', 'No se envió', r.message || 'Intentá de nuevo.');
+          return;
+        }
+        // Se limpia DESPUÉS de que el servidor confirmó. Si se limpiara antes
+        // y fallara el envío, la persona perdería lo que escribió.
+        msgTexto.value = '';
+        msgTexto.style.height = 'auto';
+        pintarMensajes([r.mensaje], false);
+        if (chat.hilos.length) cargarMensajes(false);
+      } catch (err) {
+        showToast('error', 'No se envió', 'Revisá la conexión e intentá de nuevo.');
+      } finally {
+        chat.enviando = false;
+        msgEnviar.disabled = !msgTexto.value.trim();
+      }
+    });
+
+    // ─── Las notificaciones del teléfono ──────────────────────────────────
+    //
+    // ⚠️ EN iPHONE SOLO FUNCIONAN SI LA APP ESTÁ INSTALADA en la pantalla de
+    // inicio. Desde Safari como página web, Apple no las permite — no es algo
+    // que podamos resolver con código. Por eso, cuando detectamos ese caso, el
+    // aviso explica QUÉ hacer en vez de ofrecer un botón que no haría nada.
+
+    function esIOS() {
+      return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    }
+
+    function estaInstalada() {
+      return window.matchMedia('(display-mode: standalone)').matches ||
+             window.navigator.standalone === true;
+    }
+
+    function revisarPermisoDeAvisos() {
+      const soportado = 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window;
+
+      if (soportado && Notification.permission === 'granted') {
+        msgAviso.style.display = 'none';
+        suscribirAAvisos();   // re-registra por si cambió el dispositivo
+        return;
+      }
+
+      msgAviso.style.display = '';
+
+      if (esIOS() && !estaInstalada()) {
+        msgAvisoTexto.textContent =
+          'Para recibir avisos en el iPhone hay que instalar la app: tocá Compartir ' +
+          'y después "Agregar a inicio". Desde Safari, Apple no permite notificaciones.';
+        msgActivar.style.display = 'none';
+        return;
+      }
+
+      if (!soportado) {
+        msgAvisoTexto.textContent = 'Este navegador no permite notificaciones.';
+        msgActivar.style.display = 'none';
+        return;
+      }
+
+      if (Notification.permission === 'denied') {
+        msgAvisoTexto.textContent =
+          'Las notificaciones están bloqueadas. Hay que volver a permitirlas desde los ajustes del navegador.';
+        msgActivar.style.display = 'none';
+        return;
+      }
+
+      msgAvisoTexto.textContent = 'Activá las notificaciones para enterarte cuando te escriban.';
+      msgActivar.style.display = '';
+    }
+
+    msgActivar.addEventListener('click', async () => {
+      try {
+        // El permiso TIENE que pedirse desde un gesto de la persona. Pedirlo al
+        // cargar la página lo rechazan los navegadores (y las personas).
+        const permiso = await Notification.requestPermission();
+        if (permiso !== 'granted') {
+          showToast('info', 'Sin notificaciones', 'Podés activarlas más tarde desde acá.');
+          revisarPermisoDeAvisos();
+          return;
+        }
+        await suscribirAAvisos();
+        msgAviso.style.display = 'none';
+        showToast('success', 'Listo', 'Te vamos a avisar cuando te escriban.');
+      } catch (err) {
+        showToast('error', 'No se pudo activar', err.message || 'Intentá de nuevo.');
+      }
+    });
+
+    // La clave pública VAPID no es secreta: identifica al servidor ante el
+    // servicio de push. La privada vive solo en el servidor.
+    const VAPID_PUBLICA = 'BDabbopkSkQ98QgarP_HxWjpGt6VAbKt_x1ZXPIL_DcLSqkRoXQfUZrlMC7bNHi0vMENfnyAp3N_jw7RUNCk_cg';
+
+    function claveAUint8(base64) {
+      const relleno = '='.repeat((4 - base64.length % 4) % 4);
+      const normal  = (base64 + relleno).replace(/-/g, '+').replace(/_/g, '/');
+      const crudo   = atob(normal);
+      const salida  = new Uint8Array(crudo.length);
+      for (let i = 0; i < crudo.length; i++) salida[i] = crudo.charCodeAt(i);
+      return salida;
+    }
+
+    async function suscribirAAvisos() {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        let sus = await reg.pushManager.getSubscription();
+        if (!sus) {
+          sus = await reg.pushManager.subscribe({
+            // Obligatorio en todos los navegadores actuales: no se permite una
+            // suscripción que el usuario no pueda ver.
+            userVisibleOnly: true,
+            applicationServerKey: claveAUint8(VAPID_PUBLICA)
+          });
+        }
+        // Se manda SIEMPRE, no solo al crearla: el servidor la guarda por
+        // endpoint, así que repetir es inofensivo y cubre el caso de que la
+        // fila se haya borrado del lado del servidor.
+        await postAppsScript({ action: 'guardar_suscripcion', suscripcion: sus.toJSON() }, 20000);
+      } catch (err) {
+        console.warn('no se pudo suscribir a avisos:', err && err.message);
+      }
+    }
+
+    // Al tocar la notificación, el Service Worker avisa a qué conversación ir.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', e => {
+        // El navegador renovó la suscripción por su cuenta: la que tiene el
+        // servidor quedó muerta. Hay que volver a registrarla o la persona
+        // deja de recibir avisos sin que nada falle a la vista.
+        if (e.data && e.data.tipo === 'resuscribir') { suscribirAAvisos(); return; }
+
+        if (!e.data || e.data.tipo !== 'abrir-chat') return;
+        const tab = document.querySelector('.nav-tab[data-view="mensajes"]');
+        if (tab) tab.click();
+        if (e.data.hilo && sesion.rol === 'admin') {
+          const h = chat.hilos.filter(x => x.conversacion === e.data.hilo)[0];
+          abrirHilo(e.data.hilo, h ? h.nombre : e.data.hilo);
+        }
+      });
+    }
 
     // ─── Service Worker + banner de actualización ─────────────────
     if ('serviceWorker' in navigator) {

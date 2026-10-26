@@ -747,5 +747,84 @@ console.log('\n=== Los iconos de la lista de archivos existen ===');
   chk(n + ' está declarado (' + usos + ' usos)', decl, 'usado pero nunca declarado');
 });
 
+console.log('\n=== El panel de mensajes esta cableado de punta a punta ===');
+{
+  // Una pestaña sin vista, o una vista sin entrada en `vistasPorNombre`, no da
+  // error: simplemente no pasa nada al tocar el botón. Es el tipo de falla que
+  // solo se descubre usándola.
+  chk('existe la pestaña', /data-view="mensajes"/.test(html));
+  chk('existe la vista', /<main id="viewMensajes"/.test(html));
+  chk('y la vista esta registrada en el conmutador',
+      /vistasPorNombre\s*=\s*\{[\s\S]*?mensajes:\s*viewMensajes/.test(codigo));
+  chk('al entrar se carga el panel',
+      /dataset\.view === 'mensajes'\)\s*abrirMensajes\(\)/.test(codigo));
+  chk('y al salir se corta el sondeo',
+      /dataset\.view !== 'mensajes'\)\s*detenerSondeoMensajes\(\)/.test(codigo));
+}
+
+console.log('\n=== Los elementos que el chat busca EXISTEN en el HTML ===');
+{
+  // Mismo riesgo que con los iconos svg: `getElementById` de algo que no está
+  // devuelve null, y el error salta recién cuando alguien toca el panel.
+  const bloque = codigo.slice(codigo.indexOf('const msgWrap'),
+                              codigo.indexOf('// ─── Service Worker + banner'));
+  chk('el bloque del chat se encontro', bloque.length > 500, bloque.length);
+
+  const pedidos = [...bloque.matchAll(/getElementById\('([^']+)'\)/g)].map(m => m[1]);
+  const faltan  = pedidos.filter(id => html.indexOf('id="' + id + '"') === -1);
+  chk(pedidos.length + ' identificadores pedidos, todos declarados',
+      faltan.length === 0, faltan);
+}
+
+console.log('\n=== El texto de un mensaje NO se inserta como HTML ===');
+{
+  // Lo escribió otra persona. Con innerHTML, un mensaje con `<img onerror=…>`
+  // se ejecutaría en la pantalla de quien lo recibe.
+  const burbuja = codigo.slice(codigo.indexOf('function burbujaDe'),
+                               codigo.indexOf('function pintarMensajes'));
+  chk('la burbuja se arma con textContent', /cuerpo\.textContent\s*=\s*m\.texto/.test(burbuja));
+  chk('y nunca con innerHTML', !/innerHTML/.test(burbuja), 'innerHTML dentro de burbujaDe');
+
+  const lista = codigo.slice(codigo.indexOf('function pintarLista'),
+                             codigo.indexOf('function actualizarGlobo'));
+  chk('el nombre y el ultimo mensaje tambien van como texto',
+      /nom\.textContent/.test(lista) && /ult\.textContent/.test(lista));
+}
+
+console.log('\n=== Las notificaciones: permiso, suscripcion y el caso iPhone ===');
+{
+  chk('el permiso se pide desde un clic, no al cargar',
+      /msgActivar\.addEventListener\('click'[\s\S]{0,400}?Notification\.requestPermission\(\)/.test(codigo));
+  chk('y despues se registra la suscripcion',
+      /requestPermission\(\)[\s\S]{0,600}?await suscribirAAvisos\(\)/.test(codigo));
+  chk('se avisa que en iPhone hay que instalar la app',
+      /esIOS\(\)\s*&&\s*!estaInstalada\(\)/.test(codigo) &&
+      /Agregar a inicio/.test(codigo));
+  chk('y ahi NO se ofrece un boton que no haria nada',
+      /esIOS\(\) && !estaInstalada\(\)\)[\s\S]{0,400}?msgActivar\.style\.display = 'none'/.test(codigo));
+
+  const clave = (codigo.match(/const VAPID_PUBLICA = '([^']*)'/) || [])[1] || '';
+  chk('la clave publica esta puesta de verdad',
+      clave.length === 87 && /^B[A-Za-z0-9_-]+$/.test(clave), clave.slice(0, 12) + '… (' + clave.length + ')');
+}
+
+console.log('\n=== El Service Worker sabe recibir y abrir la notificacion ===');
+{
+  const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8').replace(/\r\n/g, '\n');
+  chk('escucha push', /addEventListener\('push'/.test(sw));
+  chk('muestra la notificacion', /showNotification\(/.test(sw));
+  chk('aun si el push viene sin datos legibles',
+      /catch \(err\) \{ d = \{\}; \}/.test(sw) && /d\.cuerpo \|\|/.test(sw));
+  chk('escucha el toque', /addEventListener\('notificationclick'/.test(sw));
+  chk('y reusa la ventana abierta en vez de abrir otra',
+      /matchAll\(\{ type: 'window'[\s\S]{0,400}?c\.focus\(\)/.test(sw));
+  chk('avisa a la app cual conversacion abrir',
+      /postMessage\(\{ tipo: 'abrir-chat'/.test(sw));
+  chk('y si el navegador renueva la suscripcion, pide volver a registrarla',
+      /addEventListener\('pushsubscriptionchange'/.test(sw) && /'resuscribir'/.test(sw));
+  chk('la app atiende ese aviso',
+      /tipo === 'resuscribir'\) \{ suscribirAAvisos\(\)/.test(codigo));
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);

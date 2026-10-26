@@ -28,6 +28,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 Y si llega a pasar: **no alcanza con corregir el archivo**. Hay que **subir también la versión de `CACHE` en `sw.js`**, porque quien ya cargó la versión rota la tiene cacheada bajo ese mismo nombre y el Service Worker es cache-first: se la quedaría para siempre.
 
 ## Última actualización
+**2026-10-26** — 💬 **Panel de Mensajes con notificación al teléfono.** Chat admin ↔ empleado dentro de la app, con aviso push como el de WhatsApp. **Primera pieza del sistema que NO vive en `apps-script.gs`:** usa **Postgres** (base `pj04` en el servicio `postgres` de EasyPanel), porque Apps Script no llega ahí. Cache `v115`. ⚠️ **En iPhone los avisos solo llegan si la app está instalada en la pantalla de inicio** — limitación de Apple, no nuestra.
+
 **2026-10-22** — 💰 **Un fondo de viáticos por equipo.** Dinero Disponible pasa de una bolsa compartida a **Viáticos Equipo 1, 2 y 3**, cada uno con su saldo y sus traslados. Se agregó el **Equipo 3**. Backend `2026-10-22-a`: **hay que desplegar Apps Script y EasyPanel**. El frontend no cambió.
 
 **2026-10-22** — ☑️ **Consultar Pagos filtra por VARIOS tipos de pago a la vez.** El desplegable pasó a ser casillas: se puede pedir “proveedores y traslados juntos”, que antes era imposible. 🐛 De paso se corrigió un error que nadie veía: el filtro comparaba con “contiene”, así que **Compra traía también Compra Materiales** — 43 pagos en vez de 21, verificado contra la hoja real. Solo pantalla, cache `v114`.
@@ -557,6 +559,22 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-26**: 💬 **Panel de Mensajes: chat admin ↔ empleado con notificación al teléfono.**
+  - **Para qué.** Comunicarse con cada empleado de forma personalizada, sin sacar la conversación del sistema. A diferencia de WhatsApp, el mensaje queda junto al contexto del trabajo y sigue ahí cuando la persona se va.
+  - ⚠️ **PRIMERA PIEZA QUE NO CORRE EN APPS SCRIPT.** Vive solo en el servidor propio, porque necesita **Postgres** y Apps Script no puede llegar ahí. **Si alguna vez se vuelve al plan B** (apuntar `APPS_SCRIPT_URL` a Google), el chat deja de funcionar; pagos, saldos y viáticos no, porque viven en el Sheet.
+  - **Por qué Postgres y no una pestaña del Sheet.** El servidor saca una **foto de TODAS las pestañas** para atender cualquier petición (`foto.js`). Una pestaña `MENSAJES` haría que **consultar un pago cargara también todo el historial del chat**, y empeoraría con cada mensaje. Un chat son muchas escrituras chicas y frecuentes: el peor caso posible para una hoja de cálculo.
+  - **Base propia y usuario propio**, no el superusuario. El servicio `postgres` de EasyPanel aloja además `pj20`, `pj50` y `thebigtrader`; con la credencial que muestra el panel, un bug del chat podría escribir en la contabilidad de otro proyecto. El usuario `pj04_app` solo ve la base `pj04`.
+  - **Un hilo por empleado, compartido por los administradores.** Con un hilo por cada admin, Joseph no vería lo que Nathan ya le dijo a la persona — y dos instrucciones contradictorias es justo lo que un canal de coordinación tiene que evitar. Coherente con el resto, donde "administrador" es un rol y no una persona.
+  - **El hilo lo decide el SERVIDOR.** Un empleado lee y escribe solo en el suyo, mande lo que mande en el cuerpo (`hiloDe`). Mismo criterio que `equipoDelPago_` y `CORREO REGISTRO`. Ocultarlo en la pantalla no serviría: cualquiera puede llamar la URL a mano.
+  - **La identidad sale del MISMO `contextoDe_`** que todo lo demás. Una segunda forma de resolver quién sos sería una segunda forma de equivocarse — y acá lo que se decide con eso es quién lee la conversación de quién.
+  - ⚠️ **iPhone: los avisos solo llegan con la app INSTALADA** en la pantalla de inicio (Compartir → "Agregar a inicio"). Desde Safari, Apple no los entrega, y no hay código que lo arregle. El panel **detecta ese caso y explica qué hacer**, en vez de ofrecer un botón que no haría nada.
+  - **Las suscripciones muertas se borran** (404/410), las caídas pasajeras **no** (500, timeout). Sin eso, un teléfono desinstalado genera un error en cada mensaje para siempre; borrando de más, alguien se queda sin avisos por una caída ajena de diez minutos.
+  - **El texto del mensaje se inserta con `textContent`, nunca `innerHTML`** — lo escribió otra persona. Hay mutación que lo vigila.
+  - **748 comprobaciones**, **33 mutaciones** detectadas (18 del backend, 15 del frontend).
+  - 🐛 **La trampa del CRLF, tercera vez.** El script de mutación no encontraba dos patrones de `index.html` porque el archivo usa CRLF y los patrones traían `\n`. Es el mismo defecto que ya arruinó `prueba-logica-real.js` (15/10) y `prueba-referencias.js` (22/10). **Regla: cualquier script que busque texto en `index.html` normaliza los saltos de línea primero.**
+  - 🐛 **Un chequeo propio mal hecho:** marqué `--surface-1` como variable fantasma, pero esa estaba escrita `var(--surface-1, #fff)` — con valor de respaldo es CSS válido y el navegador NO descarta la declaración. Solo las que van **sin** respaldo rompen.
+  - **Pendiente:** cargar el servicio en el teléfono de cada empleado (instalar la PWA en los iPhone) y probar un mensaje de punta a punta.
+
 - **2026-10-22**: 💰 **Dinero Disponible: un fondo de viáticos por equipo.**
   - **El problema.** Con dos equipos en campo —y un tercero en camino— había **una sola bolsa** de viáticos. No se podía saber cuánta plata le quedaba a cada uno, ni mandarle dinero a uno sin mezclarlo con el del otro.
   - **Los fondos se generan desde `EQUIPOS`**, no escritos a mano en `CUENTAS`. Agregar un Equipo 4 es una línea y su fondo aparece solo, con su saldo, sus traslados y su historial. Escribirlos a mano significaría acordarse de tocar dos listas, y la segunda vez nadie se acuerda.
