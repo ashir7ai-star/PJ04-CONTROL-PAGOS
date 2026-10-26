@@ -303,6 +303,118 @@ console.log('\n=== Una acción desconocida no pasa en silencio ===');
   chk('se rechaza y se nombra', r.status === 'error' && /borrar_todo/.test(r.message), r);
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// La notificación al teléfono
+// ══════════════════════════════════════════════════════════════════════════
+
+const { crearPush, LARGO_VISTA } = require('./src/push');
+
+// Una base falsa chica, solo con suscripciones.
+function basePush(filas) {
+  const subs = filas.slice();
+  const borradas = [];
+  async function consulta(sql, params) {
+    const s = String(sql).replace(/\s+/g, ' ').trim();
+    if (/^SELECT endpoint, datos FROM suscripciones/i.test(s)) {
+      return { rows: subs.filter(function (f) { return params[0].indexOf(f.correo) !== -1; }) };
+    }
+    if (/^DELETE FROM suscripciones/i.test(s)) {
+      params[0].forEach(function (e) { borradas.push(e); });
+      return { rows: [] };
+    }
+    throw new Error('consulta no prevista en basePush: ' + s);
+  }
+  return { consulta: consulta, borradas: borradas };
+}
+
+const SUS = [
+  { endpoint: 'ep-nathan',  correo: 'nathan@ylevigroup.com', datos: { endpoint: 'ep-nathan' } },
+  { endpoint: 'ep-jose-1',  correo: 'jose@ylevigroup.com',   datos: { endpoint: 'ep-jose-1' } },
+  { endpoint: 'ep-jose-2',  correo: 'jose@ylevigroup.com',   datos: { endpoint: 'ep-jose-2' } },
+  { endpoint: 'ep-laura',   correo: 'laura@ylevigroup.com',  datos: { endpoint: 'ep-laura' } }
+];
+
+const MSG = { nombre: 'Nathan', texto: 'pasá por la oficina' };
+
+console.log('\n=== A quién le suena ===');
+{
+  const b = basePush(SUS);
+  const enviados = [];
+  const p = crearPush({ consulta: b.consulta,
+                        enviar: function (s) { enviados.push(s.endpoint); return Promise.resolve(); } });
+
+  await p.avisar({ hilo: 'jose@ylevigroup.com', esAdmin: true, mensaje: MSG, personas: PERSONAS });
+  chk('si escribe el administrador, le suena al empleado',
+      enviados.sort().join(',') === 'ep-jose-1,ep-jose-2', enviados);
+  chk('y a nadie más', enviados.indexOf('ep-laura') === -1 && enviados.indexOf('ep-nathan') === -1, enviados);
+}
+
+console.log('\n=== Todos los dispositivos de la persona ===');
+{
+  const b = basePush(SUS);
+  const enviados = [];
+  const p = crearPush({ consulta: b.consulta,
+                        enviar: function (s) { enviados.push(s.endpoint); return Promise.resolve(); } });
+  await p.avisar({ hilo: 'jose@ylevigroup.com', esAdmin: true, mensaje: MSG, personas: PERSONAS });
+  chk('teléfono y computadora suenan los dos', enviados.length === 2, enviados);
+}
+
+console.log('\n=== Cuando escribe el empleado ===');
+{
+  const b = basePush(SUS);
+  const enviados = [];
+  const p = crearPush({ consulta: b.consulta,
+                        enviar: function (s) { enviados.push(s.endpoint); return Promise.resolve(); } });
+
+  await p.avisar({ hilo: 'jose@ylevigroup.com', esAdmin: false,
+                   mensaje: { nombre: 'Jose', texto: 'jefe' }, personas: PERSONAS });
+  chk('le suena a los administradores', enviados.join(',') === 'ep-nathan', enviados);
+  chk('y NO al propio empleado que escribió', enviados.indexOf('ep-jose-1') === -1, enviados);
+  chk('ni a otro empleado', enviados.indexOf('ep-laura') === -1, enviados);
+}
+
+console.log('\n=== Las suscripciones muertas se borran, las caídas no ===');
+{
+  const b = basePush(SUS);
+  const p = crearPush({ consulta: b.consulta, enviar: function (s) {
+    if (s.endpoint === 'ep-jose-1') { const e = new Error('Gone'); e.statusCode = 410; throw e; }
+    if (s.endpoint === 'ep-jose-2') { const e = new Error('Server Error'); e.statusCode = 500; throw e; }
+    return Promise.resolve();
+  } });
+
+  const r = await p.avisar({ hilo: 'jose@ylevigroup.com', esAdmin: true, mensaje: MSG, personas: PERSONAS });
+  chk('un 410 borra la suscripción', b.borradas.join(',') === 'ep-jose-1', b.borradas);
+  chk('un 500 NO la borra', b.borradas.indexOf('ep-jose-2') === -1, b.borradas);
+  chk('y lo informa', r.borradas === 1 && r.enviadas === 0, r);
+}
+
+console.log('\n=== Qué viaja en la notificación ===');
+{
+  const b = basePush(SUS);
+  let carga = null;
+  const p = crearPush({ consulta: b.consulta,
+                        enviar: function (s, c) { carga = JSON.parse(c); return Promise.resolve(); } });
+
+  const largo = 'x'.repeat(LARGO_VISTA + 50);
+  await p.avisar({ hilo: 'jose@ylevigroup.com', esAdmin: true,
+                   mensaje: { nombre: 'Nathan', texto: largo }, personas: PERSONAS });
+
+  chk('lleva quién escribe', carga && carga.titulo === 'Nathan', carga);
+  chk('lleva el hilo, para poder abrirlo al tocarla',
+      carga && carga.hilo === 'jose@ylevigroup.com', carga);
+  chk('recorta el texto largo', carga && carga.cuerpo.length <= LARGO_VISTA, carga && carga.cuerpo.length);
+  chk('y avisa que está recortado', carga && /…$/.test(carga.cuerpo), carga && carga.cuerpo.slice(-5));
+  chk('agrupa por conversación', carga && carga.etiqueta === 'chat-jose@ylevigroup.com', carga);
+}
+
+console.log('\n=== Sin suscripciones no se cae ===');
+{
+  const b = basePush([]);
+  const p = crearPush({ consulta: b.consulta, enviar: function () { throw new Error('no debería llamarse'); } });
+  const r = await p.avisar({ hilo: 'jose@ylevigroup.com', esAdmin: true, mensaje: MSG, personas: PERSONAS });
+  chk('devuelve cero y sigue', r.enviadas === 0, r);
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);
 

@@ -23,6 +23,27 @@ const cupo = require('./cupo-lecturas');
 const { crearGestorDeFoto } = require('./foto');
 const { traducirError }     = require('./errores');
 
+// ─── El panel de mensajes ─────────────────────────────────────────────────
+//
+// Es la única parte del sistema que NO pasa por `apps-script.gs`: vive en
+// Postgres, y Apps Script no puede llegar ahí. Lo que sí comparte es la
+// identidad — quién llama se resuelve con el mismo `contextoDe_` que todo lo
+// demás, para que no haya dos formas distintas de saber quién sos.
+const base = require('./base');
+const { crearMensajes, ACCIONES: ACCIONES_MENSAJES } = require('./mensajes');
+const { crearPush, envioReal } = require('./push');
+
+const enviarPush = envioReal();
+if (!enviarPush) {
+  console.warn('[push] sin VAPID_PUBLICA/VAPID_PRIVADA: el chat funciona, pero sin avisos al teléfono.');
+}
+const push = enviarPush ? crearPush({ consulta: base.consulta, enviar: enviarPush }) : null;
+
+const mensajes = crearMensajes({
+  consulta: base.consulta,
+  avisar: push ? push.avisar : undefined
+});
+
 const PUERTO = Number(process.env.PORT || 8080);
 const ZONA   = process.env.ZONA_HORARIA || 'America/Bogota';
 
@@ -247,6 +268,13 @@ const servidor = http.createServer(async (req, res) => {
       r.correo = await permisos();
     } catch (err) { r.correo = { ok: false, error: err.message }; }
 
+    // El chat es opcional: si no está configurado se informa, pero NO se
+    // marca el servicio como caído. Pagos, saldos y viáticos no dependen de
+    // él, y un diagnóstico en rojo por algo que nadie configuró todavía
+    // enseña a ignorar el diagnóstico.
+    r.mensajes = await base.estado();
+    r.mensajes.avisosAlTelefono = !!push;
+
     r.status = (r.hojas.ok && r.drive.ok && r.correo.ok) ? 'success' : 'error';
     return responder(res, 200, r);
   }
@@ -266,6 +294,56 @@ const servidor = http.createServer(async (req, res) => {
       return responder(res, 400, { status: 'error', message: 'JSON inválido' });
     }
     cuerpoAccion = String(cuerpo.action || '?').slice(0, 40);
+
+    // ─── El chat ──────────────────────────────────────────────────────────
+    //
+    // No pasa por la lógica del Sheet —vive en Postgres— pero SÍ usa su
+    // `contextoDe_` para saber quién llama. Una segunda forma de resolver la
+    // identidad sería una segunda forma de equivocarse, y acá lo que se
+    // decide con ella es quién puede leer la conversación de quién.
+    //
+    // La foto se pide igual (del caché casi siempre) porque la sesión, el rol
+    // y la lista de personas viven en la hoja USUARIOS.
+    if (ACCIONES_MENSAJES.indexOf(cuerpo.action) !== -1) {
+      if (!base.disponible()) {
+        return responder(res, 503, {
+          status: 'error', codigo: 'SIN_MENSAJES',
+          message: 'El panel de mensajes todavía no está configurado en este servidor.'
+        });
+      }
+
+      const lecturaChat = await traerFoto(false);
+      const eChat = crearEntorno(lecturaChat.foto, { zona: ZONA });
+      vm.createContext(eChat.globales);
+      vm.runInContext(CODIGO_LOGICA, eChat.globales);
+
+      let ctx;
+      try {
+        ctx = eChat.globales.contextoDe_(cuerpo);
+      } catch (err) {
+        // Se traduce con el MISMO `errorJson_` del resto del sistema, así el
+        // navegador recibe los códigos que ya sabe interpretar
+        // (SESION_INVALIDA, NO_REGISTRADO, PENDIENTE_APROBACION…).
+        const salida = eChat.globales.errorJson_(err);
+        return responder(res, 200,
+          (salida && salida._json !== undefined) ? salida._json : JSON.stringify(salida));
+      }
+
+      // Los usuarios ACTIVOS, con su rol. De acá sale la lista de
+      // conversaciones y la comprobación de a quién se le puede escribir.
+      const personas = eChat.globales.usuariosTodos_()
+        .filter(function (u) { return String(u['ESTADO'] || '').toLowerCase() === 'activo'; })
+        .map(function (u) {
+          return {
+            correo: String(u['CORREO'] || '').trim().toLowerCase(),
+            nombre: String(u['NOMBRE'] || '').trim() || String(u['CORREO'] || '').trim(),
+            rol:    String(u['ROL'] || 'usuario').toLowerCase()
+          };
+        })
+        .filter(function (p) { return p.correo; });
+
+      return responder(res, 200, await mensajes.atender(cuerpo, ctx, personas));
+    }
 
     const exigeFresco = ACCIONES_QUE_EXIGEN_FRESCO.indexOf(cuerpo.action) !== -1;
     const lectura = await traerFoto(exigeFresco);
