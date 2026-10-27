@@ -63,6 +63,22 @@ function baseFalsa() {
       return { rows: [] };
     }
 
+    if (/^SELECT COUNT\(\*\)::int AS n FROM mensajes/i.test(s)) {
+      // Igual que en la consulta de los hilos: el filtro se LEE del SQL en vez
+      // de reimplementarse acá. Copiar la regla a mano haría que cambiar la
+      // consulta no cambiara nada en la prueba, y el conteo pasaria siempre.
+      const direccion = /es_admin = (true|false)/.exec(s);
+      const soloSinLeer = /leido IS NULL/.test(s);
+      const quienes = /conversacion = ANY/.test(s) ? p[0] : [p[0]];
+      const n = filas.filter(function (f) {
+        if (quienes.indexOf(f.conversacion) === -1) return false;
+        if (direccion && f.es_admin !== (direccion[1] === 'true')) return false;
+        if (soloSinLeer && f.leido) return false;
+        return true;
+      }).length;
+      return { rows: [{ n: n }] };
+    }
+
     if (/^SELECT conversacion, MAX\(id\)/i.test(s)) {
       // El filtro se LEE del SQL, no se reimplementa acá. Si se copiara la
       // regla a mano, cambiar la consulta no cambiaría nada en la prueba y la
@@ -565,6 +581,130 @@ console.log('\n=== La lista de acciones y lo que el modulo atiende no se separan
 
   const sinAtender = ACCIONES.filter(function (a) { return atendidas.indexOf(a) === -1; });
   chk('y toda la lista tiene quien la atienda', sinAtender.length === 0, sinAtender);
+}
+
+console.log('\n=== El contador de sin leer, pedido desde cualquier pantalla ===');
+//
+// El panel corta su sondeo al salir de Mensajes, asi que sin esta accion un
+// empleado podia contestar y el administrador no se enteraba de nada: ni aviso
+// ni numero en la pestana. Paso en la primera prueba de punta a punta.
+{
+  const { m } = montar();
+
+  // Jose escribe dos veces, Laura una. El administrador no leyo nada.
+  await m.atender({ action: 'enviar_mensaje', texto: 'uno' }, JOSE, PERSONAS);
+  await m.atender({ action: 'enviar_mensaje', texto: 'dos' }, JOSE, PERSONAS);
+  await m.atender({ action: 'enviar_mensaje', texto: 'tres' }, LAURA, PERSONAS);
+
+  const r = await m.atender({ action: 'contar_sin_leer' }, ADMIN, PERSONAS);
+  chk('el administrador ve el total de TODOS los hilos',
+      r.status === 'success' && r.sinLeer === 3, r);
+
+  // Lo que escribe el propio administrador no cuenta como "sin leer" para el.
+  await m.atender({ action: 'enviar_mensaje', conversacion: 'jose@ylevigroup.com',
+                    texto: 'respondo' }, ADMIN, PERSONAS);
+  const r2 = await m.atender({ action: 'contar_sin_leer' }, ADMIN, PERSONAS);
+  chk('y lo que el mismo escribio NO se cuenta', r2.sinLeer === 3, r2);
+}
+
+{
+  const { m } = montar();
+  await m.atender({ action: 'enviar_mensaje', conversacion: 'jose@ylevigroup.com',
+                    texto: 'para jose' }, ADMIN, PERSONAS);
+  await m.atender({ action: 'enviar_mensaje', conversacion: 'laura@ylevigroup.com',
+                    texto: 'para laura' }, ADMIN, PERSONAS);
+
+  const r = await m.atender({ action: 'contar_sin_leer' }, JOSE, PERSONAS);
+  chk('un empleado cuenta SOLO lo de su propia conversacion',
+      r.status === 'success' && r.sinLeer === 1, r);
+
+  // Lo mismo que vigila `hiloDe`: el cuerpo no puede elegir el hilo ajeno.
+  const r2 = await m.atender({ action: 'contar_sin_leer',
+                               conversacion: 'laura@ylevigroup.com' }, JOSE, PERSONAS);
+  chk('y pedir el hilo de otro sigue contando el propio', r2.sinLeer === 1, r2);
+}
+
+{
+  const { m } = montar();
+  await m.atender({ action: 'enviar_mensaje', conversacion: 'jose@ylevigroup.com',
+                    texto: 'hola' }, ADMIN, PERSONAS);
+  // Marcar leido es una accion aparte: `consultar_mensajes` no escribe nada,
+  // justamente para no escribir en la base cada seis segundos.
+  await m.atender({ action: 'marcar_leido' }, JOSE, PERSONAS);
+  const r = await m.atender({ action: 'contar_sin_leer' }, JOSE, PERSONAS);
+  chk('leido deja de contar', r.sinLeer === 0, r);
+}
+
+{
+  // Un empleado desactivado ya no aparece en la lista de hilos: su conteo
+  // tampoco puede aparecer, o el numero no coincidiria con la pantalla.
+  const { m } = montar();
+  await m.atender({ action: 'enviar_mensaje', texto: 'desde laura' }, LAURA, PERSONAS);
+  const activos = PERSONAS.filter(function (p) { return p.correo !== 'laura@ylevigroup.com'; });
+  const r = await m.atender({ action: 'contar_sin_leer' }, ADMIN, activos);
+  chk('un empleado que ya no esta activo no suma al contador', r.sinLeer === 0, r);
+}
+
+{
+  const { m } = montar();
+  const r = await m.atender({ action: 'contar_sin_leer' }, ADMIN, []);
+  chk('sin empleados activos devuelve cero, no se cae', r.status === 'success' && r.sinLeer === 0, r);
+}
+
+console.log('\n=== El contador, con numeros que NO se pueden confundir ===');
+//
+// Los casos de arriba pasaban igual con el filtro roto, porque todos los
+// numeros eran 1: una mutacion sobrevivio y lo destapo. Aca cada hilo tiene
+// una cantidad distinta y cada lado escribe, asi que confundir "mios" con
+// "ajenos" o un hilo con otro cambia el resultado.
+{
+  const { m } = montar();
+
+  // Jose escribe 1; el administrador le escribe 2. Para Jose, sin leer = 2.
+  await m.atender({ action: 'enviar_mensaje', texto: 'de jose' }, JOSE, PERSONAS);
+  await m.atender({ action: 'enviar_mensaje', conversacion: 'jose@ylevigroup.com',
+                   texto: 'admin 1' }, ADMIN, PERSONAS);
+  await m.atender({ action: 'enviar_mensaje', conversacion: 'jose@ylevigroup.com',
+                   texto: 'admin 2' }, ADMIN, PERSONAS);
+  // En el hilo de Laura hay 5 del administrador: un numero bien distinto.
+  for (let i = 0; i < 5; i++) {
+    await m.atender({ action: 'enviar_mensaje', conversacion: 'laura@ylevigroup.com',
+                     texto: 'para laura ' + i }, ADMIN, PERSONAS);
+  }
+
+  const rj = await m.atender({ action: 'contar_sin_leer' }, JOSE, PERSONAS);
+  chk('el empleado NO cuenta lo que escribio el mismo', rj.sinLeer === 2, rj);
+
+  const rPide = await m.atender({ action: 'contar_sin_leer',
+                                  conversacion: 'laura@ylevigroup.com' }, JOSE, PERSONAS);
+  chk('y pedir el hilo de Laura (que tiene 5) sigue dando los 2 propios',
+      rPide.sinLeer === 2, rPide);
+
+  const rl = await m.atender({ action: 'contar_sin_leer' }, LAURA, PERSONAS);
+  chk('Laura cuenta los suyos, que son otros', rl.sinLeer === 5, rl);
+}
+
+{
+  const { m } = montar();
+
+  // Tres de los empleados + dos del propio administrador.
+  await m.atender({ action: 'enviar_mensaje', texto: 'j1' }, JOSE, PERSONAS);
+  await m.atender({ action: 'enviar_mensaje', texto: 'j2' }, JOSE, PERSONAS);
+  await m.atender({ action: 'enviar_mensaje', texto: 'l1' }, LAURA, PERSONAS);
+  await m.atender({ action: 'enviar_mensaje', conversacion: 'jose@ylevigroup.com',
+                   texto: 'a1' }, ADMIN, PERSONAS);
+  await m.atender({ action: 'enviar_mensaje', conversacion: 'jose@ylevigroup.com',
+                   texto: 'a2' }, ADMIN, PERSONAS);
+
+  const antes = await m.atender({ action: 'contar_sin_leer' }, ADMIN, PERSONAS);
+  chk('el administrador cuenta los 3 de los empleados y ninguno de los suyos',
+      antes.sinLeer === 3, antes);
+
+  // Lee el hilo de Jose: quedan solo los de Laura.
+  await m.atender({ action: 'marcar_leido', conversacion: 'jose@ylevigroup.com' },
+                  ADMIN, PERSONAS);
+  const despues = await m.atender({ action: 'contar_sin_leer' }, ADMIN, PERSONAS);
+  chk('y lo que ya leyo deja de contarle', despues.sinLeer === 1, despues);
 }
 
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));

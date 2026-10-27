@@ -856,5 +856,66 @@ console.log('\n=== Se puede COMPROBAR que el aviso suena, sin otro telefono ==='
       /finally \{[\s\S]{0,200}?msgProbar\.disabled = false/.test(probar));
 }
 
+// El Service Worker se vuelve a leer: el bloque de arriba lo declaro dentro
+// de su propio alcance, y repetir la lectura cuesta menos que mover eso.
+const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8').replace(/\r\n/g, '\n');
+
+console.log('\n=== Tocar la notificacion abre el CHAT, no la pantalla de inicio ===');
+//
+// Con la app cerrada, el Service Worker no tiene ventana a la que avisarle:
+// abria la app y caia en la vista por defecto. El destino tiene que viajar en
+// la URL o la notificacion no sirve de nada.
+{
+  chk('con la app cerrada, el link lleva al chat',
+      sw.indexOf("'?chat=1' +") !== -1);
+  chk('y dice cual conversacion',
+      sw.indexOf("'&hilo=' + encodeURIComponent(hilo)") !== -1);
+  chk('el openWindow usa ese destino, no el scope pelado',
+      sw.indexOf('openWindow(destino)') !== -1 &&
+      sw.indexOf('openWindow(self.registration.scope)') === -1);
+  chk('la app atiende ese link, y no hay ninguna salida antes de leerlo',
+      /function abrirChatSiLoPideElLink\(\) \{\s*if \(yaAbriChatPorLink\) return;\s*const q = new URLSearchParams\(location\.search\);\s*if \(q\.get\('chat'\) !== '1'\) return;/.test(codigo));
+  chk('y limpia la URL, para que recargar no vuelva a entrar al chat',
+      /history\.replaceState/.test(codigo));
+  chk('se abre por un solo camino, compartido con el toque de la notificacion',
+      /function irAMensajes\(/.test(codigo) &&
+      /tipo !== 'abrir-chat'\) return;\n        irAMensajes\(/.test(codigo) &&
+      /yaAbriChatPorLink = true;[\s\S]{0,400}?irAMensajes\(hilo\)/.test(codigo));
+  chk('y se dispara una sola vez', /if \(yaAbriChatPorLink\) return;/.test(codigo));
+}
+
+console.log('\n=== El numero en la pestana aparece SIN estar en el panel ===');
+//
+// El sondeo del panel se corta al salir de Mensajes, a proposito. Sin nada que
+// pregunte desde las otras pantallas, un empleado contestaba y el
+// administrador no se enteraba: ni aviso ni numero.
+{
+  chk('hay un sondeo del contador aparte del panel',
+      /function arrancarSondeoGlobo\(\)/.test(codigo) &&
+      /sondeoGlobo = setInterval/.test(codigo));
+  chk('pide solo el conteo, no la conversacion',
+      codigo.indexOf("action: 'contar_sin_leer'") !== -1);
+  chk('arranca recien con la sesion puesta, que es cuando se sabe el rol',
+      /pintarEquiposDelPago\(\);[\s\S]{0,400}?arrancarSondeoGlobo\(\)/.test(codigo));
+  chk('no se pisa con el sondeo del panel, que trae datos mas frescos',
+      /async function contarSinLeer\(\)[\s\S]{0,240}?if \(chat\.sondeo\) return;/.test(codigo));
+  chk('no pregunta con la app en segundo plano',
+      /sondeoGlobo = setInterval[\s\S]{0,120}?if \(document\.hidden\) return;/.test(codigo));
+  chk('pero pregunta en el acto al volver a la app',
+      /visibilitychange'[\s\S]{0,200}?if \(!document\.hidden\) contarSinLeer\(\)/.test(codigo));
+  chk('pintar el globo esta separado de calcularlo',
+      /function ponerGlobo\(total\)/.test(codigo) &&
+      /function actualizarGlobo\([\s\S]{0,360}?ponerGlobo\(total\)/.test(codigo));
+
+  chk('al recibir un push, el Service Worker avisa a la app abierta',
+      sw.indexOf("postMessage({ tipo: 'mensaje-nuevo'") !== -1);
+  chk('y lo hace DESPUES de mostrar la notificacion, que es obligatoria',
+      /await self\.registration\.showNotification\([\s\S]{0,900}?tipo: 'mensaje-nuevo'/.test(sw));
+  chk('la app lo atiende y refresca el numero',
+      /tipo === 'mensaje-nuevo'\)[\s\S]{0,260}?contarSinLeer\(\)/.test(codigo));
+  chk('o la conversacion, si la esta mirando',
+      /tipo === 'mensaje-nuevo'\)[\s\S]{0,200}?if \(chat\.sondeo\) cargarMensajes\(false\)/.test(codigo));
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);

@@ -5323,6 +5323,13 @@
       let total = 0;
       if (chat.hilos.length) total = chat.hilos.reduce((s, h) => s + (h.sinLeer || 0), 0);
       else if (sinLeerPropio) total = sinLeerPropio;
+      ponerGlobo(total);
+    }
+
+    // Pintar el globo se separa de calcularlo: el sondeo de fondo tiene el
+    // número pero no la lista de hilos, y sin esta separación no tendría
+    // forma de mostrarlo.
+    function ponerGlobo(total) {
       navMensajesGlobo.textContent = total > 99 ? '99+' : total;
       navMensajesGlobo.style.display = total > 0 ? '' : 'none';
     }
@@ -5420,6 +5427,74 @@
 
     function detenerSondeoMensajes() {
       if (chat.sondeo) { clearInterval(chat.sondeo); chat.sondeo = null; }
+    }
+
+    // ─── El contador, desde cualquier pantalla ─────────────────────
+    //
+    // ⚠️ El sondeo de arriba se corta al salir de Mensajes, a propósito. Pero
+    // sin NADA que pregunte desde las otras pantallas, un empleado podía
+    // contestar y el administrador no se enteraba de nada: ni aviso ni número
+    // en la pestaña. Pasó en la primera prueba de punta a punta.
+    //
+    // Esto pide SOLO el número —un COUNT, no la conversación— y mucho más
+    // espaciado, así cuesta casi nada tenerlo siempre encendido.
+    const SONDEO_GLOBO_MS = 30000;
+    let sondeoGlobo = null;
+
+    async function contarSinLeer() {
+      // Con el panel abierto manda su propio sondeo, que trae datos más
+      // frescos: dos fuentes escribiendo el mismo número se pisarían.
+      if (chat.sondeo) return;
+      try {
+        const r = await postAppsScript({ action: 'contar_sin_leer' }, 15000);
+        if (r && r.status === 'success') ponerGlobo(Number(r.sinLeer) || 0);
+      } catch (err) { /* un sondeo que falla no muestra nada; el próximo lo arregla */ }
+    }
+
+    function arrancarSondeoGlobo() {
+      if (sondeoGlobo) clearInterval(sondeoGlobo);
+      contarSinLeer();
+      sondeoGlobo = setInterval(() => {
+        if (document.hidden) return;   // en segundo plano avisa la notificación
+        contarSinLeer();
+      }, SONDEO_GLOBO_MS);
+    }
+
+    // Al volver a la app se pregunta en el acto: esperar 30 segundos para ver
+    // un número que ya existía es lo que hace que la gente deje de confiar en
+    // el contador.
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) contarSinLeer();
+    });
+
+    // Ir al chat, de un solo lugar. Lo usan el toque de la notificación (con
+    // la app abierta) y el link con ?chat=1 (con la app cerrada): dos caminos
+    // distintos para lo mismo serían dos formas de equivocarse.
+    async function irAMensajes(hilo) {
+      const tab = document.querySelector('.nav-tab[data-view="mensajes"]');
+      if (!tab) return;
+      // Se fija ANTES del click: la carga que dispara el click ya apunta a la
+      // conversación correcta, en vez de traer la lista y pedirla de nuevo.
+      if (hilo && sesion.rol === 'admin') chat.hilo = hilo;
+      tab.click();
+      if (!hilo || sesion.rol !== 'admin') return;
+      await cargarMensajes(true);
+      const h = chat.hilos.filter(x => x.conversacion === hilo)[0];
+      await abrirHilo(hilo, h ? h.nombre : hilo);
+    }
+
+    // Tocar la notificación con la app CERRADA abre una ventana nueva, y ahí
+    // el Service Worker no tiene a quién avisarle: el destino viene en la URL.
+    let yaAbriChatPorLink = false;
+    function abrirChatSiLoPideElLink() {
+      if (yaAbriChatPorLink) return;
+      const q = new URLSearchParams(location.search);
+      if (q.get('chat') !== '1') return;
+      yaAbriChatPorLink = true;
+      const hilo = q.get('hilo') || '';
+      // La URL se limpia: si no, cada recarga volvería a entrar al chat.
+      try { history.replaceState(null, '', location.pathname); } catch (err) {}
+      irAMensajes(hilo);
     }
 
     msgVolver.addEventListener('click', () => {
@@ -5629,18 +5704,23 @@
     // Al tocar la notificación, el Service Worker avisa a qué conversación ir.
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', e => {
+        if (!e.data) return;
+
         // El navegador renovó la suscripción por su cuenta: la que tiene el
         // servidor quedó muerta. Hay que volver a registrarla o la persona
         // deja de recibir avisos sin que nada falle a la vista.
-        if (e.data && e.data.tipo === 'resuscribir') { suscribirAAvisos(); return; }
+        if (e.data.tipo === 'resuscribir') { suscribirAAvisos(); return; }
 
-        if (!e.data || e.data.tipo !== 'abrir-chat') return;
-        const tab = document.querySelector('.nav-tab[data-view="mensajes"]');
-        if (tab) tab.click();
-        if (e.data.hilo && sesion.rol === 'admin') {
-          const h = chat.hilos.filter(x => x.conversacion === e.data.hilo)[0];
-          abrirHilo(e.data.hilo, h ? h.nombre : e.data.hilo);
+        // Llegó un mensaje con la app abierta en otra pantalla: el número de
+        // la pestaña se pone ya, sin esperar el próximo sondeo.
+        if (e.data.tipo === 'mensaje-nuevo') {
+          if (chat.sondeo) cargarMensajes(false);
+          else contarSinLeer();
+          return;
         }
+
+        if (e.data.tipo !== 'abrir-chat') return;
+        irAMensajes(e.data.hilo || '');
       });
     }
 
@@ -6717,6 +6797,10 @@
       // El formulario tiene que reflejar el equipo nuevo: si un admin movió a
       // esta persona de equipo, lo que venga preseleccionado ya es el correcto.
       if (typeof pintarEquiposDelPago === 'function') pintarEquiposDelPago();
+      // Recién acá se sabe quién es: el contador de mensajes y la apertura por
+      // notificación necesitan el rol para saber qué pedir y qué abrir.
+      arrancarSondeoGlobo();
+      abrirChatSiLoPideElLink();
     }
 
     function mostrarLogin(tipo, mensaje) {

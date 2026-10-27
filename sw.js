@@ -1,4 +1,4 @@
-const CACHE = 'control-pagos-v116';
+const CACHE = 'control-pagos-v117';
 // Rutas RELATIVAS a propósito: así la app funciona igual en
 // ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/ que en un dominio propio, sin
 // tener que cambiar código el día que se mude. En un Service Worker, './'
@@ -128,8 +128,8 @@ self.addEventListener('push', e => {
   const titulo = d.titulo || 'Control de Pagos';
   const cuerpo = d.cuerpo || 'Tenés un mensaje nuevo.';
 
-  e.waitUntil(
-    self.registration.showNotification(titulo, {
+  e.waitUntil((async () => {
+    await self.registration.showNotification(titulo, {
       body: cuerpo,
       icon:  './icons/icon-192.png',
       badge: './icons/icon-192.png',
@@ -138,8 +138,14 @@ self.addEventListener('push', e => {
       tag: d.etiqueta || 'chat',
       renotify: true,
       data: { hilo: d.hilo || '' }
-    })
-  );
+    });
+
+    // Si la app está abierta en otra pestaña, que ponga el número en la
+    // pestaña Mensajes AHORA, no en el próximo sondeo. Sin esto, alguien que
+    // está en otra pantalla se enteraba hasta medio minuto después.
+    const abiertas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    abiertas.forEach(c => c.postMessage({ tipo: 'mensaje-nuevo', hilo: d.hilo || '' }));
+  })());
 });
 
 // Al tocar la notificación: si la app ya está abierta se la trae al frente, y
@@ -160,7 +166,13 @@ self.addEventListener('notificationclick', e => {
         return;
       }
     }
-    await self.clients.openWindow(self.registration.scope);
+    // La app estaba CERRADA: no hay ventana a la que avisarle, así que el
+    // destino viaja en la URL. Sin esto, tocar la notificación abría la app
+    // en la pantalla de inicio y había que ir a buscar la conversación a
+    // mano — justo lo que una notificación tiene que ahorrar.
+    const destino = self.registration.scope + '?chat=1' +
+                    (hilo ? '&hilo=' + encodeURIComponent(hilo) : '');
+    await self.clients.openWindow(destino);
   })());
 });
 

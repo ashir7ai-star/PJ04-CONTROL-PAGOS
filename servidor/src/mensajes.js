@@ -70,7 +70,7 @@ const MAX_TEXTO = 2000;
 // por la lógica del Sheet.
 const ACCIONES = [
   'consultar_mensajes', 'enviar_mensaje', 'marcar_leido', 'guardar_suscripcion',
-  'probar_aviso'
+  'probar_aviso', 'contar_sin_leer'
 ];
 
 // `op.consulta(sql, params)` -> Promise<{ rows }>. Entra por parámetro, igual
@@ -187,6 +187,38 @@ function crearMensajes(op) {
         ' ON CONFLICT (endpoint) DO UPDATE SET correo = $2, datos = $3',
         [endpoint, ctx.correo, JSON.stringify(s)]);
       return { status: 'success' };
+    }
+
+    // Solo el número de mensajes sin leer.
+    //
+    // Existe porque el panel corta su sondeo al salir de Mensajes —preguntar
+    // cada seis segundos mientras alguien registra un pago es gastar red por
+    // algo que no está mirando— y sin NADA que pregunte desde las otras
+    // pantallas, un empleado podía contestar y el administrador no se enteraba:
+    // ni aviso ni número en la pestaña.
+    //
+    // Es un COUNT, no la conversación: se puede pedir desde cualquier pantalla
+    // sin traer 300 mensajes para mostrar un número.
+    if (accion === 'contar_sin_leer') {
+      if (esAdmin) {
+        // Los mismos hilos que lista `listaDeHilos`: los de empleados activos.
+        // Contar sobre toda la tabla sumaría los de alguien ya desactivado, y
+        // el número no coincidiría con lo que la pantalla muestra.
+        const correos = gente
+          .filter(function (p) { return p.rol !== 'admin'; })
+          .map(function (p) { return p.correo; });
+        if (!correos.length) return { status: 'success', esAdmin: true, sinLeer: 0 };
+        const r = await consulta(
+          'SELECT COUNT(*)::int AS n FROM mensajes' +
+          ' WHERE conversacion = ANY($1::text[]) AND es_admin = false AND leido IS NULL',
+          [correos]);
+        return { status: 'success', esAdmin: true, sinLeer: r.rows[0].n };
+      }
+      const r = await consulta(
+        'SELECT COUNT(*)::int AS n FROM mensajes' +
+        ' WHERE conversacion = $1 AND es_admin = true AND leido IS NULL',
+        [hiloDe(cuerpo, ctx)]);
+      return { status: 'success', esAdmin: false, sinLeer: r.rows[0].n };
     }
 
     // Probar el aviso sin depender de otra persona ni de otro teléfono.
