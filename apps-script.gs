@@ -193,6 +193,7 @@ const ETIQUETAS_TIPO = {
   seguridad_social:  'Seguridad Social',
   nomina:            'Pago Nómina',
   compra_materiales: 'Compra Materiales',
+  gastos_viaje:      'Gastos de Viaje',
   traslado:          'Traslado'
 };
 
@@ -498,7 +499,12 @@ const SECCIONES = {
   impuestos:        { hoja: 'Pago Impuestos',   carpeta: 'PJ04 IMPUESTOS',        tipos: ['impuestos'] },
   seguridad_social: { hoja: 'Seguridad Social', carpeta: 'PJ04 SEGURIDAD SOCIAL', tipos: ['seguridad_social'] },
   compra_materiales:{ hoja: 'Compra Materiales', carpeta: 'PJ04 COMPRA MATERIALES', tipos: ['compra_materiales'] },
-  nomina:           { hoja: 'Pago Nomina',      carpeta: 'PJ04 NOMINA',           tipos: ['nomina'] }
+  nomina:           { hoja: 'Pago Nomina',      carpeta: 'PJ04 NOMINA',           tipos: ['nomina'] },
+  // Los gastos de un viaje de negocios. NO es una sección de los viáticos
+  // por equipo: esos son el día a día de una cuadrilla en campo, esto es un
+  // viaje puntual de una persona. Mezclarlos haría que el tope diario de un
+  // equipo se dispare por un vuelo.
+  gastos_viaje:     { hoja: 'Gastos de Viaje', carpeta: 'PJ04 GASTOS VIAJE',     tipos: ['gastos_viaje'] }
 };
 
 // ─── Rubros de viáticos ───────────────────────────────────────────────────
@@ -1611,6 +1617,7 @@ function verificarVersion() {
   });
   lineas.push('');
   lineas.push('¿Conoce compra_materiales?  ' + (tipoConocido_('compra_materiales') ? 'SÍ' : 'NO'));
+  lineas.push('¿Conoce gastos_viaje?       ' + (tipoConocido_('gastos_viaje') ? 'SÍ' : 'NO'));
   lineas.push('¿Tiene la validación de tipo desconocido?  ' + (typeof tipoConocido_ === 'function' ? 'SÍ' : 'NO'));
 
   const resumen = lineas.join('\n');
@@ -1936,6 +1943,7 @@ function etiquetaTipo_(tipo) {
   // Los exactos van PRIMERO: 'compra_materiales' contiene 'compra', así que si
   // se comprobara antes el genérico, saldría etiquetado como "Compra".
   if (t === 'compra_materiales')    return 'Compra Materiales';
+  if (t === 'gastos_viaje')         return 'Gastos de Viaje';
   if (t === 'seguridad_social')     return 'Seguridad Social';
   if (t === 'nomina')               return 'Pago Nómina';
   if (t === 'compra')               return 'Compra';
@@ -2972,7 +2980,7 @@ function precargarUsuarios() {
   const LISTA = [
     // { correo: 'persona@empresa.com', nombre: 'Nombre Apellido', telefono: '300...', rol: 'usuario', secciones: 'viaticos,caja_menor' },
     // secciones válidas: pagos, viaticos, caja_menor, impuestos, seguridad_social,
-    // nomina, compra_materiales — o 'todas'
+    // nomina, compra_materiales, gastos_viaje — o 'todas'
   ];
 
   if (!LISTA.length) {
@@ -3058,7 +3066,16 @@ const CUENTAS = {
   // Viáticos; el usuario decidió separar las dos bolsas y manejarlas
   // independientes. Con `grupo: 'fondo'` ya queda habilitado como destino de
   // traslados y visible para quien tenga la sección: no hay nada mas que tocar.
-  compra_materiales:{ etiqueta: 'Compra Materiales', detalle: 'Fondo compartido', empresa: null,    grupo: 'fondo' }
+  compra_materiales:{ etiqueta: 'Compra Materiales', detalle: 'Fondo compartido', empresa: null,    grupo: 'fondo' },
+  // ⚠️ La CLAVE `gastos_viaje` no se cambia más, pase lo que pase con la
+  // etiqueta: en cuanto haya una fila de SALDOS o un traslado apuntando acá,
+  // renombrarla rompe el cálculo. Es el mismo criterio de `banco_ampac`.
+  //
+  // Es UNA bolsa para todos los viajes, no una por viaje (decisión del
+  // usuario). Si algún día hace falta saber cuánto costó cada viaje por
+  // separado, los pagos ya quedan con persona y fecha: se puede agrupar sin
+  // rehacer nada de esto.
+  gastos_viaje:     { etiqueta: 'Gastos de Viaje', detalle: 'Fondo de viajes', empresa: null,      grupo: 'fondo' }
 };
 
 // UN FONDO POR EQUIPO, generado desde la lista de equipos.
@@ -3133,6 +3150,8 @@ function cuentaDePago_(tipoFactura, empresa, equipo) {
   if (t === 'viaticos')   return claveFondoViaticos_(equipo);
   if (t === 'caja_menor') return 'caja_menor';
   if (t === 'compra_materiales') return 'compra_materiales';
+  // No pasa por `claveFondoViaticos_`: un viaje no pertenece a ningún equipo.
+  if (t === 'gastos_viaje') return 'gastos_viaje';
 
   // El resto (proveedor, compra, impuestos, seguridad social, nómina) sale del
   // banco de la empresa que figure en el registro.

@@ -561,7 +561,22 @@ console.log('\n=== Filtrar por VARIOS tipos de pago a la vez ===');
 
   const caja = html.split('id="fTipos"')[1].split('</div>')[0];
   const valores = [...caja.matchAll(/value="([^"]+)"/g)].map(m => m[1]);
-  chk('estan los 10 tipos', valores.length === 10, valores);
+  const botones = [...new Set([...html.matchAll(/class="tipo-btn" data-value="([^"]+)"/g)]
+                              .map(m => m[1]))];
+  const faltan = botones.filter(t => valores.indexOf(t) === -1);
+  chk('todo tipo que se puede registrar se puede filtrar', faltan.length === 0, faltan);
+  const sobran = valores.filter(t => botones.indexOf(t) === -1 && t !== 'traslado');
+  chk('y el filtro no ofrece tipos que no existen', sobran.length === 0, sobran);
+
+  // Nuevo Pago y Solicitudes tienen cada una SU listado de botones. Un tipo
+  // que se pueda registrar pero no solicitar (o al reves) es una diferencia
+  // que nadie nota hasta que alguien la necesita.
+  const sacaTipos = t => [...t.matchAll(/class="tipo-btn" data-value="([^"]+)"/g)].map(m => m[1]);
+  const listaPago = sacaTipos(html.split('id="tipoFactura"')[0]);
+  const listaSol  = sacaTipos(html.split('id="tipoFactura"')[1].split('id="tipoFacturaSolicitud"')[0]);
+  chk('los dos listados de tipos ofrecen lo mismo',
+      listaPago.length > 0 && listaPago.join(',') === listaSol.join(','),
+      { pago: listaPago, solicitud: listaSol });
   chk('incluido Traslado entre cuentas', valores.indexOf('traslado') !== -1, valores);
   chk('y se dice que sin marcar nada salen todos',
       /Sin marcar nada se muestran todos/.test(html),

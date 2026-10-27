@@ -1936,5 +1936,94 @@ console.log('\n=== El aviso de que la app no responde ===');
   chk('el correo es TEXTO PLANO, sin htmlBody', ultimo.htmlBody === undefined, Object.keys(ultimo));
 }
 
+console.log('\n=== Gastos de Viaje: su propia bolsa, sin tocar los viaticos ===');
+//
+// Un viaje de negocios NO es el dia a dia de una cuadrilla en campo. Si
+// descontara de un fondo por equipo, el tope diario de ese equipo se
+// dispararia por un vuelo, y el equipo que no viajo cargaria con el gasto.
+{
+  const foto = {
+    'PAGOS REGISTRADOS': [ENC_PAGOS],
+    'Viaticos': [ENC_PAGOS,
+      [serie(2026, 10, 27, 11, 0), 'AMPAC SAS', 'viaticos', 'q', 'n', 'p', serie(2026, 10, 27), 100000, '', '', 'idv']],
+    'Gastos de Viaje': [ENC_PAGOS,
+      [serie(2026, 10, 27, 12, 0), 'AMPAC SAS', 'gastos_viaje', 'q', 'vuelo', 'p', serie(2026, 10, 27), 800000, '', '', 'idg']],
+    'SALDOS': [['FECHA', 'CUENTA', 'SALDO BASE', 'CONCEPTO', 'REGISTRADO POR'],
+      [serie(2026, 10, 27, 8, 0), 'banco_ampac', 5000000, 'base', 'admin'],
+      [serie(2026, 10, 27, 8, 0), 'viaticos_equipo_1', 500000, 'base', 'admin'],
+      [serie(2026, 10, 27, 8, 0), 'gastos_viaje', 2000000, 'base', 'admin']],
+    'TRASLADOS': [['FECHA', 'ORIGEN', 'DESTINO', 'MONTO', 'REGISTRADO POR', 'NOTA', 'URL COMPROBANTE', 'FECHA REGISTRO', 'REALIZADO POR']],
+    'USUARIOS':  [['CORREO', 'NOMBRE', 'TELEFONO', 'ROL', 'SECCIONES', 'ESTADO', 'FECHA REGISTRO', 'ULTIMO ACCESO']],
+    'SESIONES':  [['HASH', 'CORREO', 'CREADA', 'ULTIMO USO', 'VENCE']],
+    'SOLICITUDES DE APROBACION': [['ID SOLICITUD']]
+  };
+  const e = montar(foto, 'off');
+
+  const r = e.globales.consultarSaldos_({ rol: 'admin', secciones: [] }, true);
+  const de = (c) => r.cuentas.filter(x => x.clave === c)[0];
+
+  chk('el fondo aparece en Dinero Disponible', !!de('gastos_viaje'), r.cuentas.map(c => c.clave));
+  chk('y descuenta de SU bolsa: 2.000.000 - 800.000',
+      de('gastos_viaje').saldo === 1200000, de('gastos_viaje') && de('gastos_viaje').saldo);
+  chk('un gasto de viaje NO toca el fondo del equipo',
+      de('viaticos_equipo_1').gastado === 100000, de('viaticos_equipo_1').gastado);
+  chk('ni el banco de la empresa', de('banco_ampac').gastado === 0, de('banco_ampac').gastado);
+  chk('ningun pago queda sin bolsa', r.sinCuenta === 0, r.sinCuenta);
+
+  // Que sea 'fondo' es lo que lo habilita como destino de un traslado. Si
+  // alguien lo pone en 'banco' se rompe en silencio: no habria forma de
+  // mandarle plata, y encima lo verian solo los administradores.
+  chk('se le puede trasladar plata desde el banco',
+      de('gastos_viaje').grupo === 'fondo', de('gastos_viaje').grupo);
+
+  // El equipo NO interviene: un viaje no pertenece a ninguna cuadrilla.
+  chk('la bolsa es la misma venga o no con equipo',
+      e.globales.cuentaDePago_('gastos_viaje', 'AMPAC SAS') === 'gastos_viaje' &&
+      e.globales.cuentaDePago_('gastos_viaje', 'AMPAC SAS', 'equipo_2') === 'gastos_viaje',
+      e.globales.cuentaDePago_('gastos_viaje', 'AMPAC SAS', 'equipo_2'));
+
+  // Si cayera en la seccion 'pagos', el comprobante iria a la carpeta de
+  // facturas y la fila a la hoja principal, mezclado con los proveedores.
+  chk('tiene su propia hoja y su propia carpeta',
+      e.globales.seccionDeTipo_('gastos_viaje') === 'gastos_viaje',
+      e.globales.seccionDeTipo_('gastos_viaje'));
+  chk('y el tipo esta reconocido, no entra como desconocido',
+      e.globales.tipoConocido_('gastos_viaje') === true);
+
+  // Sin etiqueta, el historial y los correos dirian 'gastos_viaje' en crudo.
+  chk('se lee con nombre propio en pantalla',
+      e.globales.etiquetaDeCuenta_('gastos_viaje') === 'Gastos de Viaje' &&
+      e.globales.etiquetaDeTipo_('gastos_viaje') === 'Gastos de Viaje',
+      e.globales.etiquetaDeCuenta_('gastos_viaje'));
+  // `etiquetaTipo_` (sin "De") es OTRA funcion: la que arma los correos, y
+  // su respaldo devuelve el tipo en crudo. Comprobar una daba por buena la
+  // otra; lo destapo una mutacion que sobrevivio.
+  chk('y tambien en el correo que se manda',
+      e.globales.etiquetaTipo_('gastos_viaje') === 'Gastos de Viaje',
+      e.globales.etiquetaTipo_('gastos_viaje'));
+
+  // Un gasto de viaje no lleva RUBRO ni dispara el aviso del tope diario:
+  // los dos cuelgan de `seccion === 'viaticos'`.
+  chk('no se cuela en la seccion de viaticos',
+      e.globales.seccionDeTipo_('gastos_viaje') !== 'viaticos');
+
+  // ⚠️ Entorno ESTRICTO a proposito: con MODO_LOGIN en 'off',
+  // `puedeVerCuenta_` devuelve true para TODO y estas cuatro
+  // comprobaciones pasarian sin comprobar nada. Paso: tres daban por
+  // bueno un acceso que en realidad nadie habia verificado.
+  const eE = montar(foto, 'estricto');
+  const ve = (secs, clave) => eE.globales.puedeVerCuenta_({ rol: 'usuario', secciones: secs }, clave);
+  chk('lo ve quien tiene la seccion de viajes', ve(['gastos_viaje'], 'gastos_viaje'));
+  chk('y NO quien solo tiene viaticos', !ve(['viaticos'], 'gastos_viaje'));
+  chk('quien viaja no por eso ve los viaticos del equipo',
+      !ve(['gastos_viaje'], 'viaticos_equipo_1'));
+  chk('ni los bancos', !ve(['gastos_viaje'], 'banco_ampac'));
+
+  const t = e.globales.consultarTraslados_({});
+  chk('aparece en los selectores de Traslados',
+      t.cuentas.map(c => c.clave).indexOf('gastos_viaje') !== -1,
+      t.cuentas.map(c => c.clave));
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);
