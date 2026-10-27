@@ -1667,6 +1667,21 @@
     .saldo-card.en-rojo    .saldo-monto { color: var(--error); }
     .saldo-card.sin-config .saldo-monto { color: var(--text-muted); font-size: 1.05rem; font-weight: 600; }
 
+    /* Un fondo SIN PRESUPUESTO: la cifra grande es lo GASTADO, no un saldo.
+       Verde oliva, el mismo con el que se marca el tipo "Gastos de Viaje" en
+       Nuevo Pago, así la tarjeta y el botón se leen como lo mismo. */
+    .saldo-card.sin-tope::before { background: #4d7c0f; }
+    /* El rótulo vive FUERA del pie a propósito: en celular el pie se oculta
+       (ver la regla de 480px), y una cifra grande sin aclarar se lee como un
+       saldo disponible. Justo el malentendido que hay que evitar. */
+    .saldo-rotulo {
+      font-size: 0.66rem;
+      font-weight: 700;
+      color: #4d7c0f;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
     .saldo-pie {
       font-size: 0.71rem;
       color: var(--text-muted);
@@ -7748,7 +7763,10 @@
         return;
       }
 
-      const sinConfigurar = r.cuentas.filter(c => !c.configurado).length;
+      // Un fondo sin presupuesto NO está "sin configurar": no hay nada que
+      // cargarle. Contarlo acá dejaba un aviso de pendiente que no se apagaba
+      // nunca, y un aviso que no se puede resolver deja de leerse.
+      const sinConfigurar = r.cuentas.filter(c => !c.configurado && !c.sinPresupuesto).length;
 
       saldosNota.textContent = sinConfigurar === 0
         ? 'Se descuenta automáticamente con cada pago registrado.'
@@ -7763,29 +7781,39 @@
         '<path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>';
 
       saldosGrid.innerHTML = r.cuentas.map(c => {
-        const enRojo  = c.configurado && c.saldo < 0;
+        // Un fondo sin tope no puede estar sobregirado: no hay de qué. Ponerlo
+        // en rojo sería una alarma falsa.
+        const enRojo  = c.configurado && !c.sinPresupuesto && c.saldo < 0;
         const clases  = ['saldo-card'];
         if (c.grupo === 'fondo') clases.push('es-fondo');
-        if (!c.configurado)      clases.push('sin-config');
+        if (c.sinPresupuesto)    clases.push('sin-tope');
+        else if (!c.configurado) clases.push('sin-config');
         if (enRojo)              clases.push('en-rojo');
 
-        const pie = c.configurado
-          ? 'Base ' + formatoPesos(c.base) + ' · desde ' + escapeHtml(c.desde) +
-            '<br>' + c.pagos + ' pago(s) descontado(s) · ' + formatoPesos(c.gastado)
-          : 'Un administrador tiene que cargar el saldo inicial.';
+        const pie = c.sinPresupuesto
+          ? c.pagos + ' factura(s) registrada(s)' +
+            '<br>Sin presupuesto: no se descuenta de ninguna bolsa.'
+          : (c.configurado
+            ? 'Base ' + formatoPesos(c.base) + ' · desde ' + escapeHtml(c.desde) +
+              '<br>' + c.pagos + ' pago(s) descontado(s) · ' + formatoPesos(c.gastado)
+            : 'Un administrador tiene que cargar el saldo inicial.');
 
         return '<div class="' + clases.join(' ') + '">' +
           '<div class="saldo-acciones">' +
-            (c.configurado
+            (c.configurado && !c.sinPresupuesto
               ? '<button type="button" class="saldo-editar" data-movimientos="' + escapeHtml(c.clave) + '" title="Ver movimientos">' + reloj + '</button>'
               : '') +
-            (saldosPuedeEditar
+            (saldosPuedeEditar && !c.sinPresupuesto
               ? '<button type="button" class="saldo-editar" data-cuenta="' + escapeHtml(c.clave) + '" title="Editar saldo">' + lapiz + '</button>'
               : '') +
           '</div>' +
           '<div class="saldo-etiqueta">' + escapeHtml(c.etiqueta) + '</div>' +
           '<div class="saldo-detalle">' + escapeHtml(c.detalle) + '</div>' +
-          '<div class="saldo-monto">' + (c.configurado ? formatoPesos(c.saldo) : 'Sin configurar') + '</div>' +
+          '<div class="saldo-monto">' +
+            (c.sinPresupuesto
+              ? formatoPesos(c.gastado)
+              : (c.configurado ? formatoPesos(c.saldo) : 'Sin configurar')) + '</div>' +
+          (c.sinPresupuesto ? '<div class="saldo-rotulo">gastado · sin tope</div>' : '') +
           '<div class="saldo-pie">' + pie + '</div>' +
         '</div>';
       }).join('');

@@ -932,5 +932,69 @@ console.log('\n=== El numero en la pestana aparece SIN estar en el panel ===');
       /tipo === 'mensaje-nuevo'\)[\s\S]{0,200}?if \(chat\.sondeo\) cargarMensajes\(false\)/.test(codigo));
 }
 
+console.log('\n=== Un fondo sin presupuesto: la tarjeta muestra el GASTO, no un saldo ===');
+//
+// El usuario decidio (2026-10-27) que Gastos de Viaje no lleve tope. Sin esto,
+// la tarjeta decia "Sin configurar" con un aviso arriba que no se apagaba
+// nunca, y escondia el unico dato util: cuantas facturas y por cuanto.
+{
+  const gs = fs.readFileSync(path.join(__dirname, '..', 'apps-script.gs'), 'utf8').replace(/\r\n/g, '\n');
+
+  // Coherencia entre los dos lados. El nombre del campo es un contrato: si
+  // alguien lo renombra en un archivo y no en el otro, no falla nada —la
+  // tarjeta simplemente vuelve a decir "Sin configurar" y nadie entiende por
+  // que. Es el mismo criterio de la comprobacion de ACCIONES.
+  chk('el servidor manda el campo y la pantalla lo lee con el mismo nombre',
+      /sinPresupuesto:\s*!!cfg\.sinPresupuesto/.test(gs) &&
+      codigo.indexOf('c.sinPresupuesto') !== -1);
+  chk('y la cuenta de viajes esta marcada en el servidor',
+      /gastos_viaje:[^\n]*sinPresupuesto:\s*true/.test(gs));
+
+  // La cifra grande. Si mostrara `c.saldo`, un fondo sin base da 0: la tarjeta
+  // diria "$0" con las facturas ya cargadas en la hoja.
+  chk('la cifra grande es lo GASTADO, no el saldo',
+      /saldo-monto[\s\S]{0,120}?c\.sinPresupuesto[\s\S]{0,60}?formatoPesos\(c\.gastado\)/.test(codigo));
+
+  // El rotulo va FUERA del pie. En celular `.saldo-pie` se oculta, asi que si
+  // la aclaracion viviera ahi, en un telefono quedaria una cifra grande sola
+  // que se lee como saldo disponible. Justo el malentendido a evitar.
+  chk('la cifra viene con su rotulo, fuera del pie',
+      /saldo-rotulo[\s\S]{0,80}?<\/div>'[\s\S]{0,40}?'<div class="saldo-pie">/.test(codigo));
+  // Se mira sobre `html` y NO sobre `codigo`: `codigo` son solo los bloques
+  // <script>, asi que ninguna regla de CSS aparece ahi. Buscarla en `codigo`
+  // da una comprobacion que no puede pasar nunca.
+  chk('y el rotulo NO se oculta en celular, donde el pie si se oculta',
+      /@media \(max-width: 480px\)[\s\S]{0,400}?\.saldo-pie\s*{\s*display: none/.test(html) &&
+      !/@media \(max-width: 480px\)[\s\S]{0,400}?\.saldo-rotulo[^}]*display: none/.test(html));
+
+  // Un aviso que no se puede resolver deja de leerse, y despues tampoco se lee
+  // el que si importa.
+  chk('no lo cuenta entre las cuentas "sin configurar"',
+      /sinConfigurar = r\.cuentas\.filter\(c => !c\.configurado && !c\.sinPresupuesto\)/.test(codigo));
+  chk('ni le pone la franja gris de sin configurar',
+      /if \(c\.sinPresupuesto\)\s*clases\.push\('sin-tope'\);\s*\n\s*else if \(!c\.configurado\) clases\.push\('sin-config'\);/.test(codigo));
+
+  // Un fondo sin tope no puede estar sobregirado: no hay de que.
+  chk('nunca sale en rojo',
+      /const enRojo\s*=\s*c\.configurado && !c\.sinPresupuesto && c\.saldo < 0;/.test(codigo));
+
+  // No hay saldo que editar, y el historial necesita una base para cuadrar.
+  chk('no ofrece el lapiz de editar saldo',
+      /saldosPuedeEditar && !c\.sinPresupuesto/.test(codigo));
+  chk('ni el reloj de movimientos, que sin base no puede cuadrar',
+      /c\.configurado && !c\.sinPresupuesto\s*\n\s*\? '<button[^\n]*data-movimientos/.test(codigo));
+
+  // El pie dice cuantas facturas van. Es el dato por el que existe la tarjeta.
+  chk('el pie cuenta las facturas registradas',
+      /c\.sinPresupuesto\s*\n\s*\? c\.pagos \+ ' factura\(s\) registrada\(s\)'/.test(codigo));
+
+  // Y en el servidor: no se le traslada plata, porque el traslado quedaria
+  // escrito en la hoja y despues no apareceria en ninguna pantalla.
+  chk('el servidor no lo ofrece como destino de un traslado',
+      /\.filter\(c => !CUENTAS\[c\]\.oculto && !CUENTAS\[c\]\.sinPresupuesto\)/.test(gs));
+  chk('y ademas lo rechaza si se lo piden por la URL',
+      /if \(CUENTAS\[destino\]\.sinPresupuesto\) {/.test(gs));
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);

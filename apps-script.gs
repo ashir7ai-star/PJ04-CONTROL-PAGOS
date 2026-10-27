@@ -1618,6 +1618,7 @@ function verificarVersion() {
   lineas.push('');
   lineas.push('¿Conoce compra_materiales?  ' + (tipoConocido_('compra_materiales') ? 'SÍ' : 'NO'));
   lineas.push('¿Conoce gastos_viaje?       ' + (tipoConocido_('gastos_viaje') ? 'SÍ' : 'NO'));
+  lineas.push('¿Viajes sin presupuesto?    ' + (CUENTAS.gastos_viaje.sinPresupuesto ? 'SÍ' : 'NO'));
   lineas.push('¿Tiene la validación de tipo desconocido?  ' + (typeof tipoConocido_ === 'function' ? 'SÍ' : 'NO'));
 
   const resumen = lineas.join('\n');
@@ -3075,7 +3076,13 @@ const CUENTAS = {
   // usuario). Si algún día hace falta saber cuánto costó cada viaje por
   // separado, los pagos ya quedan con persona y fecha: se puede agrupar sin
   // rehacer nada de esto.
-  gastos_viaje:     { etiqueta: 'Gastos de Viaje', detalle: 'Fondo de viajes', empresa: null,      grupo: 'fondo' }
+  //
+  // `sinPresupuesto`: no lleva saldo base ni tope. La pantalla muestra lo
+  // GASTADO en vez de un saldo, no reclama configuración y no recibe
+  // traslados. Para darle tope algún día alcanza con sacar esta marca y
+  // cargarle una fila en SALDOS: los pagos ya quedan asignados a la cuenta,
+  // así que el histórico se calcula solo.
+  gastos_viaje:     { etiqueta: 'Gastos de Viaje', detalle: 'Fondo de viajes', empresa: null,      grupo: 'fondo', sinPresupuesto: true }
 };
 
 // UN FONDO POR EQUIPO, generado desde la lista de equipos.
@@ -3360,12 +3367,18 @@ function calcularSaldosCrudos_() {
       if (!cuenta) { sinCuenta++; return; }
 
       const base = bases[cuenta];
-      if (!base) return;   // sin saldo base cargado, no hay nada de qué descontar
+      // Un fondo SIN PRESUPUESTO no tiene saldo base ni fecha de corte: no se
+      // descuenta de ninguna bolsa, solo acumula. Si acá se exigiera la base,
+      // su tarjeta mostraría $0 para siempre y el contador no serviría de nada.
+      const sinTope = !!(CUENTAS[cuenta] || {}).sinPresupuesto;
+      if (!base && !sinTope) return;   // sin saldo base cargado, no hay nada de qué descontar
 
       const fecha = fechaHoraDeRegistro_(fila[cFecha]);
+      if (!fecha) return;
       // Estrictamente posterior: el saldo base que carga el admin ya refleja
       // todo lo anterior, así que volver a restarlo sería contarlo dos veces.
-      if (!fecha || fecha.getTime() <= base.fecha.getTime()) return;
+      // Sin base no hay nada contado de antes, así que no hay corte.
+      if (base && fecha.getTime() <= base.fecha.getTime()) return;
 
       const valor = montoANumero_(fila[cValor]);
       acumulado[cuenta].gastado += valor;
@@ -3434,6 +3447,9 @@ function consultarSaldos_(ctx, forzar) {
       etiqueta:    cfg.etiqueta,
       detalle:     cfg.detalle,
       grupo:       cfg.grupo,
+      // Un fondo que solo acumula: la pantalla muestra el gasto en vez de un
+      // saldo, y no lo cuenta entre las cuentas que falta configurar.
+      sinPresupuesto: !!cfg.sinPresupuesto,
       configurado: !!c.configurado,
       base:        c.base      || 0,
       desde:       c.desde     || '',
@@ -3490,7 +3506,11 @@ function consultarMovimientos_(body) {
     return {
       status: 'success', cuenta: clave, etiqueta: etiquetaDeCuenta_(clave),
       configurado: false, movimientos: [],
-      mensaje: 'Esta cuenta todavía no tiene saldo base cargado.'
+      mensaje: CUENTAS[clave].sinPresupuesto
+        ? 'Este fondo no lleva presupuesto, así que no hay saldo que cuadrar. ' +
+          'El detalle de cada factura está en Consultar Pagos, filtrando por ' +
+          etiquetaDeCuenta_(clave) + '.'
+        : 'Esta cuenta todavía no tiene saldo base cargado.'
     };
   }
 
@@ -4333,6 +4353,13 @@ function registrarTraslado_(body) {
   if (CUENTAS[destino].oculto) {
     return { status: 'error', message: 'Ese fondo está cerrado. Elegí el de un equipo.' };
   }
+  // Un fondo sin presupuesto no tiene nada que fondear. Y el traslado no sería
+  // inofensivo: quedaría escrito en la hoja y después no aparecería en ninguna
+  // pantalla, porque sin saldo base los traslados tampoco se cuentan.
+  if (CUENTAS[destino].sinPresupuesto) {
+    return { status: 'error', message: 'A "' + CUENTAS[destino].etiqueta + '" no se le traslada plata: ' +
+      'no lleva presupuesto, solo registra las facturas.' };
+  }
 
   const monto = montoANumero_(body.monto);
   if (!monto || monto <= 0) return { status: 'error', message: 'El monto tiene que ser mayor a cero.' };
@@ -4399,9 +4426,13 @@ function consultarTraslados_(body) {
 
   return {
     status: 'success',
-    cuentas: Object.keys(CUENTAS).filter(c => !CUENTAS[c].oculto).map(c => ({
-      clave: c, etiqueta: CUENTAS[c].etiqueta, grupo: CUENTAS[c].grupo
-    })),
+    // Los fondos sin presupuesto no figuran: no se les traslada plata (ver
+    // `registrarTraslado_`), así que ofrecerlos sería ofrecer un error.
+    cuentas: Object.keys(CUENTAS)
+      .filter(c => !CUENTAS[c].oculto && !CUENTAS[c].sinPresupuesto)
+      .map(c => ({
+        clave: c, etiqueta: CUENTAS[c].etiqueta, grupo: CUENTAS[c].grupo
+      })),
     // Quiénes pueden figurar como autores de un traslado. Sale de la hoja, no
     // de una lista escrita a mano: si mañana cambia quién es administrador, la
     // pantalla lo refleja sin tocar código.

@@ -157,6 +157,64 @@ console.log('\n=== La logica real calcula saldos sobre el adaptador ===');
       de('compra_materiales').grupo === 'fondo', de('compra_materiales').grupo);
 }
 
+console.log('\n=== Un fondo SIN PRESUPUESTO cuenta igual lo que se gasta ===');
+//
+// El usuario decidio (2026-10-27) que Gastos de Viaje no lleve presupuesto:
+// solo se registran las facturas. Eso dejo al descubierto una regla que hasta
+// ahora no molestaba: `calcularSaldosCrudos_` descartaba TODO pago cuya cuenta
+// no tuviera fila en SALDOS. Para un fondo sin base eso significa que la
+// tarjeta muestra $0 aunque las facturas esten cargadas en la hoja.
+//
+// La regla sigue siendo correcta para los fondos normales —un saldo no se
+// puede inventar— y por eso se comprueban las DOS mitades en la misma foto.
+{
+  const e = montar({
+    'PAGOS REGISTRADOS': [ENC_PAGOS,
+      // Un gasto de caja menor, SIN fila en SALDOS para caja_menor.
+      [serie(2026, 10, 27, 10, 0), 'AMPAC SAS', 'caja_menor', 'q', 'n', 'p', serie(2026, 10, 27), 70000, '', '', 'idc']],
+    'Gastos de Viaje': [ENC_PAGOS,
+      [serie(2026, 10, 27, 12, 0), 'AMPAC SAS', 'gastos_viaje', 'q', 'vuelo', 'p', serie(2026, 10, 27), 800000, '', '', 'idg1'],
+      // Una factura VIEJA: sin saldo base no hay fecha de corte, asi que
+      // tambien cuenta. Si el corte se aplicara igual, este pago desapareceria.
+      [serie(2026,  1,  5,  9, 0), 'AMPAC SAS', 'gastos_viaje', 'q', 'hotel', 'p', serie(2026, 1, 5), 150000, '', '', 'idg2']],
+    'SALDOS': [['FECHA', 'CUENTA', 'SALDO BASE', 'CONCEPTO', 'REGISTRADO POR'],
+      [serie(2026, 10, 27, 8, 0), 'banco_ampac', 5000000, 'base', 'admin'],
+      [serie(2026, 10, 27, 8, 0), 'viaticos_equipo_1', 500000, 'base', 'admin']],
+    'TRASLADOS': [['FECHA', 'ORIGEN', 'DESTINO', 'MONTO', 'REGISTRADO POR', 'NOTA', 'URL COMPROBANTE', 'FECHA REGISTRO', 'REALIZADO POR']],
+    'USUARIOS':  [['CORREO', 'NOMBRE', 'TELEFONO', 'ROL', 'SECCIONES', 'ESTADO', 'FECHA REGISTRO', 'ULTIMO ACCESO']],
+    'SESIONES':  [['HASH', 'CORREO', 'CREADA', 'ULTIMO USO', 'VENCE']],
+    'SOLICITUDES DE APROBACION': [['ID SOLICITUD']]
+  }, 'off');
+
+  const r  = e.globales.consultarSaldos_({ rol: 'admin', secciones: [] }, true);
+  const de = (c) => r.cuentas.filter(x => x.clave === c)[0];
+
+  chk('sin saldo base, el gasto de viajes se cuenta igual: 800.000 + 150.000',
+      de('gastos_viaje').gastado === 950000, de('gastos_viaje').gastado);
+  chk('y cuenta las dos facturas', de('gastos_viaje').pagos === 2, de('gastos_viaje').pagos);
+  chk('no hay fecha de corte: la factura de enero tambien entra',
+      de('gastos_viaje').gastado > 800000, de('gastos_viaje').gastado);
+  chk('no dice tener saldo base, porque no lo tiene',
+      de('gastos_viaje').configurado === false, de('gastos_viaje').configurado);
+
+  // La otra mitad de la regla, en la MISMA foto: un fondo normal sin fila en
+  // SALDOS no puede empezar a contar, porque su saldo no se puede inventar.
+  chk('un fondo CON presupuesto sigue exigiendo su fila de SALDOS',
+      de('caja_menor').gastado === 0 && de('caja_menor').pagos === 0,
+      de('caja_menor'));
+  chk('y sigue avisando que esta sin configurar',
+      de('caja_menor').configurado === false && de('caja_menor').sinPresupuesto === false,
+      de('caja_menor'));
+
+  // El historial de movimientos no aplica: sin saldo base no hay cuadre
+  // posible. Tiene que decirlo con sus palabras, no con el mensaje generico de
+  // "falta cargar el saldo", que mandaria a configurar algo que no existe.
+  const mov = e.globales.consultarMovimientos_({ cuenta: 'gastos_viaje' });
+  chk('el historial explica que no hay nada que cuadrar',
+      mov.configurado === false && /no lleva presupuesto/.test(mov.mensaje || ''),
+      mov.mensaje);
+}
+
 console.log('\n=== Cada fondo lo ve quien tiene su seccion ===');
 {
   const foto = {
@@ -1970,11 +2028,16 @@ console.log('\n=== Gastos de Viaje: su propia bolsa, sin tocar los viaticos ==='
   chk('ni el banco de la empresa', de('banco_ampac').gastado === 0, de('banco_ampac').gastado);
   chk('ningun pago queda sin bolsa', r.sinCuenta === 0, r.sinCuenta);
 
-  // Que sea 'fondo' es lo que lo habilita como destino de un traslado. Si
-  // alguien lo pone en 'banco' se rompe en silencio: no habria forma de
-  // mandarle plata, y encima lo verian solo los administradores.
-  chk('se le puede trasladar plata desde el banco',
+  // Sigue siendo 'fondo' y NO 'banco': de eso depende que lo pueda ver alguien
+  // que no es administrador (`puedeVerCuenta_` solo deja pasar los fondos).
+  // Pero ya no recibe traslados: ver el bloque de abajo.
+  chk('sigue siendo un fondo, no un banco (de eso dependen los permisos)',
       de('gastos_viaje').grupo === 'fondo', de('gastos_viaje').grupo);
+
+  // La pantalla necesita saberlo para mostrar el GASTO en vez de un saldo. Si
+  // este dato no viaja, la tarjeta vuelve a decir "Sin configurar".
+  chk('la pantalla se entera de que no lleva presupuesto',
+      de('gastos_viaje').sinPresupuesto === true, de('gastos_viaje').sinPresupuesto);
 
   // El equipo NO interviene: un viaje no pertenece a ninguna cuadrilla.
   chk('la bolsa es la misma venga o no con equipo',
@@ -2019,10 +2082,31 @@ console.log('\n=== Gastos de Viaje: su propia bolsa, sin tocar los viaticos ==='
       !ve(['gastos_viaje'], 'viaticos_equipo_1'));
   chk('ni los bancos', !ve(['gastos_viaje'], 'banco_ampac'));
 
+  // Un fondo sin tope no tiene nada que fondear. Y permitirlo no seria
+  // inofensivo: el traslado quedaria escrito en la hoja TRASLADOS y despues no
+  // apareceria en ninguna pantalla, porque sin saldo base los traslados
+  // tampoco se cuentan. Plata registrada que no se ve en ningun lado.
   const t = e.globales.consultarTraslados_({});
-  chk('aparece en los selectores de Traslados',
-      t.cuentas.map(c => c.clave).indexOf('gastos_viaje') !== -1,
+  chk('NO aparece en los selectores de Traslados',
+      t.cuentas.map(c => c.clave).indexOf('gastos_viaje') === -1,
       t.cuentas.map(c => c.clave));
+
+  // Sacarlo de la lista no es una defensa: cualquiera puede llamar a la URL.
+  const rt = e.globales.registrarTraslado_({ origen: 'banco_ampac', destino: 'gastos_viaje', monto: 100000 });
+  // Se exige el MOTIVO, no solo que falle: con presupuesto o sin el, a este
+  // traslado le falta la fecha y el comprobante, asi que iba a fallar igual.
+  // Con `rt.status === 'error'` a secas, apagar la regla no cambiaba nada y la
+  // comprobacion pasaba. Lo delato una mutacion que sobrevivio.
+  chk('y el servidor lo rechaza POR eso, no solo la pantalla',
+      rt.status === 'error' && /no lleva presupuesto/.test(rt.message || ''), rt);
+
+  // Lo de arriba no debe haberse llevado por delante a los demas fondos: el
+  // de un equipo tiene que pasar las validaciones de destino y recien fallar
+  // mas adelante, en el monto, que aca va vacio a proposito.
+  chk('los fondos CON presupuesto siguen recibiendo traslados',
+      t.cuentas.map(c => c.clave).indexOf('viaticos_equipo_1') !== -1 &&
+      /monto/.test(e.globales.registrarTraslado_({ origen: 'banco_ampac', destino: 'viaticos_equipo_1' }).message || ''),
+      e.globales.registrarTraslado_({ origen: 'banco_ampac', destino: 'viaticos_equipo_1' }).message);
 }
 
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
