@@ -69,14 +69,21 @@ const MAX_TEXTO = 2000;
 // Las acciones que este módulo atiende. El servidor las desvía antes de pasar
 // por la lógica del Sheet.
 const ACCIONES = [
-  'consultar_mensajes', 'enviar_mensaje', 'marcar_leido', 'guardar_suscripcion'
+  'consultar_mensajes', 'enviar_mensaje', 'marcar_leido', 'guardar_suscripcion',
+  'probar_aviso'
 ];
 
 // `op.consulta(sql, params)` -> Promise<{ rows }>. Entra por parámetro, igual
 // que en foto.js y escribir.js, para poder probar todo esto sin una base real.
 function crearMensajes(op) {
   const consulta = op.consulta;
-  const avisar   = op.avisar || function () { return Promise.resolve(); };
+  const avisar   = op.avisar || function () {
+    // Misma forma que el envío real: así quien lee la respuesta puede
+    // distinguir "el servidor no tiene claves VAPID" de "se envió bien".
+    return Promise.resolve({
+      enviadas: 0, borradas: 0, registrados: 0, fallas: [], motivo: 'SIN_VAPID'
+    });
+  };
   let tablasListas = false;
 
   async function asegurarTablas() {
@@ -182,6 +189,26 @@ function crearMensajes(op) {
       return { status: 'success' };
     }
 
+    // Probar el aviso sin depender de otra persona ni de otro teléfono.
+    //
+    // Es la única forma de distinguir las cuatro cosas que se parecen desde
+    // afuera: que el teléfono no esté registrado, que el servidor no tenga
+    // claves, que el servicio de push rechace el envío, o que el aviso sí
+    // salga y el teléfono lo esté silenciando.
+    if (accion === 'probar_aviso') {
+      const r = await avisar({
+        correos: [ctx.correo],
+        hilo:    ctx.correo,
+        esAdmin: esAdmin,
+        personas: gente,
+        mensaje: {
+          nombre: 'Prueba de aviso',
+          texto:  'Si esto te apareció en el teléfono, las notificaciones funcionan.'
+        }
+      });
+      return { status: 'success', correo: ctx.correo, aviso: r };
+    }
+
     if (accion === 'consultar_mensajes') {
       const hilo = hiloDe(cuerpo, ctx);
 
@@ -236,13 +263,19 @@ function crearMensajes(op) {
       // El aviso al teléfono va DESPUÉS de guardar y sin poder voltear nada:
       // una notificación que falle no puede deshacer un mensaje ya escrito. Es
       // el mismo criterio que `avisarSiCruzaPresupuesto_`.
+      let aviso;
       try {
-        await avisar({ hilo: hilo, mensaje: guardado, esAdmin: esAdmin, personas: gente });
+        aviso = await avisar({ hilo: hilo, mensaje: guardado, esAdmin: esAdmin, personas: gente });
       } catch (err) {
         console.error('[mensajes] aviso:', err && err.message);
+        aviso = { enviadas: 0, fallas: [{ codigo: 0, mensaje: String((err && err.message) || err) }],
+                  motivo: 'ERROR' };
       }
 
-      return { status: 'success', mensaje: guardado };
+      // El aviso viaja con la respuesta. El mensaje se guardó igual —eso no se
+      // discute—, pero quien escribió merece saber si del otro lado va a
+      // sonar algo o no.
+      return { status: 'success', mensaje: guardado, aviso: aviso };
     }
 
     if (accion === 'marcar_leido') {

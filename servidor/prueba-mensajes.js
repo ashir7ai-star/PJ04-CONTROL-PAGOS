@@ -14,7 +14,7 @@
 // silencio — pero un error de sintaxis que la falsa acepte solo lo descubre la
 // base real. Por eso el primer arranque contra Postgres hay que mirarlo.
 
-const { crearMensajes, MAX_TEXTO } = require('./src/mensajes');
+const { crearMensajes, MAX_TEXTO, ACCIONES } = require('./src/mensajes');
 
 let fallos = 0;
 function chk(nombre, cond, detalle) {
@@ -413,6 +413,158 @@ console.log('\n=== Sin suscripciones no se cae ===');
   const p = crearPush({ consulta: b.consulta, enviar: function () { throw new Error('no debería llamarse'); } });
   const r = await p.avisar({ hilo: 'jose@ylevigroup.com', esAdmin: true, mensaje: MSG, personas: PERSONAS });
   chk('devuelve cero y sigue', r.enviadas === 0, r);
+}
+
+console.log('\n=== Un aviso que no llega DEJA RASTRO ===');
+//
+// Es la razón por la que estas comprobaciones existen: las notificaciones no
+// llegaban y no había forma de saber por qué, porque cada falla moría en un
+// console.error que nadie iba a leer. Las cuatro causas posibles se ven
+// idénticas desde la app —el mensaje llega, el aviso no— y solo se pueden
+// distinguir si el servidor dice cuál fue.
+{
+  const b = basePush(SUS);
+  const p = crearPush({ consulta: b.consulta, enviar: function () {
+    // 403 es lo que responde el servicio de push cuando la clave VAPID del
+    // servidor no es la que el navegador usó para suscribirse. Es un error de
+    // configuración silencioso: nada falla, simplemente nunca suena.
+    const e = new Error('Received unexpected response code');
+    e.statusCode = 403;
+    throw e;
+  } });
+
+  const r = await p.avisar({ hilo: 'jose@ylevigroup.com', esAdmin: true,
+                             mensaje: MSG, personas: PERSONAS });
+  chk('un rechazo del servicio de push se informa, no se traga',
+      r.fallas.length === 2, r);
+  chk('con el código, que es lo que identifica la causa',
+      r.fallas.every(function (f) { return f.codigo === 403; }), r.fallas);
+  chk('y el motivo dice que fue rechazado', r.motivo === 'RECHAZADO', r.motivo);
+  chk('un 403 NO borra la suscripción (el error es del servidor, no del teléfono)',
+      b.borradas.length === 0, b.borradas);
+}
+
+{
+  const b = basePush([]);
+  const p = crearPush({ consulta: b.consulta, enviar: function () { return Promise.resolve(); } });
+  const r = await p.avisar({ hilo: 'jose@ylevigroup.com', esAdmin: true,
+                             mensaje: MSG, personas: PERSONAS });
+  chk('nadie registrado se distingue de un rechazo',
+      r.motivo === 'SIN_SUSCRIPCIONES' && r.fallas.length === 0, r);
+}
+
+{
+  const b = basePush(SUS);
+  const p = crearPush({ consulta: b.consulta, enviar: function () { return Promise.resolve(); } });
+  const r = await p.avisar({ hilo: 'jose@ylevigroup.com', esAdmin: true,
+                             mensaje: MSG, personas: PERSONAS });
+  chk('y un envío logrado también lo dice', r.motivo === 'OK' && r.enviadas === 2, r);
+  chk('informando cuántos teléfonos había registrados', r.registrados === 2, r);
+}
+
+console.log('\n=== Quien escribe se entera de si del otro lado va a sonar ===');
+{
+  // Sin esto, el aviso podía estar fallando en TODOS los mensajes durante
+  // semanas sin que ninguna pantalla lo mostrara.
+  const { m } = montar(function () {
+    return Promise.resolve({ enviadas: 0, registrados: 0, fallas: [], motivo: 'SIN_SUSCRIPCIONES' });
+  });
+  const r = await m.atender({ action: 'enviar_mensaje', conversacion: 'jose@ylevigroup.com',
+                              texto: 'hola' }, ADMIN, PERSONAS);
+  chk('el mensaje se guarda igual', r.status === 'success' && !!r.mensaje, r);
+  chk('y la respuesta trae qué pasó con el aviso',
+      r.aviso && r.aviso.motivo === 'SIN_SUSCRIPCIONES', r.aviso);
+}
+
+{
+  // Un aviso que LANZA no puede voltear un mensaje ya guardado, pero sí tiene
+  // que quedar reportado.
+  const { m } = montar(function () { return Promise.reject(new Error('push caido')); });
+  const r = await m.atender({ action: 'enviar_mensaje', conversacion: 'jose@ylevigroup.com',
+                              texto: 'hola' }, ADMIN, PERSONAS);
+  chk('si el aviso explota, el mensaje igual se guardó', r.status === 'success', r);
+  chk('y la falla se reporta en vez de desaparecer',
+      r.aviso && r.aviso.motivo === 'ERROR' &&
+      r.aviso.fallas[0].mensaje.indexOf('push caido') !== -1, r.aviso);
+}
+
+{
+  // El caso del servidor sin claves VAPID: NO se puede confundir con un envío.
+  const { m } = montar(null);   // sin avisar: el módulo usa su propio respaldo
+  const r = await m.atender({ action: 'enviar_mensaje', conversacion: 'jose@ylevigroup.com',
+                              texto: 'hola' }, ADMIN, PERSONAS);
+  chk('sin claves VAPID el motivo lo dice', r.aviso && r.aviso.motivo === 'SIN_VAPID', r.aviso);
+}
+
+console.log('\n=== La prueba de aviso se manda a UNO MISMO ===');
+//
+// Si la prueba del administrador despertara al empleado, nadie la usaría dos
+// veces. Y tiene que ir por el MISMO camino que un mensaje real: una prueba
+// que use otro camino puede pasar mientras lo de verdad falla.
+{
+  const b = basePush(SUS);
+  const enviados = [];
+  const envio = crearPush({ consulta: b.consulta,
+                            enviar: function (s) { enviados.push(s.endpoint); return Promise.resolve(); } });
+  const { m } = montar(envio.avisar);
+
+  const r = await m.atender({ action: 'probar_aviso' }, ADMIN, PERSONAS);
+  chk('le llega al que probó', enviados.join(',') === 'ep-nathan', enviados);
+  chk('y a ningún empleado', enviados.indexOf('ep-jose-1') === -1, enviados);
+  chk('devuelve el resultado real del envío',
+      r.status === 'success' && r.aviso.enviadas === 1, r);
+}
+
+{
+  const b = basePush(SUS);
+  const enviados = [];
+  const envio = crearPush({ consulta: b.consulta,
+                            enviar: function (s) { enviados.push(s.endpoint); return Promise.resolve(); } });
+  const { m } = montar(envio.avisar);
+
+  await m.atender({ action: 'probar_aviso' }, JOSE, PERSONAS);
+  chk('un empleado se prueba a sí mismo, no a la administración',
+      enviados.sort().join(',') === 'ep-jose-1,ep-jose-2', enviados);
+}
+
+{
+  // Probar no es mandar un mensaje: si dejara texto escrito, el empleado
+  // vería aparecer pruebas en su conversación.
+  const base = baseFalsa();
+  const m = crearMensajes({ consulta: base.consulta, avisar: function () {
+    return Promise.resolve({ enviadas: 1, registrados: 1, fallas: [], motivo: 'OK' });
+  } });
+  await m.atender({ action: 'probar_aviso' }, ADMIN, PERSONAS);
+  const leido = await m.atender({ action: 'consultar_mensajes',
+                                  conversacion: 'jose@ylevigroup.com' }, ADMIN, PERSONAS);
+  chk('la prueba no deja ningún mensaje escrito', leido.mensajes.length === 0, leido.mensajes);
+}
+
+console.log('\n=== La lista de acciones y lo que el modulo atiende no se separan ===');
+//
+// `ACCIONES` es lo que el servidor desvia al chat. Una accion atendida que no
+// este en esa lista NUNCA llega: cae en la logica del Sheet y vuelve como
+// "accion no reconocida". Al reves, una de la lista que nadie atienda devuelve
+// un error en vez de hacer algo. Las dos cosas son codigo muerto que parece
+// vivo, y ninguna prueba que llame a `atender` directo las puede ver.
+{
+  const fuente = require('fs')
+    .readFileSync(require.resolve('./src/mensajes'), 'utf8')
+    .replace(/\r\n/g, '\n');
+
+  const atendidas = [];
+  const re = /accion === '([a-z_]+)'/g;
+  let hallado;
+  while ((hallado = re.exec(fuente)) !== null) atendidas.push(hallado[1]);
+
+  chk('se encontraron las acciones atendidas en el fuente', atendidas.length >= 5, atendidas);
+
+  const sinDesviar = atendidas.filter(function (a) { return ACCIONES.indexOf(a) === -1; });
+  chk('toda accion atendida esta en la lista que el servidor desvia',
+      sinDesviar.length === 0, sinDesviar);
+
+  const sinAtender = ACCIONES.filter(function (a) { return atendidas.indexOf(a) === -1; });
+  chk('y toda la lista tiene quien la atienda', sinAtender.length === 0, sinAtender);
 }
 
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));

@@ -826,5 +826,35 @@ console.log('\n=== El Service Worker sabe recibir y abrir la notificacion ===');
       /tipo === 'resuscribir'\) \{ suscribirAAvisos\(\)/.test(codigo));
 }
 
+console.log('\n=== Se puede COMPROBAR que el aviso suena, sin otro telefono ===');
+//
+// El dia que las notificaciones no llegaron, nada en la pantalla lo decia:
+// el aviso amarillo se escondia al conceder el permiso y a partir de ahi la
+// app no volvia a hablar del tema. Estas comprobaciones existen para que esa
+// pantalla muda no vuelva.
+{
+  chk('con el permiso ya dado, la franja informa en vez de esconderse',
+      /Notification\.permission === 'granted'\)\s*\{[\s\S]{0,300}?msgAviso\.style\.display = ''/.test(codigo));
+  chk('y ofrece el boton de probar',
+      /Notification\.permission === 'granted'\)\s*\{[\s\S]{0,400}?msgProbar\.style\.display = ''/.test(codigo));
+  chk('el boton existe en el HTML', /id="msgProbar"/.test(html));
+  chk('arranca escondido, para no ofrecerlo antes de tener permiso',
+      /id="msgProbar"[^>]*style="display:none;"/.test(html));
+  chk('y se esconde de nuevo si el permiso no esta',
+      /msgProbar\.style\.display = 'none'/.test(codigo));
+
+  const probar = (codigo.match(/msgProbar\.addEventListener\('click'[\s\S]{0,2600}?\n    \}\);/) || [])[0] || '';
+  chk('la prueba le pide al servidor que mande el aviso de verdad',
+      /action: 'probar_aviso'/.test(probar));
+  chk('y antes vuelve a registrar el dispositivo',
+      /await suscribirAAvisos\(\)[\s\S]{0,300}?probar_aviso/.test(probar));
+  chk('distingue el servidor sin claves VAPID', /SIN_VAPID/.test(probar));
+  chk('distingue el dispositivo sin registrar', /SIN_SUSCRIPCIONES/.test(probar));
+  chk('y muestra el codigo cuando el servicio de push rechaza el envio',
+      /f\.codigo/.test(probar) && /f\.mensaje/.test(probar));
+  chk('el boton no se queda deshabilitado si algo falla',
+      /finally \{[\s\S]{0,200}?msgProbar\.disabled = false/.test(probar));
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);

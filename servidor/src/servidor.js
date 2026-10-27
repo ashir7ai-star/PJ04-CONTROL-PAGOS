@@ -275,6 +275,23 @@ const servidor = http.createServer(async (req, res) => {
     r.mensajes = await base.estado();
     r.mensajes.avisosAlTelefono = !!push;
 
+    // Los dos datos que distinguen "nadie registró el teléfono" de "la clave
+    // del servidor no es la que usó el navegador". Sin esto, las dos cosas se
+    // ven exactamente igual desde afuera: el mensaje llega y el aviso no.
+    //
+    // La clave PÚBLICA no es secreta: viaja en index.html a la vista de
+    // cualquiera. Lo único que importa es que empiece igual que la del
+    // navegador; si no, el servicio de push rechaza cada envío con un 403.
+    if (r.mensajes.ok) {
+      try {
+        const c = await base.consulta('SELECT COUNT(*)::int AS n FROM suscripciones');
+        r.mensajes.telefonosRegistrados = c.rows[0].n;
+      } catch (err) {
+        r.mensajes.telefonosRegistrados = 'la tabla todavía no existe (nadie entró al chat)';
+      }
+    }
+    r.mensajes.claveDelServidor = (process.env.VAPID_PUBLICA || '').slice(0, 16) || '(falta)';
+
     r.status = (r.hojas.ok && r.drive.ok && r.correo.ok) ? 'success' : 'error';
     return responder(res, 200, r);
   }

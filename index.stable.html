@@ -2718,6 +2718,14 @@
       color: var(--text-2);
     }
     .msg-aviso .texto { flex: 1; min-width: 200px; }
+    /* Cuando los avisos YA están activados, la misma franja informa en vez de
+       advertir. Esconderla dejaba a la persona sin ninguna forma de saber si
+       su teléfono iba a sonar, que es justo lo que no se puede comprobar
+       mirando. */
+    .msg-aviso.ok {
+      background: var(--success-light, #ecfdf5);
+      border-color: var(--success, #10b981);
+    }
 
     @media (max-width: 860px) {
       .msg-wrap { grid-template-columns: 1fr; }
@@ -3854,6 +3862,7 @@
       </svg>
       <span class="texto" id="msgAvisoTexto">Activá las notificaciones para enterarte cuando te escriban.</span>
       <button type="button" class="btn btn-sm" id="msgActivar">Activar</button>
+      <button type="button" class="btn btn-sm" id="msgProbar" style="display:none;">Probar</button>
     </div>
 
     <div class="msg-wrap" id="msgWrap">
@@ -5190,6 +5199,7 @@
     const msgAviso    = document.getElementById('msgAviso');
     const msgAvisoTexto = document.getElementById('msgAvisoTexto');
     const msgActivar  = document.getElementById('msgActivar');
+    const msgProbar   = document.getElementById('msgProbar');
     const navMensajesGlobo = document.getElementById('navMensajesGlobo');
 
     // Estado del panel. `ultimoId` es lo que permite pedir SOLO lo nuevo en
@@ -5484,12 +5494,18 @@
       const soportado = 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window;
 
       if (soportado && Notification.permission === 'granted') {
-        msgAviso.style.display = 'none';
+        msgAviso.style.display = '';
+        msgAviso.classList.add('ok');
+        msgAvisoTexto.textContent = 'Los avisos están activados en este dispositivo.';
+        msgActivar.style.display = 'none';
+        msgProbar.style.display = '';
         suscribirAAvisos();   // re-registra por si cambió el dispositivo
         return;
       }
 
       msgAviso.style.display = '';
+      msgAviso.classList.remove('ok');
+      msgProbar.style.display = 'none';
 
       if (esIOS() && !estaInstalada()) {
         msgAvisoTexto.textContent =
@@ -5527,10 +5543,52 @@
           return;
         }
         await suscribirAAvisos();
-        msgAviso.style.display = 'none';
-        showToast('success', 'Listo', 'Te vamos a avisar cuando te escriban.');
+        revisarPermisoDeAvisos();   // deja la franja en "activados" + Probar
+        showToast('success', 'Listo', 'Probá el aviso para confirmar que suena.');
       } catch (err) {
         showToast('error', 'No se pudo activar', err.message || 'Intentá de nuevo.');
+      }
+    });
+
+    // Probar el aviso en el propio teléfono, sin depender de otra persona.
+    //
+    // Que el mensaje llegue y el aviso no puede ser cuatro cosas distintas, y
+    // desde afuera se ven idénticas: el dispositivo sin registrar, el servidor
+    // sin claves, el servicio de push rechazando el envío, o el teléfono
+    // silenciando la notificación. El servidor devuelve cuál de las cuatro es.
+    msgProbar.addEventListener('click', async () => {
+      msgProbar.disabled = true;
+      const antes = msgProbar.textContent;
+      msgProbar.textContent = 'Probando…';
+      try {
+        // Se re-registra primero: si la suscripción de este dispositivo nunca
+        // llegó a guardarse, probar sin esto solo repetiría el mismo silencio.
+        await suscribirAAvisos();
+        const r = await postAppsScript({ action: 'probar_aviso' }, 20000);
+        if (!r || r.status !== 'success') {
+          showToast('error', 'No se pudo probar', (r && r.message) || 'El servidor no respondió bien.');
+          return;
+        }
+        const a = r.aviso || {};
+        if (a.enviadas > 0) {
+          showToast('success', 'Aviso enviado',
+            'Si no te apareció en el teléfono, revisá los permisos de notificación del sistema.');
+        } else if (a.motivo === 'SIN_VAPID') {
+          showToast('error', 'Falta configurar el servidor',
+            'El servidor no tiene las claves de notificación (VAPID).');
+        } else if (a.motivo === 'SIN_SUSCRIPCIONES' || a.motivo === 'SIN_DESTINATARIO') {
+          showToast('error', 'Este dispositivo no quedó registrado',
+            'El navegador no entregó una suscripción válida. En iPhone hay que instalar la app.');
+        } else {
+          const f = (a.fallas || [])[0] || {};
+          showToast('error', 'El servicio de push rechazó el aviso',
+            'Código ' + (f.codigo || '?') + ': ' + (f.mensaje || 'sin detalle'));
+        }
+      } catch (err) {
+        showToast('error', 'No se pudo probar', err.message || 'Intentá de nuevo.');
+      } finally {
+        msgProbar.disabled = false;
+        msgProbar.textContent = antes;
       }
     });
 

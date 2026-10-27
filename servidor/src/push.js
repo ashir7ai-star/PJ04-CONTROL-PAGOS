@@ -39,6 +39,10 @@ function crearPush(op) {
 
   // A qué correos hay que avisarle de este mensaje.
   function destinatarios(d) {
+    // `correos` explícitos: lo usa la prueba de aviso, que se manda a uno
+    // mismo. Va por el MISMO camino de envío que un mensaje real, para que
+    // probar signifique algo: si la prueba llega, un mensaje también llega.
+    if (d.correos) return d.correos;
     if (d.esAdmin) return [d.hilo];
     return (d.personas || [])
       .filter(function (p) { return p.rol === 'admin'; })
@@ -47,12 +51,16 @@ function crearPush(op) {
 
   async function avisar(d) {
     const correos = destinatarios(d).filter(Boolean);
-    if (!correos.length) return { enviadas: 0, borradas: 0 };
+    if (!correos.length) {
+      return { enviadas: 0, borradas: 0, registrados: 0, fallas: [], motivo: 'SIN_DESTINATARIO' };
+    }
 
     const r = await consulta(
       'SELECT endpoint, datos FROM suscripciones WHERE correo = ANY($1::text[])',
       [correos]);
-    if (!r.rows.length) return { enviadas: 0, borradas: 0 };
+    if (!r.rows.length) {
+      return { enviadas: 0, borradas: 0, registrados: 0, fallas: [], motivo: 'SIN_SUSCRIPCIONES' };
+    }
 
     const carga = JSON.stringify({
       titulo: d.mensaje.nombre,
@@ -66,6 +74,11 @@ function crearPush(op) {
 
     let enviadas = 0;
     const muertas = [];
+    // ⚠️ Antes esto solo iba a console.error. Un aviso que no llegaba no
+    // dejaba rastro en ninguna pantalla: ni quien escribió ni quien
+    // administra podían enterarse de que había fallado, y mucho menos de por
+    // qué. Las fallas se devuelven para que se puedan VER.
+    const fallas = [];
 
     await Promise.all(r.rows.map(async function (fila) {
       const sus = typeof fila.datos === 'string' ? JSON.parse(fila.datos) : fila.datos;
@@ -75,14 +88,23 @@ function crearPush(op) {
       } catch (err) {
         const codigo = err && (err.statusCode || err.status);
         if (codigo === 404 || codigo === 410) muertas.push(fila.endpoint);
-        else console.error('[push] ' + fila.endpoint.slice(0, 40) + '…: ' + (err && err.message));
+        else {
+          fallas.push({ codigo: codigo || 0, mensaje: String((err && err.message) || err).slice(0, 200) });
+          console.error('[push] ' + fila.endpoint.slice(0, 40) + '…: ' + (err && err.message));
+        }
       }
     }));
 
     if (muertas.length) {
       await consulta('DELETE FROM suscripciones WHERE endpoint = ANY($1::text[])', [muertas]);
     }
-    return { enviadas: enviadas, borradas: muertas.length };
+    return {
+      enviadas:    enviadas,
+      borradas:    muertas.length,
+      registrados: r.rows.length,
+      fallas:      fallas,
+      motivo:      enviadas ? 'OK' : (fallas.length ? 'RECHAZADO' : 'SIN_SUSCRIPCIONES')
+    };
   }
 
   return { avisar: avisar, destinatarios: destinatarios, recortar: recortar };
