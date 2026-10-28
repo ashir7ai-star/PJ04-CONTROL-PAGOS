@@ -28,6 +28,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 Y si llega a pasar: **no alcanza con corregir el archivo**. Hay que **subir también la versión de `CACHE` en `sw.js`**, porque quien ya cargó la versión rota la tiene cacheada bajo ese mismo nombre y el Service Worker es cache-first: se la quedaría para siempre.
 
 ## Última actualización
+**2026-10-27** — 🔁 **Consultar Pagos: los traslados muestran "Sale de", "Entra a" y "Nota".** Y el Excel/PDF dejan de sumar los traslados al total, igual que la pantalla. Cache `v121`. Solo hace falta el push (GitHub Pages); el backend no cambió.
+
 **2026-10-27** — 🔗 **El enlace compartido ya muestra el logo.** La página no tenía ninguna etiqueta Open Graph, así que WhatsApp mostraba el dominio pelado en gris. Ahora la tarjeta sale con logo, título y descripción. Cache `v120`. Solo hace falta el push (GitHub Pages); el backend no cambió.
 
 **2026-10-27** — 💸 **Gastos de Viaje pasa a ser un fondo SIN PRESUPUESTO.** El usuario decidió que no lleve tope: solo se registran las facturas, y quien puede hacerlo se define con la sección en Configuración → Usuarios. La tarjeta de Dinero Disponible ahora muestra lo **gastado** en vez de un saldo, no reclama saldo base y no se pone en rojo. Cache `v119`. ⚠️ **Hay que desplegar las dos cosas: Apps Script y EasyPanel.**
@@ -569,6 +571,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-27**: 🔁 **Traslados legibles en Consultar Pagos** + total de los reportes corregido.
+  - **El síntoma.** El usuario filtró por traslados y no podía saber a dónde fue la plata: la tabla usaba los títulos de un pago (el origen bajo "Empresa", el destino bajo "Proveedor") y la **nota no salía en ninguna parte**, aunque el servidor ya la mandaba en `NOTAS`.
+  - **La solución, solo en la pantalla.** Si **todo** el resultado son traslados, la tabla cambia de cabecera a la misma de la pantalla Traslados: Registrado · Fecha · **Sale de** · **Entra a** · Monto · Registrado por · **Nota** · Comprobante. Si hay pagos mezclados, conserva las columnas de pagos y la nota del traslado va **debajo del concepto** (la de los pagos no, porque nadie la pidió). La nota se escapa: la escribe una persona y se muestra en la pantalla de otra.
+  - 🐛 **El Excel y el PDF sumaban los traslados al total.** La pantalla ya los excluía (contarlos es contar dos veces la misma plata), pero los reportes hacían su propio `reduce` sobre todo: la misma consulta daba un total en pantalla y otro en el archivo. Ahora los dos salen de `totalParaExportar()`. Con solo traslados el rótulo dice `TOTAL TRASLADADO`; mezclado, `TOTAL (sin traslados)`. Los reportes también llevan una columna **Notas**.
+  - 🐛 **Una trampa de JavaScript que casi se cuela.** Los scripts de edición usaban `s.replace(viejo, nuevo)` con un *string*. Ahí `$'` significa "el resto del texto", y el código nuevo tenía `'$' + total`: el script pegó la cola entera de `index.html` en el medio (+4.000 líneas) y `prueba-referencias.js` **pasó igual**. Lo delató el conteo de líneas del diff. **Regla: al reemplazar con texto que puede tener `$`, usar una función (`replace(viejo, () => nuevo)`), y mirar el `git diff --stat` antes de correr las pruebas.**
+  - Las pruebas nuevas **ejecutan** `renderResultados` con un documento de mentira en vez de buscar texto: verifican que cada dato caiga debajo de su título, que no haya columnas corridas y que la cabecera de pagos escrita en JS sea idéntica a la del HTML. **25 comprobaciones nuevas, 10 de 10 mutaciones detectadas.**
+
 - **2026-10-27**: 🔗 **Vista previa del enlace al compartirlo** (Open Graph).
   - **El síntoma.** El usuario mandó el enlace a un empleado por WhatsApp y salió solo `ashir7ai-star.github.io` en gris, sin logo ni título. Parecía un enlace suelto y no la aplicación de la empresa.
   - **La causa.** `index.html` no tenía **ninguna** etiqueta `og:`. Sin ellas, WhatsApp, Telegram, Slack y los clientes de correo no tienen con qué armar la tarjeta y muestran el dominio pelado.

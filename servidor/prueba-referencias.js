@@ -1056,5 +1056,157 @@ console.log('\n=== La vista previa del enlace al compartirlo ===');
       meta('og:description'));
 }
 
+console.log('\n=== Consultar Pagos: los traslados dicen de donde salen, a donde entran y para que ===');
+//
+// El 27/10 el usuario filtro por traslados y no tenia como saber a donde fue
+// la plata: la tabla usaba los titulos de un pago ("Empresa", "Proveedor") y
+// la NOTA no salia en ninguna parte, aunque el servidor ya la mandaba. Aca se
+// EJECUTA la funcion que pinta la tabla, con un documento de mentira: buscar
+// texto no alcanza para saber si cada dato cae debajo de su titulo.
+{
+  // Saca una funcion del archivo por su nombre, contando llaves.
+  const fuenteDe = (nombre) => {
+    const i = codigo.indexOf('function ' + nombre + '(');
+    if (i === -1) return '';
+    let j = codigo.indexOf('{', i), prof = 0;
+    for (; j < codigo.length; j++) {
+      if (codigo[j] === '{') prof++;
+      else if (codigo[j] === '}' && --prof === 0) break;
+    }
+    return codigo.slice(i, j + 1);
+  };
+  const constDe = (nombre, cierre) => {
+    const i = codigo.indexOf('const ' + nombre + ' =');
+    return i === -1 ? '' : codigo.slice(i, codigo.indexOf(cierre, i) + cierre.length);
+  };
+
+  const elems = {};
+  const el = (id) => elems[id] || (elems[id] = {
+    id: id, innerHTML: '', textContent: '', style: {},
+    clases: new Set(),
+    classList: { toggle(c, on) { on ? this._e.clases.add(c) : this._e.clases.delete(c); } }
+  });
+  const documento = { getElementById: (id) => { const e = el(id); e.classList._e = e; return e; } };
+
+  const fuente = [
+    'let ultimosResultados = [];',
+    fuenteDe('escapeHtml'),
+    fuenteDe('esFilaDeTraslado'),
+    constDe('CABECERA_PAGOS', "</tr>';"),
+    constDe('CABECERA_TRASLADOS', "</tr>';"),
+    constDe('COLUMNAS_EXPORT', '];'),
+    fuenteDe('renderResultados'),
+    fuenteDe('filasParaExportar'),
+    fuenteDe('totalParaExportar'),
+    'return { renderResultados, filasParaExportar, totalParaExportar, COLUMNAS_EXPORT, CABECERA_PAGOS,' +
+    ' fijar: (r) => { ultimosResultados = r; } };'
+  ].join('\n');
+
+  let api = null, errorArmado = null;
+  try {
+    api = new Function('document', 'tipoInfo', 'extractUrl', 'formatoFechaHora', 'valorDe', fuente)(
+      documento,
+      (t) => ({ badgeClass: 'b', label: String(t) }),
+      (u) => String(u || '').split('\n')[0],
+      (f) => String(f || ''),
+      (r) => Number(r['VALOR FACTURA'] || 0));
+  } catch (e) { errorArmado = e.message; }
+  chk('las funciones de la tabla se pueden armar y ejecutar', !!api, errorArmado);
+
+  const traslado = (destino, monto, nota) => ({
+    'FECHA REGISTRO': '2026-10-27 15:03', 'FECHA DE PAGO': '2026-10-27',
+    'EMPRESA': 'BLAZAR ENERGY', 'TIPO FACTURA': 'traslado',
+    'NOMBRE DE PAGO': 'Traslado a ' + destino, 'PROVEEDOR': destino,
+    'VALOR FACTURA': monto, 'NOTAS': nota, 'URL ARCHIVO': 'https://x/c.pdf',
+    'REGISTRADO POR': 'Nathan De Lima', 'ID REGISTRO': 'traslado-2'
+  });
+  const pago = {
+    'FECHA REGISTRO': '2026-10-27 19:48', 'FECHA DE PAGO': '2026-10-27',
+    'EMPRESA': 'BLAZAR ENERGY', 'TIPO FACTURA': 'gastos_viaje',
+    'NOMBRE DE PAGO': 'Comida', 'PROVEEDOR': 'JUANK PARRILLA', 'VALOR FACTURA': 31000,
+    'NOTAS': 'nota de un pago', 'URL ARCHIVO': '', 'REGISTRADO POR': 'Andres Zamora',
+    'ID REGISTRO': 'abc'
+  };
+  const celdas = (htmlFila) => [...htmlFila.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(m => m[1].trim());
+  const titulos = (h) => [...h.matchAll(/<th>([^<]*)<\/th>/g)].map(m => m[1]);
+  const filas = (h) => h.split('<tr>').slice(1);
+
+  if (api) {
+    // ─── Solo traslados ───
+    api.renderResultados([
+      traslado('Viáticos Equipo 2', 815000, 'Para el viaje a Barranquilla de Andrés'),
+      traslado('Caja Menor', 500000, '<b>sin</b> etiquetas')
+    ]);
+    const th = titulos(el('resultsHead').innerHTML);
+    const f1 = celdas(filas(el('resultsBody').innerHTML)[0] || '');
+    const en = (titulo) => f1[th.indexOf(titulo)];
+
+    chk('con solo traslados, los titulos son los de la pantalla de Traslados',
+        ['Sale de', 'Entra a', 'Nota'].every(t => th.indexOf(t) !== -1), th);
+    chk('y ya no dicen Empresa ni Proveedor', th.indexOf('Empresa') === -1 && th.indexOf('Proveedor') === -1, th);
+    chk('cada fila tiene una celda por titulo (nada corrido de columna)',
+        th.length > 0 && f1.length === th.length, { titulos: th.length, celdas: f1.length });
+    chk('"Sale de" muestra la cuenta de origen', en('Sale de') === 'BLAZAR ENERGY', en('Sale de'));
+    chk('"Entra a" muestra la cuenta de destino', en('Entra a') === 'Viáticos Equipo 2', en('Entra a'));
+    chk('"Nota" muestra la nota del traslado',
+        en('Nota') === 'Para el viaje a Barranquilla de Andrés', en('Nota'));
+    chk('el monto cae debajo de Monto', en('Monto') === '$815.000', en('Monto'));
+    chk('el comprobante cae debajo de Comprobante', /href="https:\/\/x\/c\.pdf"/.test(en('Comprobante') || ''), en('Comprobante'));
+    // La nota la escribe una persona: no puede meter HTML en la pagina de otro.
+    const f2 = celdas(filas(el('resultsBody').innerHTML)[1] || '');
+    chk('la nota se escapa: no puede inyectar HTML',
+        f2[th.indexOf('Nota')] === '&lt;b&gt;sin&lt;/b&gt; etiquetas', f2[th.indexOf('Nota')]);
+    chk('la tabla queda marcada en modo traslados (para el CSS)',
+        el('resultsTable').clases.has('modo-traslados'), [...el('resultsTable').clases]);
+
+    // ─── Mezclado con pagos ───
+    api.renderResultados([pago, traslado('Viáticos Equipo 1', 744000, 'Reposición semana 43')]);
+    const thM = titulos(el('resultsHead').innerHTML);
+    const filM = filas(el('resultsBody').innerHTML).map(celdas);
+    chk('con pagos mezclados vuelven los titulos de pagos',
+        thM.indexOf('Proveedor') !== -1 && thM.indexOf('Sale de') === -1, thM);
+    chk('y son EXACTAMENTE los del HTML (volver de traslados no cambia nada)',
+        api.CABECERA_PAGOS.replace(/\s+/g, '') === html.split('<thead id="resultsHead">')[1].split('</thead>')[0].replace(/\s+/g, ''),
+        'la cabecera escrita en JS y la del HTML no coinciden');
+    chk('y la tabla sale del modo traslados', !el('resultsTable').clases.has('modo-traslados'),
+        [...el('resultsTable').clases]);
+    chk('cada fila mezclada tiene una celda por titulo',
+        filM.every(c => c.length === thM.length), filM.map(c => c.length));
+    const conceptoT = filM[1][thM.indexOf('Concepto')] || '';
+    chk('la nota del traslado sale debajo del concepto', /Reposición semana 43/.test(conceptoT), conceptoT);
+    // Solo la del traslado: la de un pago no se pidio, y meterla cambiaria
+    // la pantalla de pagos sin que nadie lo pida.
+    chk('la nota de un PAGO no se cuela en la pantalla',
+        !/nota de un pago/.test(el('resultsBody').innerHTML), filM[0]);
+
+    // ─── Reportes ───
+    const exp = (rows) => { api.fijar(rows); return api.totalParaExportar(); };
+    const mezcla = exp([pago, traslado('Viáticos Equipo 1', 744000, 'x')]);
+    chk('el total del reporte NO suma los traslados (igual que la pantalla)',
+        mezcla.total === 31000, mezcla);
+    chk('y el rotulo avisa que quedan afuera', /sin traslados/.test(mezcla.rotulo), mezcla.rotulo);
+    const soloT = exp([traslado('A', 100000, ''), traslado('B', 50000, '')]);
+    chk('con solo traslados, el total es lo trasladado y lo dice',
+        soloT.total === 150000 && soloT.rotulo === 'TOTAL TRASLADADO', soloT);
+    const soloP = exp([pago]);
+    chk('con solo pagos, el total de siempre', soloP.total === 31000 && soloP.rotulo === 'TOTAL', soloP);
+
+    api.fijar([traslado('Viáticos Equipo 2', 815000, 'Para el viaje')]);
+    const fe = api.filasParaExportar()[0];
+    chk('el Excel y el PDF llevan la nota', fe['Notas'] === 'Para el viaje', fe);
+    chk('y la columna Notas esta declarada', api.COLUMNAS_EXPORT.some(c => c.clave === 'Notas'),
+        api.COLUMNAS_EXPORT.map(c => c.clave));
+  }
+
+  // Ni el Excel ni el PDF pueden volver a sumar todo por su cuenta.
+  const sinCom = codigo.split('\n').filter(l => l.trim().indexOf('//') !== 0).join('\n');
+  const exc = sinCom.split('function exportarExcel()')[1].split('\n    }')[0];
+  const pdf = sinCom.split('function exportarPdf()')[1].split('\n    }')[0];
+  chk('el Excel toma el total de totalParaExportar', /totalParaExportar\(\)/.test(exc) &&
+      !/ultimosResultados\.reduce/.test(exc), 'volveria a sumar los traslados');
+  chk('y el PDF tambien', /totalParaExportar\(\)/.test(pdf) &&
+      !/ultimosResultados\.reduce/.test(pdf), 'volveria a sumar los traslados');
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);

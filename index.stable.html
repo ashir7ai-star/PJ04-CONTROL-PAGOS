@@ -1120,6 +1120,15 @@
     /* Estas dos sí pueden partirse en varias líneas: son texto, no cifras. */
     .results-table td:nth-child(5),
     .results-table td:nth-child(6) { white-space: normal; min-width: 150px; }
+    /* Con solo traslados las columnas 5 y 6 son Monto y Registrado por: no
+       se parten. La que se parte es la Nota. */
+    .results-table.modo-traslados td:nth-child(5),
+    .results-table.modo-traslados td:nth-child(6) { white-space: nowrap; min-width: 0; }
+    .results-table td.celda-nota { white-space: normal; min-width: 200px; }
+    .nota-traslado {
+      margin-top: 3px; font-size: 0.75rem; color: var(--text-muted);
+      white-space: normal;
+    }
 
     .results-table th {
       background: var(--surface-2);
@@ -3351,8 +3360,8 @@
         </div>
       </div>
       <div class="results-table-wrap">
-        <table class="results-table">
-          <thead>
+        <table class="results-table" id="resultsTable">
+          <thead id="resultsHead">
             <tr>
               <th>Registrado</th>
               <th>Fecha de pago</th>
@@ -4848,6 +4857,19 @@
 
     let ultimosResultados = [];
 
+    function esFilaDeTraslado(r) {
+      return String(r['TIPO FACTURA'] || '').toLowerCase() === 'traslado';
+    }
+
+    // La de pagos es la misma que está escrita en el HTML: se guarda acá para
+    // poder volver a ella después de una búsqueda de solo traslados.
+    const CABECERA_PAGOS =
+      '<tr><th>Registrado</th><th>Fecha de pago</th><th>Empresa</th><th>Tipo</th>' +
+      '<th>Concepto</th><th>Proveedor</th><th>Registrado por</th><th>Valor</th><th>Archivo</th></tr>';
+    const CABECERA_TRASLADOS =
+      '<tr><th>Registrado</th><th>Fecha</th><th>Sale de</th><th>Entra a</th>' +
+      '<th>Monto</th><th>Registrado por</th><th>Nota</th><th>Comprobante</th></tr>';
+
     function renderResultados(rows) {
       const tbody   = document.getElementById('resultsBody');
       const results = document.getElementById('searchResults');
@@ -4873,7 +4895,7 @@
       // significar lo que la gente cree que significa.
       //
       // Se muestran igual, y se totalizan aparte.
-      const esTraslado = r => String(r['TIPO FACTURA'] || '').toLowerCase() === 'traslado';
+      const esTraslado = esFilaDeTraslado;
       const pagos      = rows.filter(r => !esTraslado(r));
       const traslados  = rows.filter(esTraslado);
       const total      = pagos.reduce((s, r) => s + valorDe(r), 0);
@@ -4889,6 +4911,21 @@
             ' (no suman)</span>'
           : '');
 
+      // ─── Solo traslados: otra tabla ─────────────────────────────────
+      //
+      // Un traslado no tiene empresa ni proveedor: tiene una cuenta de la
+      // que SALE y una a la que ENTRA, y una nota que dice para qué fue. Con
+      // los títulos de un pago, "BLAZAR ENERGY" quedaba bajo "Empresa" y el
+      // destino bajo "Proveedor", y la nota no salía en ninguna parte —
+      // justo lo que dice a dónde fue la plata. Las columnas son las mismas
+      // que en la pantalla de Traslados, para que el dato no cambie de
+      // nombre según dónde se lo mire.
+      const soloTraslados = traslados.length === rows.length;
+      document.getElementById('resultsTable').classList.toggle('modo-traslados', soloTraslados);
+      document.getElementById('resultsHead').innerHTML = soloTraslados
+        ? CABECERA_TRASLADOS
+        : CABECERA_PAGOS;
+
       tbody.innerHTML = rows.map(r => {
         const { badgeClass, label: tipoLabel } = tipoInfo(r['TIPO FACTURA']);
         const url   = extractUrl(r['URL ARCHIVO'] || '');
@@ -4899,12 +4936,32 @@
             ? `<button type="button" class="link-add-factura" data-id="${escapeHtml(String(idReg))}">+ Agregar</button>`
             : '—';
         const valor = valorDe(r);
+        const nota  = String(r['NOTAS'] || '').trim();
+        if (soloTraslados) {
+          // EMPRESA y PROVEEDOR de un traslado son su origen y su destino:
+          // así los arma trasladosComoPagos_ en el servidor.
+          return `<tr>
+          <td style="white-space:nowrap;">${escapeHtml(formatoFechaHora(r['FECHA REGISTRO']))}</td>
+          <td style="white-space:nowrap;">${escapeHtml(r['FECHA DE PAGO'] || '—')}</td>
+          <td>${escapeHtml(r['EMPRESA'] || '—')}</td>
+          <td>${escapeHtml(r['PROVEEDOR'] || '—')}</td>
+          <td>$${valor.toLocaleString('es-CO')}</td>
+          <td>${escapeHtml(r['REGISTRADO POR'] || '—')}</td>
+          <td class="celda-nota">${escapeHtml(nota || '—')}</td>
+          <td>${link}</td>
+        </tr>`;
+        }
+        // Mezclado con pagos, el traslado no tiene columna propia para la
+        // nota: va debajo del concepto, que es donde se lo lee.
+        const notaTraslado = esTraslado(r) && nota
+          ? `<div class="nota-traslado">${escapeHtml(nota)}</div>`
+          : '';
         return `<tr>
           <td style="white-space:nowrap;">${escapeHtml(formatoFechaHora(r['FECHA REGISTRO']))}</td>
           <td style="white-space:nowrap;">${r['FECHA DE PAGO'] || '—'}</td>
           <td>${r['EMPRESA'] || '—'}</td>
           <td><span class="badge ${badgeClass}">${tipoLabel}</span></td>
-          <td>${r['NOMBRE DE PAGO'] || '—'}</td>
+          <td>${r['NOMBRE DE PAGO'] || '—'}${notaTraslado}</td>
           <td>${r['PROVEEDOR'] || '—'}</td>
           <td>${r['REGISTRADO POR'] || '—'}</td>
           <td>$${valor.toLocaleString('es-CO')}</td>
@@ -4971,6 +5028,8 @@
       // dos nombres distintos según la pantalla.
       { clave: 'Concepto',        ancho: 30 },
       { clave: 'Proveedor',       ancho: 24 },
+      // En un traslado la nota es lo que dice a dónde fue la plata.
+      { clave: 'Notas',           ancho: 30 },
       { clave: 'Registrado por',  ancho: 18, anchoPdf: 72 },
       { clave: 'Valor',           ancho: 14, anchoPdf: 62, numero: true },
       { clave: 'Archivo',         ancho: 42, anchoPdf: 38 }
@@ -4985,10 +5044,26 @@
         'Tipo':            tipoInfo(r['TIPO FACTURA']).label,
         'Concepto':        r['NOMBRE DE PAGO'] || '',
         'Proveedor':       r['PROVEEDOR'] || '',
+        'Notas':           r['NOTAS'] || '',
         'Registrado por':  r['REGISTRADO POR'] || '',
         'Valor':           valorDe(r),
         'Archivo':         extractUrl(r['URL ARCHIVO'] || '') || 'Sin archivo'
       }));
+    }
+
+    // ⚠️ El total del reporte es el MISMO que el de la pantalla: los
+    // traslados no suman. Antes el Excel y el PDF sumaban todo, y una
+    // consulta con traslados daba un total en pantalla y otro en el archivo.
+    // Si la consulta es solo de traslados, el total es lo trasladado, y el
+    // rótulo lo dice.
+    function totalParaExportar() {
+      const pagos = ultimosResultados.filter(r => !esFilaDeTraslado(r));
+      const suma  = filas => filas.reduce((s, r) => s + valorDe(r), 0);
+      if (!pagos.length) return { total: suma(ultimosResultados), rotulo: 'TOTAL TRASLADADO' };
+      return {
+        total:  suma(pagos),
+        rotulo: pagos.length === ultimosResultados.length ? 'TOTAL' : 'TOTAL (sin traslados)'
+      };
     }
 
     function nombreArchivoBase() {
@@ -5017,12 +5092,12 @@
       // por letras escritas a mano: con letras fijas, agregar una columna
       // dejaba el TOTAL debajo de la columna equivocada, en silencio.
       const letra = n => String.fromCharCode(65 + n);
-      const total     = ultimosResultados.reduce((s, r) => s + valorDe(r), 0);
+      const { total, rotulo } = totalParaExportar();
       const filaTotal = datos.length + 5;
 
       XLSX.utils.sheet_add_aoa(ws, [
         COLUMNAS_EXPORT.map((c, i) =>
-          i === COL_VALOR ? total : (i === COL_VALOR - 1 ? 'TOTAL' : ''))
+          i === COL_VALOR ? total : (i === COL_VALOR - 1 ? rotulo : ''))
       ], { origin: 'A' + filaTotal });
 
       for (let i = 0; i < datos.length; i++) {
@@ -5067,7 +5142,7 @@
       doc.text(resumenFiltros(), 40, 74);
       doc.text('Generado el ' + new Date().toLocaleString('es-CO'), 40, 88);
 
-      const total = ultimosResultados.reduce((s, r) => s + valorDe(r), 0);
+      const { total, rotulo } = totalParaExportar();
 
       // Una celda del PDF. Antes esto era una lista escrita a mano que leía
       // f['Fecha'] —clave inexistente— y dejaba la columna vacía en TODAS las
@@ -5094,7 +5169,7 @@
         body: filas,
         foot: [COLUMNAS_EXPORT.map((c, i) =>
           i === COL_VALOR ? '$' + total.toLocaleString('es-CO')
-                          : (i === COL_VALOR - 1 ? 'TOTAL' : ''))],
+                          : (i === COL_VALOR - 1 ? rotulo : ''))],
         startY: 100,
         // Con nueve columnas en A4 apaisado hay menos aire que con siete: se
         // achica la letra y el relleno en vez de dejar que se parta el texto.
