@@ -28,6 +28,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 Y si llega a pasar: **no alcanza con corregir el archivo**. Hay que **subir también la versión de `CACHE` en `sw.js`**, porque quien ya cargó la versión rota la tiene cacheada bajo ese mismo nombre y el Service Worker es cache-first: se la quedaría para siempre.
 
 ## Última actualización
+**2026-10-28** — ✅ **VERSIÓN ESTABLE: `v2.8-mensajes-y-gastos-de-viaje`.** Mensajes con aviso al teléfono, un fondo de viáticos por equipo, Gastos de Viaje sin presupuesto, vista previa del enlace con logo y traslados legibles en Consultar Pagos (Sale de / Entra a / Nota). Web en `v121`, EasyPanel en el commit `9187abf`. **886 comprobaciones, 127 mutaciones.** ⚠️ El Apps Script de respaldo **todavía no** tiene el `apps-script.gs` del 27/10.
+
 **2026-10-27** — 🔁 **Consultar Pagos: los traslados muestran "Sale de", "Entra a" y "Nota".** Y el Excel/PDF dejan de sumar los traslados al total, igual que la pantalla. Cache `v121`. Solo hace falta el push (GitHub Pages); el backend no cambió.
 
 **2026-10-27** — 🔗 **El enlace compartido ya muestra el logo.** La página no tenía ninguna etiqueta Open Graph, así que WhatsApp mostraba el dominio pelado en gris. Ahora la tarjeta sale con logo, título y descripción. Cache `v120`. Solo hace falta el push (GitHub Pages); el backend no cambió.
@@ -571,6 +573,8 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-28**: ✅ Marcada como **versión estable** — etiqueta `v2.8-mensajes-y-gastos-de-viaje` (commit `cb52f8b`), `index.stable.html` = `index.html`, publicada en GitHub. Confirmado por el usuario en producción: la tarjeta de Gastos de Viaje muestra lo gastado ($192.999) y los traslados muestran su nota. Backend: EasyPanel construido desde `9187abf`, que ya incluye el `apps-script.gs` del 27/10 18:48. **Pendiente:** redesplegar el Apps Script de respaldo con ese archivo; si EasyPanel se cae, el respaldo mostraría Gastos de Viaje como "Sin configurar".
+  - Los traslados anteriores al 22/10 figuran como **"Viáticos (histórico)"**: fueron al fondo común, antes de que se partiera por equipo. La hoja no guarda el equipo y no se inventa; la nota de cada uno lo dice (salvo el de $31.000 del 09/10, que fue para activar la tarjeta). Queda propuesto, sin decidir, renombrarlo a "Viáticos — fondo común (antes del 22/10)", que lleva rebuild.
 - **2026-10-27**: 🔁 **Traslados legibles en Consultar Pagos** + total de los reportes corregido.
   - **El síntoma.** El usuario filtró por traslados y no podía saber a dónde fue la plata: la tabla usaba los títulos de un pago (el origen bajo "Empresa", el destino bajo "Proveedor") y la **nota no salía en ninguna parte**, aunque el servidor ya la mandaba en `NOTAS`.
   - **La solución, solo en la pantalla.** Si **todo** el resultado son traslados, la tabla cambia de cabecera a la misma de la pantalla Traslados: Registrado · Fecha · **Sale de** · **Entra a** · Monto · Registrado por · **Nota** · Comprobante. Si hay pagos mezclados, conserva las columnas de pagos y la nota del traslado va **debajo del concepto** (la de los pagos no, porque nadie la pidió). La nota se escapa: la escribe una persona y se muestra en la pantalla de otra.
