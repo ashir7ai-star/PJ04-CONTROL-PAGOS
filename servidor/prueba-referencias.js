@@ -996,5 +996,65 @@ console.log('\n=== Un fondo sin presupuesto: la tarjeta muestra el GASTO, no un 
       /if \(CUENTAS\[destino\]\.sinPresupuesto\) {/.test(gs));
 }
 
+console.log('\n=== La vista previa del enlace al compartirlo ===');
+//
+// El 27/10 el usuario mando el enlace a un empleado por WhatsApp y salio el
+// dominio pelado en gris, sin logo ni titulo. La pagina no tenia ninguna
+// etiqueta Open Graph. Se mira sobre `html`, no sobre `codigo`: las etiquetas
+// <meta> viven en el HTML, y `codigo` son solo los bloques <script>.
+{
+  const meta = (prop) => {
+    const m = html.match(new RegExp('<meta (?:property|name)="' + prop + '" content="([^"]*)"'));
+    return m ? m[1] : null;
+  };
+
+  chk('estan las cuatro etiquetas que arman la tarjeta',
+      !!meta('og:title') && !!meta('og:description') && !!meta('og:image') && !!meta('og:url'),
+      { title: meta('og:title'), image: meta('og:image'), url: meta('og:url') });
+
+  // El error clasico. Los rastreadores no resuelven rutas relativas: con
+  // "icons/logo.png" la tarjeta sale sin imagen y nadie se entera, porque la
+  // pagina abierta en el navegador se ve perfecta.
+  chk('la direccion de la imagen es ABSOLUTA, no relativa',
+      /^https:\/\//.test(meta('og:image') || ''), meta('og:image'));
+  chk('y la de la pagina tambien',
+      /^https:\/\//.test(meta('og:url') || ''), meta('og:url'));
+  chk('las dos apuntan al mismo sitio',
+      (meta('og:image') || '').indexOf(meta('og:url') || 'x') === 0,
+      { url: meta('og:url'), image: meta('og:image') });
+
+  // La imagen tiene que existir de verdad en el repo: si no, GitHub Pages
+  // devuelve 404 y la tarjeta queda sin foto igual que antes.
+  const rel = (meta('og:image') || '').replace(meta('og:url') || '', '');
+  const ruta = path.join(__dirname, '..', rel);
+  chk('la imagen existe en el repo', rel && fs.existsSync(ruta), rel);
+
+  // El tamano declarado tiene que ser el real. Si no coincide, algunos
+  // clientes reservan el espacio equivocado y recortan mal la tarjeta.
+  if (fs.existsSync(ruta)) {
+    const b = fs.readFileSync(ruta);
+    const ancho = b.readUInt32BE(16), alto = b.readUInt32BE(20);
+    chk('el tamano declarado es el real del archivo',
+        String(ancho) === meta('og:image:width') && String(alto) === meta('og:image:height'),
+        { real: ancho + 'x' + alto, declarado: meta('og:image:width') + 'x' + meta('og:image:height') });
+
+    // WhatsApp muestra la tarjeta GRANDE solo si la imagen es lo bastante
+    // grande; por debajo la manda a una miniatura al costado.
+    chk('la imagen da para la tarjeta grande, no para una miniatura',
+        ancho >= 300 && alto >= 200, ancho + 'x' + alto);
+    chk('y no pesa tanto como para que el rastreador la descarte',
+        b.length < 600 * 1024, (b.length / 1024).toFixed(0) + 'KB');
+  }
+
+  chk('Telegram y X piden la tarjeta grande',
+      meta('twitter:card') === 'summary_large_image', meta('twitter:card'));
+
+  // La descripcion la ve cualquiera que reciba el enlace, aunque no pueda
+  // entrar. No lleva nombres de empresas, cuentas ni montos.
+  chk('la descripcion no cuenta de mas',
+      !/(millennium|blazar|ampac|viatic|saldo|\$)/i.test(meta('og:description') || ''),
+      meta('og:description'));
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);

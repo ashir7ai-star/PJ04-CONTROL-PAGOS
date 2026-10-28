@@ -28,6 +28,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 Y si llega a pasar: **no alcanza con corregir el archivo**. Hay que **subir también la versión de `CACHE` en `sw.js`**, porque quien ya cargó la versión rota la tiene cacheada bajo ese mismo nombre y el Service Worker es cache-first: se la quedaría para siempre.
 
 ## Última actualización
+**2026-10-27** — 🔗 **El enlace compartido ya muestra el logo.** La página no tenía ninguna etiqueta Open Graph, así que WhatsApp mostraba el dominio pelado en gris. Ahora la tarjeta sale con logo, título y descripción. Cache `v120`. Solo hace falta el push (GitHub Pages); el backend no cambió.
+
 **2026-10-27** — 💸 **Gastos de Viaje pasa a ser un fondo SIN PRESUPUESTO.** El usuario decidió que no lleve tope: solo se registran las facturas, y quien puede hacerlo se define con la sección en Configuración → Usuarios. La tarjeta de Dinero Disponible ahora muestra lo **gastado** en vez de un saldo, no reclama saldo base y no se pone en rojo. Cache `v119`. ⚠️ **Hay que desplegar las dos cosas: Apps Script y EasyPanel.**
 
 **2026-10-27** — ✈️ **Gastos de Viaje: la sexta bolsa de Dinero Disponible.** Para los gastos de un viaje de negocios, separados de los viáticos por equipo. Es un **tipo de pago** con su propio fondo (el patrón de Compra Materiales), **no** un equipo más: el equipo de un viático sale de la sesión, así que un "Equipo Viajes" habría obligado a moverle el equipo a la persona al salir y al volver. Clave interna `gastos_viaje`, que ya no se puede cambiar. Cache `v118`. ⚠️ **Hay que desplegar las dos cosas: Apps Script y EasyPanel.**
@@ -567,6 +569,15 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-10-27**: 🔗 **Vista previa del enlace al compartirlo** (Open Graph).
+  - **El síntoma.** El usuario mandó el enlace a un empleado por WhatsApp y salió solo `ashir7ai-star.github.io` en gris, sin logo ni título. Parecía un enlace suelto y no la aplicación de la empresa.
+  - **La causa.** `index.html` no tenía **ninguna** etiqueta `og:`. Sin ellas, WhatsApp, Telegram, Slack y los clientes de correo no tienen con qué armar la tarjeta y muestran el dominio pelado.
+  - **La imagen es la que ya estaba:** `icons/logo.png` (612×408, 104 KB), que ya se servía en GitHub Pages. No hizo falta crear nada.
+  - ⚠️ **La dirección de la imagen tiene que ser ABSOLUTA.** Los rastreadores no ejecutan JavaScript ni resuelven rutas relativas contra la página: con `icons/logo.png` a secas la tarjeta sale sin foto **y la página se sigue viendo perfecta en el navegador**, así que no se nota. Es el único lugar del archivo con una dirección absoluta escrita a mano: si cambia la dirección de la app, hay que tocar esas cuatro líneas.
+  - ⚠️ **WhatsApp guarda la vista previa por enlace durante varios días.** Un enlace ya enviado puede seguir saliendo sin logo hasta que caduque. Para forzar una vista previa nueva, agregarle cualquier parámetro: `&v=2`.
+  - **La descripción no cuenta de más:** "Registro de facturas y pagos. Acceso solo para personal autorizado." La ve cualquiera que reciba el enlace, aunque no pueda entrar, así que no nombra empresas, cuentas ni montos. Hay una comprobación que lo vigila.
+  - **851 → 861 comprobaciones**, **117 de 117 mutaciones** detectadas. Las comprobaciones verifican lo que de verdad rompe la tarjeta: que la dirección sea absoluta, que el archivo exista en el repo, que el tamaño declarado sea el real y que la imagen dé para la tarjeta grande.
+
 - **2026-10-27**: 💸 **Un fondo puede no tener presupuesto** (`sinPresupuesto`), y Gastos de Viaje es el primero.
   - **Qué pidió el usuario.** "Para viajes no coloquemos presupuesto, solo necesito que registren las facturas las personas que estén habilitadas". O sea: el fondo no controla un cupo, solo acumula el gasto.
   - 🐛 **Lo que casi se rompe en silencio.** `calcularSaldosCrudos_` descartaba **todo pago cuya cuenta no tuviera fila en SALDOS** (`if (!base) return;`). La regla era correcta mientras todos los fondos tuvieran tope —un saldo no se puede inventar—, pero con un fondo sin base significa que **la tarjeta muestra $0 con las facturas ya cargadas en la hoja**. El dato bien guardado y la pantalla mintiendo: el peor tipo de error, porque nadie ve una falla. Ahora el corte solo se aplica si hay base, y **las dos mitades de la regla se comprueban en la misma foto** (el fondo sin tope cuenta; el fondo normal sigue exigiendo su fila).

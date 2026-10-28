@@ -13,6 +13,43 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Pagos" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
+
+  <!-- ─── Vista previa al compartir el enlace ───────────────────────────
+       WhatsApp, Telegram, Slack y los clientes de correo leen estas
+       etiquetas para armar la tarjeta del enlace. Sin ellas muestran el
+       dominio pelado en gris, que es como se veia hasta el 27/10.
+
+       ⚠️ La direccion de la imagen TIENE que ser absoluta. Los rastreadores
+       no ejecutan JavaScript y no resuelven rutas relativas contra la
+       pagina: con "icons/logo.png" a secas la tarjeta sale sin imagen. Por
+       eso aca va el dominio completo aunque todo el resto del archivo use
+       rutas relativas — y por eso, si algun dia cambia la direccion de la
+       app, estas cuatro lineas hay que cambiarlas a mano.
+
+       ⚠️ WhatsApp GUARDA la vista previa de cada enlace por varios dias. Un
+       enlace ya enviado puede seguir saliendo sin logo hasta que caduque;
+       agregarle cualquier parametro (&v=2) lo convierte en uno nuevo.
+
+       La descripcion la ve cualquiera que reciba el enlace, asi que no
+       lleva nada del contenido: solo que el acceso es restringido. -->
+  <meta name="description" content="Registro de facturas y pagos. Acceso solo para personal autorizado." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Control de Pagos" />
+  <meta property="og:title" content="Control de Pagos" />
+  <meta property="og:description" content="Registro de facturas y pagos. Acceso solo para personal autorizado." />
+  <meta property="og:url" content="https://ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/" />
+  <meta property="og:image" content="https://ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/icons/logo.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="612" />
+  <meta property="og:image:height" content="408" />
+  <meta property="og:image:alt" content="Control de Pagos" />
+  <meta property="og:locale" content="es_CO" />
+  <!-- Telegram y X usan las de Twitter. "summary_large_image" pide la
+       tarjeta grande; sin esto sale la miniatura chica al costado. -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Control de Pagos" />
+  <meta name="twitter:description" content="Registro de facturas y pagos. Acceso solo para personal autorizado." />
+  <meta name="twitter:image" content="https://ashir7ai-star.github.io/PJ04-CONTROL-PAGOS/icons/logo.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
