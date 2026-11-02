@@ -177,6 +177,41 @@ console.log('\n=== Si fallan todos los caminos, el mensaje dice cuáles ===');
   chk('y ofrece otro camino', err && /app Archivos/.test(err.message), err && err.message);
 }
 
+console.log('\n=== El aviso se va del todo, aunque sea largo ===');
+{
+  // 02/11: el mensaje de lectura ocupa varias líneas y, escondiéndose 110px
+  // fijos, quedaba cortado al pie de la pantalla para siempre.
+  const css = extraer('.toast {', '.toast.show');
+  const oculto = (css.match(/transform:\s*translateX\(-50%\)\s*translateY\(([^;]*)\);/) || [])[1] || '';
+  chk('se esconde según su propia altura, no con píxeles fijos',
+      /^calc\(100%/.test(oculto), oculto);
+
+  // El showToast real, con un reloj y un DOM de mentira.
+  const pendientes = [];
+  let vivo = null;
+  const clases = new Set();
+  const el = { classList: { remove: (c) => clases.delete(c) } };
+  Object.defineProperty(el, 'className', { set: (v) => { clases.clear(); v.split(' ').forEach(c => clases.add(c)); } });
+  const doc = { getElementById: () => el };
+  const relojPoner = (fn, ms) => { const t = { fn, ms, cancelado: false }; pendientes.push(t); vivo = t; return t; };
+  const relojQuitar = (t) => { if (t) t.cancelado = true; };
+  const cuerpo = extraer('let temporizadorToast', '// ─── Envío');
+  const showToast = new Function('document', 'setTimeout', 'clearTimeout', 'svgCheck', 'svgX',
+    cuerpo + '\n; return showToast;')(doc, relojPoner, relojQuitar, '', '');
+
+  showToast('error', 'Corto', 'Un aviso corto');
+  chk('un aviso corto dura lo de siempre', vivo.ms === 4500, vivo.ms);
+  const primero = vivo;
+
+  showToast('error', 'Largo', 'x'.repeat(230));
+  chk('uno largo dura más', vivo.ms > 10000, vivo.ms);
+  chk('pero tiene un tope', vivo.ms <= 12000, vivo.ms);
+  chk('el temporizador anterior queda cancelado', primero.cancelado === true, primero.cancelado);
+
+  vivo.fn();
+  chk('al vencer, el aviso se cierra', !clases.has('show'), Array.from(clases));
+}
+
 console.log('\n=== Un archivo vacío por arrayBuffer tampoco pasa como válido ===');
 {
   const api = montar((r) => { r.error = { name: 'NotReadableError' }; r.onerror({ type: 'error' }); });

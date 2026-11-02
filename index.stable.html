@@ -813,7 +813,10 @@
       position: fixed;
       bottom: 28px;
       left: 50%;
-      transform: translateX(-50%) translateY(110px);
+      /* ⚠️ Se esconde según SU PROPIA altura. Con `translateY(110px)` fijo, un
+         mensaje de varias líneas bajaba pero no salía de la pantalla: quedaba
+         cortado abajo para siempre (02/11). */
+      transform: translateX(-50%) translateY(calc(100% + 60px));
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
@@ -6323,13 +6326,19 @@
     const svgCheck = '<polyline points="20 6 9 17 4 12"/>';
     const svgX     = '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>';
 
+    let temporizadorToast = null;
+
     function showToast(type, title, msg) {
       const toast = document.getElementById('toast');
       document.getElementById('toastIcon').innerHTML = type === 'success' ? svgCheck : svgX;
       document.getElementById('toastTitle').textContent = title;
       document.getElementById('toastMsg').textContent   = msg;
       toast.className = 'toast ' + type + ' show';
-      setTimeout(() => toast.classList.remove('show'), 4500);
+      // Un solo temporizador: el de un aviso anterior no puede cerrar este.
+      // Y el tiempo depende del largo: un mensaje largo tiene que alcanzar a leerse.
+      clearTimeout(temporizadorToast);
+      const espera = Math.min(12000, Math.max(4500, String(msg || '').length * 55));
+      temporizadorToast = setTimeout(() => toast.classList.remove('show'), espera);
     }
 
     // ─── Envío ─────────────────────────────────────────────────────
