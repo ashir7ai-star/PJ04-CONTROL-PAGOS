@@ -136,6 +136,56 @@ console.log('\n=== Si falla siempre, se rinde con un mensaje claro ===');
   chk('y el mensaje sirve', err && /roto\.jpg/.test(err.message), err && err.message);
 }
 
+console.log('\n=== El caso del 02/11: FileReader se niega y arrayBuffer no ===');
+{
+  // Un pantallazo de 192 KB falló al elegirlo Y al enviar. Si FileReader
+  // falla, el segundo camino tiene que salvar el comprobante.
+  const api = montar((r) => { r.error = { name: 'NotReadableError' }; r.onerror({ type: 'error' }); });
+  const bytes = new TextEncoder().encode('ABC');   // base64: QUJD
+  let llamadas = 0;
+  const file = { name: 'Screenshot.jpg', type: 'image/jpeg', size: 3,
+                 arrayBuffer: async () => { llamadas++; return bytes.buffer; } };
+  let datos = null, fallo = null;
+  try { datos = await api.leerArchivo(file); } catch (e) { fallo = e; }
+  chk('se recupera por arrayBuffer', fallo === null, fallo && fallo.message);
+  chk('sin esperar: la demora empeora este fallo', llamadas === 1, llamadas);
+  chk('y el base64 es correcto', datos === 'QUJD', datos);
+}
+
+console.log('\n=== Un archivo grande no revienta al pasar a base64 ===');
+{
+  const api = montar((r) => { r.error = { name: 'NotReadableError' }; r.onerror({ type: 'error' }); });
+  const grande = new Uint8Array(3 * 1024 * 1024).fill(65);
+  const file = { name: 'grande.jpg', size: grande.length, arrayBuffer: async () => grande.buffer };
+  let datos = null, fallo = null;
+  try { datos = await api.leerArchivo(file); } catch (e) { fallo = e; }
+  chk('3 MB se convierten sin error', fallo === null, fallo && fallo.message);
+  chk('y sin perder bytes', datos && Buffer.from(datos, 'base64').length === grande.length, datos && datos.length);
+}
+
+console.log('\n=== Si fallan todos los caminos, el mensaje dice cuáles ===');
+{
+  const api = montar((r) => { r.error = { name: 'NotReadableError' }; r.onerror({ type: 'error' }); });
+  const file = { name: 'roto.jpg', type: 'image/jpeg', size: 100,
+                 arrayBuffer: async () => { const e = new Error('x'); e.name = 'NotFoundError'; throw e; } };
+  let err = null;
+  try { await api.leerArchivo(file); } catch (e) { err = e; }
+  chk('nombra el archivo', err && /roto\.jpg/.test(err.message), err && err.message);
+  chk('dice qué respondió el lector', err && /lector: NotReadableError/.test(err.message), err && err.message);
+  chk('dice qué respondió arrayBuffer', err && /arrayBuffer: NotFoundError/.test(err.message), err && err.message);
+  chk('dice el tipo de archivo', err && /image\/jpeg/.test(err.message), err && err.message);
+  chk('y ofrece otro camino', err && /app Archivos/.test(err.message), err && err.message);
+}
+
+console.log('\n=== Un archivo vacío por arrayBuffer tampoco pasa como válido ===');
+{
+  const api = montar((r) => { r.error = { name: 'NotReadableError' }; r.onerror({ type: 'error' }); });
+  const file = { name: 'vacio.jpg', size: 0, arrayBuffer: async () => new ArrayBuffer(0) };
+  let err = null;
+  try { await api.leerArchivo(file); } catch (e) { err = e; }
+  chk('se rechaza', !!err, err);
+}
+
 console.log('\n=== El input NO se limpia antes de leer los archivos ===');
 {
   // EL bug del 27/09, y lo rompi yo. `fileInput.files` es una lista VIVA y
@@ -164,8 +214,13 @@ console.log('\n=== Un fallo al elegir NO deja el archivo inservible ===');
       'archivos() no reintenta');
   const esperan = (html.match(/const archivos = await upload\w+\.archivos\(\);/g) || []).length;
   chk('y los tres envios lo esperan', esperan === 3, esperan);
-  chk('un archivo sin leer se muestra como pendiente, no como roto',
-      /se leerá al enviar/.test(html), 'falta el estado pendiente');
+  chk('un archivo sin leer dice que falló y que se reintentará',
+      /no se pudo leer, se reintentará al enviar/.test(html), 'falta el estado');
+  chk('y se avisa al elegirlo, no al final del formulario',
+      /n\.entrada\.error = [^\n]*\n\s*showToast\('error'/.test(html), 'no avisa al elegir');
+  chk('volver a adjuntar un archivo fallido lo reemplaza',
+      /if \(previo\.datos \|\| previo\.leyendo\) continue;\s*(\/\/[^\n]*\s*)*selectedFiles\.splice\(repetido, 1\)/.test(html),
+      'el reintento se descarta como repetido');
 }
 
 

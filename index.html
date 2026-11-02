@@ -4470,14 +4470,61 @@
       });
     }
 
-    // Un reintento corto: en el celular, una lectura que falla por memoria o
-    // por un archivo temporal ocupado suele andar al segundo intento.
+    // `btoa` recibe texto y `fromCharCode` no aguanta millones de argumentos:
+    // por eso se arma de a pedazos.
+    function bytesABase64(buffer) {
+      const bytes = new Uint8Array(buffer);
+      const PASO = 0x8000;
+      let binario = '';
+      for (let i = 0; i < bytes.length; i += PASO) {
+        binario += String.fromCharCode.apply(null, bytes.subarray(i, i + PASO));
+      }
+      return btoa(binario);
+    }
+
+    // ⚠️ Tres intentos, y el orden importa. El 02/11 un pantallazo de 192 KB
+    // falló con NotReadableError AL ELEGIRLO y otra vez al enviar: no era un
+    // archivo temporal reclamado minutos después, sino un archivo que Chrome en
+    // Android se niega a leer desde el principio. Es un fallo conocido: la
+    // lectura se rechaza si el tamaño o la fecha que informa Android no
+    // coinciden con los que anotó el navegador al elegirlo.
+    // `arrayBuffer()` va SEGUNDO y sin espera porque hay reportes de que falla
+    // menos que FileReader y de que la demora empeora las cosas.
     async function leerArchivo(file) {
+      const fallos = [];
+      const anotar = (via, err) => {
+        const m = String((err && (err.name !== 'Error' && err.name || err.message)) || 'error');
+        const motivo = (m.match(/\((\w+Error)\)/) || [])[1] || m;
+        fallos.push(via + ': ' + motivo);
+      };
+
       try {
         return await fileToBase64(file);
       } catch (err) {
-        await new Promise(r => setTimeout(r, 250));
+        anotar('lector', err);
+      }
+
+      if (typeof file.arrayBuffer === 'function') {
+        try {
+          const buffer = await file.arrayBuffer();
+          if (buffer && buffer.byteLength > 0) return bytesABase64(buffer);
+          fallos.push('arrayBuffer: vacío');
+        } catch (err) {
+          anotar('arrayBuffer', err);
+        }
+      }
+
+      await new Promise(r => setTimeout(r, 250));
+      try {
         return await fileToBase64(file);
+      } catch (err) {
+        anotar('reintento', err);
+        // El detalle va en el mensaje a propósito: es lo único que llega desde
+        // el teléfono del usuario. Una lectura que falla nunca toca el servidor.
+        throw new Error(
+          err.message + ' Si vuelve a fallar, probá elegirlo desde la app Archivos en vez de la Galería.' +
+          ' Detalle: ' + fallos.join(' · ') + ' · tipo ' + (file.type || 'desconocido') + '.'
+        );
       }
     }
 
@@ -6142,7 +6189,15 @@
             showToast('error', 'Archivo muy grande', `"${file.name}" supera el límite de 15 MB.`);
             continue;
           }
-          if (selectedFiles.some(f => f.nombre === file.name && f.tamano === file.size)) continue;
+          const repetido = selectedFiles.findIndex(f => f.nombre === file.name && f.tamano === file.size);
+          if (repetido !== -1) {
+            const previo = selectedFiles[repetido];
+            if (previo.datos || previo.leyendo) continue;
+            // ⚠️ Volver a adjuntar es justo lo que le pedimos a quien tuvo un
+            // fallo de lectura. Sin esto, el archivo nuevo —que sí puede
+            // leerse— se descartaba en silencio por "repetido".
+            selectedFiles.splice(repetido, 1);
+          }
           const entrada = {
             nombre: file.name,
             tamano: file.size,
@@ -6168,9 +6223,11 @@
           try {
             n.entrada.datos = await leerArchivo(n.file);
           } catch (err) {
-            // No se avisa todavía: queda el reintento al enviar. Avisar acá de
-            // algo que probablemente ande solo es ruido.
+            // Se avisa YA, aunque quede el reintento al enviar: si los tres
+            // intentos fallaron, lo probable es que el envío también falle, y
+            // la persona tiene que enterarse antes de llenar todo el formulario.
             n.entrada.error = (err && err.message) || 'No se pudo leer el archivo.';
+            showToast('error', 'No se pudo leer el comprobante', n.entrada.error);
           } finally {
             n.entrada.leyendo = false;
             render();
@@ -6184,7 +6241,7 @@
           const icon = ['jpg','jpeg','png','webp'].includes(ext) ? svgImage : svgFile;
           const estado = f.leyendo ? '<div class="file-size">Leyendo…</div>'
                        : f.datos   ? `<div class="file-size">${formatBytes(f.tamano)} · listo</div>`
-                       : `<div class="file-size">${formatBytes(f.tamano)} · se leerá al enviar</div>`;
+                       : `<div class="file-size">${formatBytes(f.tamano)} · no se pudo leer, se reintentará al enviar</div>`;
           return `<div class="file-preview">
             <div class="file-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${icon}</svg></div>
             <div class="file-info">
