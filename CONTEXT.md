@@ -28,6 +28,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 Y si llega a pasar: **no alcanza con corregir el archivo**. Hay que **subir también la versión de `CACHE` en `sw.js`**, porque quien ya cargó la versión rota la tiene cacheada bajo ese mismo nombre y el Service Worker es cache-first: se la quedaría para siempre.
 
 ## Última actualización
+**2026-11-04** — 👥 **Control de Viáticos: "Todos los equipos" ahora suma los equipos.** Con un equipo seleccionado mostraba lo mismo que ese equipo, porque usaba `totalGastado`, que el servidor filtra por el equipo elegido. Ahora suma las tarjetas de cada equipo y, a pedido del usuario, ya no se compara contra un tope: solo muestra lo gastado y los pagos. Cache `v124`. Solo hace falta el push (GitHub Pages); el backend no cambió.
+
 **2026-11-02** — ✅ **VERSIÓN ESTABLE: `v2.9-avisos-de-lectura`** (commit `93487a7`, web en `v123`). Marcada a pedido del usuario. ⚠️ **El `NotReadableError` sigue sin causa confirmada:** se evita buscando el archivo de nuevo en la galería, y el texto del aviso todavía recomienda la app Archivos, lo contrario de lo que funcionó. Cuatro suites siguen con los fallos anteriores a este trabajo.
 
 **2026-11-02** — 🔔 **El aviso largo ya no queda pegado al pie de la pantalla.** Se escondía bajando 110 px fijos y el mensaje de lectura, de seis líneas, no alcanzaba a salir. Ahora se esconde según su altura, dura según su largo (4,5 a 12 s) y un temporizador viejo no lo cierra antes de tiempo. Cache `v123`. Solo hace falta el push (GitHub Pages); el backend no cambió.
@@ -579,6 +581,7 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-11-04**: 👥 **"Todos los equipos" en Control de Viáticos = suma de las tarjetas de equipo** (`porEquipo`), no `p.totalGastado`, que viene filtrado por el equipo elegido: con Equipo 1 seleccionado mostraba $360.300 en vez de $976.200. Sin tope ni "excedido", a pedido del usuario. ⚠️ Un pago de viáticos **sin equipo** no entra en ninguna tarjeta, así que tampoco en este total (sí en la tabla de abajo con "Todos" elegido). Prueba nueva en `prueba-frontend.js`, verificada con la mutación al total viejo. Cache `v124`.
 - **2026-11-02**: ✅ Marcada como **versión estable** — etiqueta `v2.9-avisos-de-lectura` (commit `93487a7`), `index.stable.html` = `index.html`, web en `v123`. Backend sin cambios desde `v2.8`.
 - **2026-11-02**: 🔔 **Aviso que nunca desaparecía.** Lo causó el mensaje largo agregado ese mismo día: `translateY(110px)` solo esconde avisos de hasta ~80 px de alto. Ahora `calc(100% + 60px)`, duración según el largo y un solo temporizador. Cache `v123`. 🧭 El mismo pantallazo sí subió al buscarlo de nuevo en la galería: **depende de la vía por la que se elige, no del archivo**. Falta saber cuál fue la vía que falló.
 - **2026-11-02**: 📎 **`NotReadableError` con pantallazos en el celular** (Traslados; el componente es el mismo en Nuevo Pago y Aprobaciones). Cache `v122`.

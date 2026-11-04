@@ -8241,18 +8241,40 @@
 
       const elegido = document.getElementById('vtEquipo').value || '';
 
-      // "Todos" primero: es el estado inicial y el único que da el total de la
-      // empresa. Su tope es la SUMA de los topes — comparar el gasto de dos
-      // equipos contra el de uno daría rojo siempre.
-      const tarjetas = [{
-        clave: '', etiqueta: 'Todos los equipos',
-        gastado: p.totalGastado, sugerido: p.totalSugerido, pagos: p.pagos
-      }].concat((p.porEquipo || []).map(function (e) {
+      const equipos = (p.porEquipo || []).map(function (e) {
         return { clave: e.clave, etiqueta: e.etiqueta, gastado: e.gastado,
                  sugerido: e.sugerido, pagos: e.pagos };
-      }));
+      });
+      const sumar = function (campo) {
+        return equipos.reduce(function (a, e) { return a + (Number(e[campo]) || 0); }, 0);
+      };
+
+      // "Todos" primero: es el estado inicial y el único que da el total de la
+      // empresa.
+      // ⚠️ Es la SUMA de las tarjetas de los equipos, no `p.totalGastado`: ese
+      // total viene filtrado por el equipo elegido, así que con Equipo 1
+      // seleccionado "Todos" mostraba lo mismo que Equipo 1 (04/11).
+      // Y no se compara contra un tope, a pedido del usuario: solo suma lo
+      // gastado. Un equipo sin presupuesto (Equipo 3) lo pondría en rojo igual.
+      const tarjetas = [{
+        clave: '', etiqueta: 'Todos los equipos', soloSuma: true,
+        gastado: sumar('gastado'), sugerido: 0, pagos: sumar('pagos')
+      }].concat(equipos);
 
       caja.innerHTML = tarjetas.map(function (t) {
+        if (t.soloSuma) {
+          return '<button type="button" class="vt-eq' + (t.clave === elegido ? ' sel' : '') +
+              '" data-equipo="" aria-pressed="' + (t.clave === elegido) + '">' +
+            '<div class="vt-eq-cab">' +
+              '<span class="vt-eq-nom">' + escapeHtml(t.etiqueta) + '</span>' +
+              '<span class="vt-eq-tag na">total</span>' +
+            '</div>' +
+            '<div class="vt-eq-val">' + formatoPesos(t.gastado) + '</div>' +
+            '<div class="vt-eq-de">gastado entre los ' + equipos.length + ' equipos</div>' +
+            '<div class="vt-eq-barra"></div>' +
+            '<div class="vt-eq-pie"><span>' + t.pagos + ' pago(s)</span><span>—</span></div>' +
+          '</button>';
+        }
         const hay = t.sugerido > 0;
         const pct = hay ? Math.round((t.gastado / t.sugerido) * 100) : 0;
         const dif = t.sugerido - t.gastado;

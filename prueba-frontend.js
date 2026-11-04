@@ -364,5 +364,33 @@ console.log('\n=== Reintentos seguros y mensajes utiles ===');
       ctx.f(errorReal, 200).indexOf('hojasNoPagos_') !== -1, ctx.f(errorReal, 200));
 }
 
+console.log('\n=== Control de Viáticos: "Todos los equipos" suma los equipos ===');
+{
+  // 04/11: con Equipo 1 elegido, el servidor manda `totalGastado` filtrado por
+  // ese equipo, y "Todos" mostraba $360.300 — lo mismo que Equipo 1 — en vez
+  // de 360.300 + 615.900 + 0.
+  const i = html.indexOf('function pintarTarjetasDeEquipo');
+  const j = html.indexOf('// El selector de equipos', i);
+  const caja = { innerHTML: '', querySelectorAll: () => [] };
+  const doc = { getElementById: (id) => id === 'vtEquipo' ? { value: '1' } : caja };
+  const pintar = new Function('document', 'escapeHtml', 'formatoPesos',
+    html.slice(i, j) + '\n; return pintarTarjetasDeEquipo;')(
+      doc, (s) => String(s),
+      (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-CO'));
+  pintar({
+    totalGastado: 360300, totalSugerido: 355000, pagos: 5,   // lo filtrado por Equipo 1
+    porEquipo: [
+      { clave: '1', etiqueta: 'Equipo 1', gastado: 360300, sugerido: 355000, pagos: 5 },
+      { clave: '2', etiqueta: 'Equipo 2', gastado: 615900, sugerido: 323000, pagos: 7 },
+      { clave: '3', etiqueta: 'Equipo 3', gastado: 0,      sugerido: 0,      pagos: 0 }
+    ]
+  });
+  const todos = (caja.innerHTML.match(/<button[^>]*data-equipo=""[\s\S]*?<\/button>/) || [''])[0];
+  const valor = (todos.match(/vt-eq-val">([^<]*)</) || [])[1];
+  chk('"Todos" suma lo gastado por los tres equipos', valor === '$' + (976200).toLocaleString('es-CO'), valor);
+  chk('y suma sus pagos', /12 pago\(s\)/.test(todos), todos);
+  chk('no se compara contra un tope', !/excedido|de más|libre/i.test(todos), todos);
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);
