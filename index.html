@@ -9024,18 +9024,33 @@
     // Abre con la fecha de hoy, que es el caso normal, y deja elegir una
     // anterior para los traslados que se registran días después. `maxDate`
     // impide el futuro: una transferencia que todavía no ocurrió no se registra.
+    //
+    // ⚠️ El tope es el FINAL del día, nunca `new Date()`. flatpickr compara con
+    // la HORA al guardar una fecha (setDate filtra con isEnabled(d, false)):
+    // con el tope en "ahora", el `setDate(new Date())` que deja hoy puesto tras
+    // registrar caía unos minutos después del tope, flatpickr lo descartaba y
+    // el campo quedaba VACÍO. Al abrirlo, el único día marcado era el "hoy"
+    // congelado de cuando se cargó la app, y el traslado se guardaba con esa
+    // fecha. Pasó el 11/11/2026: el traslado de $393.000 quedó con fecha 09/11.
+    const finDeHoy = function () { const d = new Date(); d.setHours(23, 59, 59, 999); return d; };
     const fechaPickerTraslado = flatpickr('#tFecha', {
       locale: 'es',
       dateFormat: 'd/m/Y',
       defaultDate: 'today',
-      maxDate: 'today',
+      maxDate: finDeHoy(),
       disableMobile: true,
       allowInput: false,
       // El tope se recalcula AL ABRIR. Ver refrescarCalendarios: `maxDate:
       // 'today'` se resuelve una sola vez, al inicializar, y en una PWA que
       // queda abierta eso dejó el 14/10 deshabilitado por estar la app abierta
       // desde el 13 — no se podía registrar un traslado hecho ese mismo día.
-      onOpen: function (sel, texto, inst) { inst.set('maxDate', new Date()); }
+      // `inst.now` es el día que el calendario resalta como hoy, y flatpickr
+      // también lo fija una sola vez.
+      onOpen: function (sel, texto, inst) {
+        inst.now = new Date();
+        inst.set('maxDate', finDeHoy());
+        if (!inst.selectedDates.length) inst.setDate(new Date(), false);
+      }
     });
 
     // ─── "Hoy" tiene que seguir siendo hoy ───────────────────────────────
@@ -9065,7 +9080,8 @@
       if (diaISO(hoy) === diaDeLosCalendarios) return;   // sigue siendo el mismo día
 
       // El tope de Traslados: sin esto, hoy queda deshabilitado.
-      fechaPickerTraslado.set('maxDate', hoy);
+      [fechaPicker, fechaPickerSolicitud, fechaPickerTraslado].forEach(function (p) { p.now = hoy; });
+      fechaPickerTraslado.set('maxDate', finDeHoy());
 
       [fechaPicker, fechaPickerSolicitud, fechaPickerTraslado].forEach(function (p) {
         const elegida = p.selectedDates[0];

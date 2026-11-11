@@ -392,5 +392,44 @@ console.log('\n=== Control de Viáticos: "Todos los equipos" suma los equipos ==
   chk('no se compara contra un tope', !/excedido|de más|libre/i.test(todos), todos);
 }
 
+console.log('\n=== Traslados: la fecha queda en hoy después de registrar ===');
+{
+  // Error real (11/11/2026): el tope era `new Date()` (AHORA). flatpickr compara
+  // con la hora al guardar, así que el setDate(new Date()) de después de
+  // registrar caía pasado el tope, se descartaba y el campo quedaba VACÍO. El
+  // calendario resaltaba el "hoy" congelado de cuando se cargó la app (el 9) y
+  // el traslado se guardó con esa fecha.
+  //
+  // El falso flatpickr imita solo lo que importa: setDate descarta las fechas
+  // posteriores a maxDate comparando con la hora, como isEnabled(d, false).
+  const i = html.indexOf('const finDeHoy');
+  const j = html.indexOf('});', html.indexOf("flatpickr('#tFecha'", i)) + 3;
+  let inst = null;
+  const flatpickrFalso = function (sel, cfg) {
+    inst = {
+      selectedDates: [], now: new Date(Date.now() - 2 * 864e5),
+      config: Object.assign({}, cfg),
+      set: function (k, v) { this.config[k] = v; },
+      setDate: function (d) {
+        const f = d === 'today' ? (() => { const x = new Date(); x.setHours(0, 0, 0, 0); return x; })() : new Date(d);
+        this.selectedDates = (this.config.maxDate && f > this.config.maxDate) ? [] : [f];
+      }
+    };
+    inst.setDate(cfg.defaultDate);
+    return inst;
+  };
+  const crear = new Function('flatpickr', html.slice(i, j) + '\n; return fechaPickerTraslado;');
+  const p = crear(flatpickrFalso);
+  chk('abre con la fecha de hoy', p.selectedDates.length === 1);
+  p.config.onOpen([], '', p);
+  p.setDate(new Date(Date.now() + 60 * 1000));   // registrar unos minutos después de abrir
+  chk('tras registrar, la fecha sigue puesta (no queda vacía)', p.selectedDates.length === 1, p.config.maxDate);
+  chk('al abrir, el día resaltado como hoy es el de hoy',
+    p.now && p.now.toDateString() === new Date().toDateString(), p.now);
+  p.selectedDates = [];
+  p.config.onOpen([], '', p);
+  chk('si el campo estaba vacío, al abrir se llena con hoy', p.selectedDates.length === 1);
+}
+
 console.log('\n' + (fallos ? 'FALLARON ' + fallos + ' comprobaciones' : 'TODAS LAS COMPROBACIONES PASARON'));
 process.exit(fallos ? 1 : 0);

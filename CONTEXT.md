@@ -28,6 +28,8 @@ node prueba-consulta.js                 # consulta de extremo a extremo + alta c
 Y si llega a pasar: **no alcanza con corregir el archivo**. Hay que **subir también la versión de `CACHE` en `sw.js`**, porque quien ya cargó la versión rota la tiene cacheada bajo ese mismo nombre y el Service Worker es cache-first: se la quedaría para siempre.
 
 ## Última actualización
+**2026-11-11** — 📅 **Traslados: la fecha ya no queda vacía después de registrar.** El tope del calendario era "ahora" y flatpickr compara la hora: el `setDate(hoy)` posterior al registro caía minutos después y se descartaba. El campo quedaba vacío y el calendario resaltaba el "hoy" congelado de cuando se abrió la app. Así se guardó el traslado de $393.000 con fecha 09/11 en vez de 11/11. Cache `v125`. Solo hace falta el push (GitHub Pages); el backend no cambió.
+
 **2026-11-04** — 👥 **Control de Viáticos: "Todos los equipos" ahora suma los equipos.** Con un equipo seleccionado mostraba lo mismo que ese equipo, porque usaba `totalGastado`, que el servidor filtra por el equipo elegido. Ahora suma las tarjetas de cada equipo y, a pedido del usuario, ya no se compara contra un tope: solo muestra lo gastado y los pagos. Cache `v124`. Solo hace falta el push (GitHub Pages); el backend no cambió.
 
 **2026-11-02** — ✅ **VERSIÓN ESTABLE: `v2.9-avisos-de-lectura`** (commit `93487a7`, web en `v123`). Marcada a pedido del usuario. ⚠️ **El `NotReadableError` sigue sin causa confirmada:** se evita buscando el archivo de nuevo en la galería, y el texto del aviso todavía recomienda la app Archivos, lo contrario de lo que funcionó. Cuatro suites siguen con los fallos anteriores a este trabajo.
@@ -581,6 +583,13 @@ La **regla de corte por fecha se aplica por separado a cada lado**: cada cuenta 
 ⚠️ `SESIONES` está en `hojasNoPagos_()`, como `USUARIOS`, `SALDOS` y `TRASLADOS`.
 
 ## Historial de cambios recientes
+- **2026-11-11**: 📅 **Fecha del traslado vacía tras registrar** (reportado por el usuario: "me pasa mucho").
+  - **El síntoma.** Al abrir Traslados el campo de fecha estaba vacío y, al desplegarlo, el único día marcado era el 9, con hoy en 11. El traslado de $393.000 ("Viaticos Equipo 1 Nov 11") quedó con fecha 09/11 y por eso no salía al filtrar Consultar Pagos del 10/11 al 11/11, que filtra por **fecha de pago**.
+  - **La causa, reproducida con el flatpickr real.** `onOpen` fijaba `maxDate` en `new Date()` (ahora, con hora). Después de registrar, `setDate(new Date())` caía minutos más tarde; flatpickr filtra con `isEnabled(d, false)`, que **compara con la hora**, y lo descartaba: campo vacío. El 9 resaltado no estaba elegido: era la clase `.today`, porque flatpickr fija `now` una sola vez, al cargar la app.
+  - **Arreglo.** El tope es `finDeHoy()` (23:59:59.999). Al abrir se actualiza `inst.now` y, si el campo está vacío, se llena con hoy. `refrescarCalendarios` también actualiza `now` en los tres calendarios.
+  - **Prueba nueva** en `prueba-frontend.js`, con 4 comprobaciones. Las dos mutaciones fallan como se esperaba: tope = ahora y sin `inst.now`. Sigue la falla anterior de clases CSS sin definir (`btn-sec`, `btn-pri`, `btn`, `btn-sm`), que ya estaba en `HEAD`.
+  - **Dato a corregir a mano:** si el traslado de $393.000 fue el 11/11, cambiar su fecha en el Sheet.
+
 - **2026-11-04**: 👥 **"Todos los equipos" en Control de Viáticos = suma de las tarjetas de equipo** (`porEquipo`), no `p.totalGastado`, que viene filtrado por el equipo elegido: con Equipo 1 seleccionado mostraba $360.300 en vez de $976.200. Sin tope ni "excedido", a pedido del usuario. ⚠️ Un pago de viáticos **sin equipo** no entra en ninguna tarjeta, así que tampoco en este total (sí en la tabla de abajo con "Todos" elegido). Prueba nueva en `prueba-frontend.js`, verificada con la mutación al total viejo. Cache `v124`.
 - **2026-11-02**: ✅ Marcada como **versión estable** — etiqueta `v2.9-avisos-de-lectura` (commit `93487a7`), `index.stable.html` = `index.html`, web en `v123`. Backend sin cambios desde `v2.8`.
 - **2026-11-02**: 🔔 **Aviso que nunca desaparecía.** Lo causó el mensaje largo agregado ese mismo día: `translateY(110px)` solo esconde avisos de hasta ~80 px de alto. Ahora `calc(100% + 60px)`, duración según el largo y un solo temporizador. Cache `v123`. 🧭 El mismo pantallazo sí subió al buscarlo de nuevo en la galería: **depende de la vía por la que se elige, no del archivo**. Falta saber cuál fue la vía que falló.
