@@ -1374,7 +1374,7 @@ console.log('\n=== "Hoy" sigue siendo hoy aunque la app quede abierta ===');
     .join('\n');
 
   chk('el tope del calendario de traslados se recalcula al abrirlo',
-      /onOpen: function \(sel, texto, inst\) \{ inst\.set\('maxDate', new Date\(\)\); \}/.test(sinComentarios),
+      /onOpen: function \(sel, texto, inst\) \{[^}]*inst\.set\('maxDate', finDeHoy\(\)\);/.test(sinComentarios),
       'hoy quedaria deshabilitado si la app lleva un dia abierta');
 
   chk('existe el refresco de calendarios',
@@ -1385,7 +1385,7 @@ console.log('\n=== "Hoy" sigue siendo hoy aunque la app quede abierta ===');
   chk('no hace nada si sigue siendo el mismo dia',
       /if \(diaISO\(hoy\) === diaDeLosCalendarios\) return;/.test(fn), fn.slice(0, 120));
   chk('corrige el tope de traslados',
-      /fechaPickerTraslado\.set\('maxDate', hoy\)/.test(fn), fn);
+      /fechaPickerTraslado\.set\('maxDate', finDeHoy\(\)\)/.test(fn), fn);
   chk('revisa los TRES calendarios, no solo el de traslados',
       /\[fechaPicker, fechaPickerSolicitud, fechaPickerTraslado\]/.test(fn), fn);
 

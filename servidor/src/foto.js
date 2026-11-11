@@ -29,9 +29,10 @@ function crearGestorDeFoto(op) {
   const cupo         = op.cupo;
   const dormir       = op.dormir || ((ms) => new Promise(r => setTimeout(r, ms)));
 
-  let cache   = null;   // { foto, vence }
+  let cache   = null;   // { foto, vence, lectura }
   let enVuelo = null;   // { desde, promesa }
   let version = 0;      // cuántas escrituras se aplicaron
+  let lecturas = 0;     // numera cada lectura real, para reconocer de cuál salió una copia
 
   function olvidar() { cache = null; }
 
@@ -40,15 +41,15 @@ function crearGestorDeFoto(op) {
     const nombres = await op.leerNombres();
     const crudo   = await op.leerHojas(nombres);
     const foto    = op.convertir(crudo);
-    cache = { foto: foto, vence: Date.now() + segundos * 1000 };
-    return { foto: foto, deCache: false, ms: Date.now() - a };
+    cache = { foto: foto, vence: Date.now() + segundos * 1000, lectura: ++lecturas };
+    return { foto: foto, deCache: false, ms: Date.now() - a, lectura: cache.lectura };
   }
 
   // `forzar` = esta acción decide sobre el estado y no puede trabajar sobre
   // datos de hace unos segundos.
   async function traer(forzar) {
     const viva = !!(cache && cache.vence > Date.now());
-    if (!forzar && viva) return { foto: cache.foto, deCache: true, ms: 0, version: version };
+    if (!forzar && viva) return { foto: cache.foto, deCache: true, ms: 0, version: version, lectura: cache.lectura };
 
     // ─── Dos peticiones a la vez no leen dos veces ────────────────────────
     //
@@ -62,7 +63,7 @@ function crearGestorDeFoto(op) {
     const llegada = Date.now();
     if (enVuelo && (!forzar || enVuelo.desde >= llegada)) {
       const r = await enVuelo.promesa;
-      return { foto: r.foto, deCache: true, ms: 0, version: version };
+      return { foto: r.foto, deCache: true, ms: 0, version: version, lectura: r.lectura };
     }
 
     if (cupo && !cupo.hayCupo()) {
@@ -71,7 +72,7 @@ function crearGestorDeFoto(op) {
       // Una consulta se sirve con lo último que leímos. Datos de hace un rato
       // son mucho mejores que un error en inglés en la cara del usuario.
       if (!forzar && cache) {
-        return { foto: cache.foto, deCache: true, ms: 0, vencida: true, version: version };
+        return { foto: cache.foto, deCache: true, ms: 0, vencida: true, version: version, lectura: cache.lectura };
       }
 
       // Una acción que decide NO se sirve con datos viejos: registrar un pago
@@ -89,12 +90,12 @@ function crearGestorDeFoto(op) {
 
     try {
       const r = await mio.promesa;
-      return { foto: r.foto, deCache: false, ms: r.ms, version: version };
+      return { foto: r.foto, deCache: false, ms: r.ms, version: version, lectura: r.lectura };
     } catch (err) {
       // Si Google rechazó por cuota y tenemos algo guardado, una consulta se
       // sirve igual. Una acción que decide, no.
       if (err && err.cuota && !forzar && cache) {
-        return { foto: cache.foto, deCache: true, ms: 0, vencida: true, version: version };
+        return { foto: cache.foto, deCache: true, ms: 0, vencida: true, version: version, lectura: cache.lectura };
       }
       throw err;
     } finally {
@@ -114,10 +115,23 @@ function crearGestorDeFoto(op) {
   // Solo se adopta si nadie más escribió entre la lectura y la escritura. Si
   // hubo otra escritura en el medio, esta copia no la tiene y quedársela
   // borraría un dato ajeno: ahí se tira y se vuelve a leer.
-  function trasEscribir(versionAlLeer, fotoYaEscrita) {
+  //
+  // ⚠️ La copia adoptada CONSERVA EL VENCIMIENTO de la lectura de la que salió.
+  // Antes se le daban 15 s nuevos desde la escritura. Lo que se escribió está
+  // al día, pero el resto de la copia sigue siendo de cuando se leyó. Como
+  // `arranque` escribe en cada apertura de la app, con gente usándola la copia
+  // se renovaba sola y no vencía nunca. Una corrección hecha A MANO en el
+  // Sheet no aparecía al buscar, por más veces que se apretara Buscar
+  // (11/11/2026: la fecha corregida de un traslado).
+  //
+  // `lecturaAlLeer` sirve para comprobar que la copia guardada sigue
+  // siendo la que esta petición leyó. Si entretanto se volvió a leer la hoja,
+  // la guardada es más nueva y tiene algo que esta copia no tiene.
+  function trasEscribir(versionAlLeer, fotoYaEscrita, lecturaAlLeer) {
     version++;
-    if (version === versionAlLeer + 1 && !enVuelo && fotoYaEscrita) {
-      cache = { foto: fotoYaEscrita, vence: Date.now() + segundos * 1000 };
+    const mismaLectura = !!(cache && lecturaAlLeer && cache.lectura === lecturaAlLeer);
+    if (version === versionAlLeer + 1 && !enVuelo && fotoYaEscrita && mismaLectura) {
+      cache = { foto: fotoYaEscrita, vence: cache.vence, lectura: cache.lectura };
     } else {
       olvidar();
     }

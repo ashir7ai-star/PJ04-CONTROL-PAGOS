@@ -391,7 +391,7 @@ const servidor = http.createServer(async (req, res) => {
       // escritura, y `arranque` escribe ULTIMO ACCESO en CADA apertura de la
       // app — el caché moría todo el tiempo. (La decisión fina, incluida la
       // carrera con otra escritura, está en foto.js.)
-      gestorFoto.trasEscribir(lectura.version, entorno.datos());
+      gestorFoto.trasEscribir(lectura.version, entorno.datos(), lectura.lectura);
     }
 
     // La medición viaja en la respuesta, como ya hacía Apps Script. Sin un

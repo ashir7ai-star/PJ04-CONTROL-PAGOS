@@ -177,7 +177,7 @@ console.log('\n=== Después de escribir, la foto NO se tira ===');
 
   const l = await g.traer(true);
   const despues = { H: [['A'], ['1'], ['fila nueva']] };
-  g.trasEscribir(l.version, despues);
+  g.trasEscribir(l.version, despues, l.lectura);
 
   const r = await g.traer(false);
   chk('la consulta siguiente no vuelve a leer', g._estado.lecturas === 1, g._estado.lecturas);
@@ -192,14 +192,48 @@ console.log('\n=== Pero si otro escribió en el medio, sí se tira ===');
   const g = gestor({ cupo: cupoFalso(true), segundos: 60 });
 
   const mia = await g.traer(true);
-  g.trasEscribir(mia.version, { H: [['de otro']] });   // escritura ajena, versión avanza
-  g.trasEscribir(mia.version, { H: [['la mía']] });    // la nuestra llega con la versión vieja
+  g.trasEscribir(mia.version, { H: [['de otro']] }, mia.lectura);   // escritura ajena, versión avanza
+  g.trasEscribir(mia.version, { H: [['la mía']] }, mia.lectura);    // la nuestra llega con la versión vieja
 
   chk('el caché quedó vacío en vez de quedarse con una copia incompleta',
       g.estado().guardada === false, g.estado());
 
   await g.traer(false);
   chk('y la consulta siguiente lee de verdad', g._estado.lecturas === 2, g._estado.lecturas);
+}
+
+console.log('\n=== Escribir NO estira la vida de la foto ===');
+{
+  // Error real (11/11/2026): cada escritura le daba a la copia 15 s nuevos.
+  // `arranque` escribe en cada apertura de la app, así que con gente usándola
+  // la copia no vencía nunca y una fecha corregida A MANO en el Sheet no
+  // aparecía al buscar.
+  const g = gestor({ cupo: cupoFalso(true), segundos: 0.08 });
+  let l = await g.traer(false);
+  g._estado.valor = [['A'], ['corregido a mano']];   // alguien edita el Sheet
+  // Escrituras seguidas (aperturas de la app) mientras pasa el tiempo
+  for (let k = 0; k < 4; k++) {
+    await new Promise(r => setTimeout(r, 30));
+    l = await g.traer(false);
+    g.trasEscribir(l.version, { H: l.foto.H.map(f => f.slice()) }, l.lectura);
+  }
+  await new Promise(r => setTimeout(r, 30));
+  const r = await g.traer(false);
+  chk('pasado su tiempo, la foto se vuelve a leer aunque haya escrituras',
+      g._estado.lecturas >= 2, g._estado.lecturas);
+  chk('y la búsqueda ve lo corregido a mano en el Sheet',
+      r.foto.H[1][0] === 'corregido a mano', r.foto.H);
+}
+
+console.log('\n=== Si entretanto se releyó la hoja, la copia vieja no pisa la nueva ===');
+{
+  const g = gestor({ cupo: cupoFalso(true), segundos: 60 });
+  const vieja = await g.traer(false);
+  g._estado.valor = [['A'], ['nuevo']];
+  await g.traer(true);                                   // otra petición relee
+  g.trasEscribir(vieja.version, { H: [['A'], ['1'], ['mío']] }, vieja.lectura);
+  const r = await g.traer(false);
+  chk('lo leído después no se pierde', r.foto.H[1][0] === 'nuevo', r.foto.H);
 }
 
 console.log('\n=== Si la escritura falla, lo guardado no es de fiar ===');
